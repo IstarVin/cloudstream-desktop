@@ -164,6 +164,10 @@ select option {
     display: none;
   }
 
+  select:not(.bm select) {
+    align-items: center;
+  }
+
   select::picker(select) {
     max-height: min(320px, 50vh);
     /* Prefer the default position below before trying the browser's fallbacks. */
@@ -209,6 +213,7 @@ select option {
   }
 
   select option::checkmark {
+    order: 1;
     margin-left: auto;
     color: var(--accent);
   }
