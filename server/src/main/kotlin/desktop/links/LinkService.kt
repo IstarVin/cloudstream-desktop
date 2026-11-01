@@ -14,6 +14,7 @@ import desktop.api.describe
 import desktop.db.LinkStat
 import desktop.db.Store
 import desktop.plugins.PluginHost
+import desktop.player.SourceProfile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -82,8 +83,8 @@ object ClearKey {
 }
 
 /**
- * The order links are offered in, best first: playable links before the rest, then quality (an adaptive "Auto" HLS
- * counts as just under 1080p), then how often the source has worked before, then arrival order. The web UI's sources
+ * Playable links first, then the profile's source + quality priority. Quality ("Auto" just under 1080p), success
+ * history and arrival order break ties. The web UI's sources
  * sheet sorts the same way (`web/src/lib/ranking.ts`); `testdata/ranking-cases.json` keeps the two in step.
  */
 object LinkRanking {
@@ -93,6 +94,10 @@ object LinkRanking {
         .thenByDescending { quality(it.quality) }
         .thenByDescending { it.score }
         .thenBy { it.order }
+
+    fun comparator(profile: SourceProfile): Comparator<LinkDto> = compareByDescending<LinkDto> { it.playable }
+        .thenByDescending { profile.priority(it) }
+        .then(comparator)
 }
 
 class ResolvedSubtitle(val id: String, val sub: SubtitleFile) {
@@ -184,11 +189,11 @@ class LinkService(private val scope: CoroutineScope, private val store: Store, p
     fun dto(link: ResolvedLink): LinkDto = link.dto(store.linkStats(link.provider)[link.link.source])
 
     /** Playable links, best first (see [LinkRanking]). */
-    fun ranked(set: LinkSet): List<ResolvedLink> {
+    fun ranked(set: LinkSet, profile: SourceProfile = SourceProfile()): List<ResolvedLink> {
         val stats = store.linkStats(set.provider)
         return set.links.filter { it.playable }
             .map { it to it.dto(stats[it.link.source]) }
-            .sortedWith(compareBy(LinkRanking.comparator) { it.second })
+            .sortedWith(compareBy(LinkRanking.comparator(profile)) { it.second })
             .map { it.first }
     }
 

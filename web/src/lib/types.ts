@@ -244,6 +244,8 @@ export interface Bookmark {
 }
 
 export interface Settings {
+  source_profile: number;
+  source_profiles: SourceProfile[];
   mpv_extra_args: string[];
   autoplay_best: boolean;
   autoplay_min_links: number;
@@ -256,6 +258,15 @@ export interface Settings {
   chromium_mode: BrowserMode;
   plugin_source: PluginSourceMode;
   plugin_repo_url: string;
+}
+
+export interface SourceProfile {
+  id: number;
+  name: string;
+  sourcePriorities: Record<string, number>;
+  qualityPriorities: Record<string, number>;
+  hideFailedSources: boolean;
+  hideNegativeSources: boolean;
 }
 
 export type SkipMode = "prompt" | "auto" | "off";

@@ -1,6 +1,8 @@
 package desktop.config
 
 import desktop.db.Database
+import desktop.player.SourceProfile
+import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -12,6 +14,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 /** UI-editable settings: values saved from the Settings page (SQLite) over the defaults from config.toml. */
 class Settings(private val db: Database, private val defaults: Map<String, Any>) {
+    private val profileJson = Json { encodeDefaults = true }
     private val listeners = CopyOnWriteArrayList<(String) -> Unit>()
 
     fun onChange(listener: (key: String) -> Unit) {
@@ -32,6 +35,15 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
     val showNsfw get() = bool(SHOW_NSFW)
     val disabledPlugins get() = strings(DISABLED_PLUGINS).toSet()
 
+    fun sourceProfiles(): List<SourceProfile> = stored(SOURCE_PROFILES)?.let {
+        Json.decodeFromString<List<SourceProfile>>(it.toString())
+    } ?: SourceProfile.defaults()
+
+    fun activeSourceProfile(): SourceProfile {
+        val id = (stored(SOURCE_PROFILE) as? JsonPrimitive)?.longOrNull?.toInt() ?: 1
+        return sourceProfiles().first { it.id == id }
+    }
+
     /** Every setting as JSON, for the Settings page. */
     fun all(): JsonObject = JsonObject(defaults.keys.associateWith { key ->
         when (val d = defaults[key]) {
@@ -40,11 +52,31 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
             is List<*> -> JsonArray(strings(key).map(::JsonPrimitive))
             else -> JsonPrimitive(string(key))
         }
-    })
+    } + mapOf(
+        SOURCE_PROFILE to JsonPrimitive(activeSourceProfile().id),
+        SOURCE_PROFILES to profileJson.encodeToJsonElement(sourceProfiles()),
+    ))
 
     /** Saves the known keys from [values], checking each against its default's type. */
     fun update(values: JsonObject) {
+        // Validate the entire patch before writing: a malformed profile must not change the active selection.
         for ((key, v) in values) {
+            if (key == SOURCE_PROFILE) {
+                require(v is JsonPrimitive && !v.isString && v.longOrNull in 1L..SourceProfile.COUNT.toLong()) { "Unknown source profile" }
+                continue
+            }
+            if (key == SOURCE_PROFILES) {
+                val profiles = try {
+                    Json.decodeFromString<List<SourceProfile>>(v.toString())
+                } catch (e: Exception) {
+                    throw IllegalArgumentException("Invalid source profiles", e)
+                }
+                require(profiles.size == SourceProfile.COUNT && profiles.map { it.id }.toSet() == (1..SourceProfile.COUNT).toSet()) {
+                    "Exactly seven unique source profiles are required"
+                }
+                profiles.forEach { it.validate() }
+                continue
+            }
             val d = defaults[key] ?: throw IllegalArgumentException("Unknown setting $key")
             val ok = when (d) {
                 is Boolean -> (v as? JsonPrimitive)?.booleanOrNull != null
@@ -54,6 +86,8 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
                     (key != PLUGIN_REPO_URL || v.content.matches(Regex("""https?://\S+""")))
             }
             require(ok) { "Setting $key has the wrong type or value" }
+        }
+        for ((key, v) in values) {
             db.update("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, v.toString())
             listeners.forEach { it(key) }
         }
@@ -61,6 +95,8 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
 
     companion object {
         const val MPV_EXTRA_ARGS = "mpv_extra_args"
+        const val SOURCE_PROFILE = "source_profile"
+        const val SOURCE_PROFILES = "source_profiles"
         const val AUTOPLAY_BEST = "autoplay_best"
         const val AUTOPLAY_MIN_LINKS = "autoplay_min_links"
         const val AUTOPLAY_WAIT_MS = "autoplay_wait_ms"

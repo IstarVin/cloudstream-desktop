@@ -26,6 +26,10 @@ demand. Pick headless, Xvfb or a visible window on the Settings page; checks it 
 The first start writes `~/.config/cloudstream-desktop/config.toml`; set `plugins.source`, `plugins.repo_url` or
 `plugins.dev_path` there.
 
+Source priority in Settings and the Sources sheet provides seven named profiles for source and quality scores,
+with optional filters for failed or negative-priority links. A combined priority of 10 starts auto-play immediately.
+See [source profiles](docs/SOURCE_PROFILES.md) for behavior and settings API details.
+
 ## Develop
 
 | What | Command |

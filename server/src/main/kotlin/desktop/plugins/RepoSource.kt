@@ -172,10 +172,10 @@ class RepoSource(val url: String, private val dir: File, private val http: OkHtt
         val current = installed(name)?.current
         val same = current != null && current.entry.version == entry.version &&
             current.entry.jarHash == entry.jarHash && current.entry.fileHash == entry.fileHash
-        if (same && File(current!!.file).exists() && !staleConversion(name)) return@withContext
+        if (same && File(current.file).exists() && !staleConversion(name)) return@withContext
         try {
             val converted = entry.jarUrl == null
-            val file = if (converted) convert(name, entry) else download(name, entry.jarUrl!!, entry.jarHash, entry.jarFileSize, "jar")
+            val file = if (converted) convert(name, entry) else download(name, entry.jarUrl, entry.jarHash, entry.jarFileSize, "jar")
             mutex.withLock {
                 val old = state.installed[name]
                 val previous = listOfNotNull(old?.current) + old?.previous.orEmpty()

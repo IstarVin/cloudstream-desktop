@@ -110,8 +110,8 @@ class Item(
 
 /** When auto-play picks a link: once enough have arrived, or a while after the first, or right away on fallback. */
 object AutoPlay {
-    fun ready(fallback: Boolean, done: Boolean, candidates: Int, minLinks: Int, firstLinkAt: Long?, waitMs: Long, now: Long): Boolean =
-        fallback || done || candidates >= minLinks || (firstLinkAt != null && now - firstLinkAt >= waitMs)
+    fun ready(fallback: Boolean, done: Boolean, candidates: Int, minLinks: Int, firstLinkAt: Long?, waitMs: Long, now: Long, bestPriority: Int = 0): Boolean =
+        fallback || done || bestPriority >= SourceProfile.AUTO_PLAY_PRIORITY || candidates >= minLinks || (firstLinkAt != null && now - firstLinkAt >= waitMs)
 }
 
 /** Source labels are supplied by some aggregate providers as a suffix, e.g. "English (Reanime)". */
@@ -251,20 +251,27 @@ class Playback(
         val minLinks = settings.long(Settings.AUTOPLAY_MIN_LINKS).toInt()
         val waitMs = settings.long(Settings.AUTOPLAY_WAIT_MS)
         while (s.generation == generation) {
-            val candidates = links.ranked(s.set).filter { it.id !in s.tried }
-            val ready = AutoPlay.ready(fallback, s.set.done, candidates.size, minLinks, s.set.firstLinkAt, waitMs, System.currentTimeMillis())
+            val profile = settings.activeSourceProfile()
+            val candidates = ranked(s, profile).filter { it.id !in s.tried }
+            val ready = AutoPlay.ready(fallback, s.set.done, candidates.size, minLinks, s.set.firstLinkAt, waitMs, System.currentTimeMillis(),
+                candidates.firstOrNull()?.let { profile.priority(it.link.source, it.link.quality) } ?: 0)
             if (ready && candidates.isNotEmpty()) {
                 playLink(s, candidates.first())
                 return
             }
             if (s.set.done && candidates.isEmpty()) {
-                fail(s, if (s.tried.isEmpty()) (s.set.error?.let { "No links: $it" } ?: "No playable links found") else "All links failed")
+                fail(s, if (s.tried.isEmpty()) (s.set.error?.let { "No links: $it" } ?: "No playable links match this source profile. Pick another profile or source.") else "All links failed")
                 return
             }
             val v = s.set.version.value
             withTimeoutOrNull(250) { s.set.version.first { it != v } }
         }
     }
+
+    private fun ranked(s: Session, profile: SourceProfile = settings.activeSourceProfile()): List<ResolvedLink> =
+        links.ranked(s.set, profile).filter {
+            profile.visible(it.id, profile.priority(it.link.source, it.link.quality), s.failed, s.link?.id)
+        }
 
     private suspend fun playLink(s: Session, link: ResolvedLink, startAt: Double? = s.startAt) {
         if (s.generation != generation) return
@@ -326,7 +333,7 @@ class Playback(
         store.recordLink(s.item.provider, failed.link.source, success = false)
         s.failed.add(failed.id)
         _state.update { it.copy(failedLinks = s.failed.toList()) }
-        val next = links.ranked(s.set).firstOrNull { it.id !in s.tried }
+        val next = ranked(s).firstOrNull { it.id !in s.tried }
         log.info("Link {} failed ({}); next: {}", failed.link.source, reason, next?.link?.source)
         val msg = if (next != null) "Link failed, trying ${next.link.source} ${Mapper.qualityLabel(next.link.quality)}…" else "Link failed, waiting for more links…"
         osd(msg)
@@ -432,7 +439,7 @@ class Playback(
                 if (s?.fileLoaded != true) return
                 val pos = (data as? JsonPrimitive)?.doubleOrNull ?: return
                 _state.update { it.copy(position = pos) }
-                if (s != null) onTick(s, pos)
+                onTick(s, pos)
             }
             "duration" -> if (s?.fileLoaded == true) (data as? JsonPrimitive)?.doubleOrNull?.let { d ->
                 _state.update { it.copy(duration = d) }
@@ -619,12 +626,13 @@ class Playback(
             "skip" -> command("skip", PlayerCommand())
             "sources" -> if (s != null) {
                 val stats = store.linkStats(s.item.provider)
-                val list = links.ranked(s.set).map { l ->
+                val profile = settings.activeSourceProfile()
+                val list = ranked(s, profile).map { l ->
                     val quality = Mapper.qualityLabel(l.link.quality)
                     val failed = if (l.id in s.failed && l != s.link) " (failed)" else ""
                     val record = stats[l.link.source]?.let { "worked ${it.successes} of ${it.successes + it.failures}" } ?: "new"
                     mapOf("id" to l.id, "label" to "${l.link.source} · $quality$failed", "current" to (l == s.link),
-                        "title" to l.link.source, "hint" to "$quality$failed · $record")
+                        "title" to l.link.source, "hint" to "$quality$failed · priority ${profile.priority(l.link.source, l.link.quality)} · $record")
                 }
                 script("sources", mapOf("items" to list, "loading" to !s.set.done))
             }

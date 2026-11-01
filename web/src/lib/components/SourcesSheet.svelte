@@ -1,9 +1,29 @@
 <script lang="ts">
   import { Captions, Check, TriangleAlert, X } from "@lucide/svelte";
+  import { createQuery } from "@tanstack/svelte-query";
+  import { api } from "../api";
   import { modal } from "../dialog";
   import { player } from "../player.svelte";
-  import { AUTO_QUALITY, sourceRecord } from "../ranking";
+  import {
+    AUTO_QUALITY,
+    compareLinks,
+    groupLinks,
+    linkPriority,
+    linkVisible,
+    sourceRecord,
+  } from "../ranking";
   import { sources } from "../sources.svelte";
+  import SourceProfiles from "./SourceProfiles.svelte";
+
+  const settings = createQuery(() => ({
+    queryKey: ["settings"],
+    queryFn: api.settings,
+    enabled: sources.open,
+    refetchInterval: sources.open ? 3000 : false,
+  }));
+  const profile = $derived(
+    settings.data?.source_profiles.find((p) => p.id === settings.data?.source_profile),
+  );
 
   const t = $derived(sources.target);
   const playingThis = $derived(
@@ -12,7 +32,10 @@
   const currentLink = $derived(playingThis ? player.state.link?.id : null);
   const failed = $derived(new Set(playingThis ? (player.state.failedLinks ?? []) : []));
   // What auto-play would pick next: the best link that hasn't failed.
-  const best = $derived(sources.ranked.find((l) => l.playable && !failed.has(l.id))?.id);
+  const ranked = $derived([...sources.links].sort((a, b) => compareLinks(a, b, profile)));
+  const visible = $derived(ranked.filter((l) => linkVisible(l, profile, failed, currentLink)));
+  const groups = $derived(groupLinks(visible));
+  const best = $derived(visible.find((l) => l.playable && !failed.has(l.id))?.id);
   let subsOpen = $state(false);
 
   function toggleSub(id: string) {
@@ -54,24 +77,46 @@
       >
     </header>
 
-    <div class="status">
-      {#if !sources.done}
-        <div class="spinner"></div>
-        <span>Finding links… {sources.links.length} so far</span>
-      {:else if sources.error && !sources.links.length}
-        <TriangleAlert size={18} strokeWidth={1.8} aria-hidden="true" /><span class="err"
-          >{sources.error}</span
-        >
-      {:else}
-        <span>{sources.links.length} links from {sources.groups.length} sources</span>
-      {/if}
-      {#if playingThis && player.state.status === "resolving"}
-        <span class="accent">· {player.state.message}</span>
-      {/if}
-    </div>
-
     <div class="list">
-      {#each sources.groups as g (g.source)}
+      <div class="profile-controls">
+        {#if settings.data}
+          <SourceProfiles
+            settings={settings.data}
+            knownSources={sources.links.map((l) => l.source)}
+          />
+        {:else if settings.isError}
+          <p class="err">
+            Could not load source profiles. <button class="btn" onclick={() => settings.refetch()}
+              >Retry</button
+            >
+          </p>
+        {:else}<p class="muted">Loading source profiles…</p>{/if}
+      </div>
+      <div class="status">
+        {#if !sources.done}
+          <div class="spinner"></div>
+          <span>Finding links… {sources.links.length} so far</span>
+        {:else if sources.error && !sources.links.length}
+          <TriangleAlert size={18} strokeWidth={1.8} aria-hidden="true" /><span class="err"
+            >{sources.error}</span
+          >
+        {:else}
+          <span>{visible.length} links from {groups.length} sources</span>
+        {/if}
+        {#if visible.length < sources.links.length}<span
+            >{sources.links.length - visible.length} hidden by profile</span
+          >{/if}
+        {#if playingThis && player.state.status === "resolving"}
+          <span class="accent">· {player.state.message}</span>
+        {/if}
+      </div>
+
+      {#if sources.done && sources.links.length && !visible.length}
+        <p class="empty">
+          This profile hides every link. Choose another profile or edit its visibility settings.
+        </p>
+      {/if}
+      {#each groups as g (g.source)}
         <div class="group">
           <div class="group-name">
             <span>{g.source}</span>
@@ -97,7 +142,7 @@
                   <span class={["q", { hd: l.quality >= 720 && l.quality !== AUTO_QUALITY }]}
                     >{l.qualityLabel}</span
                   >
-                  <span class="type">{l.type}</span>
+                  <span class="type">{l.type} · priority {linkPriority(l, profile)}</span>
                   {#if failed.has(l.id) && l.id !== currentLink}
                     <span class="tag bad">Failed</span>
                   {:else if l.id === currentLink}
@@ -252,6 +297,13 @@
     overflow-y: auto;
     padding: 0 8px 8px;
     flex: 1;
+  }
+  .profile-controls {
+    padding: 10px 8px 12px;
+  }
+  .empty {
+    padding: 12px 8px;
+    color: var(--muted);
   }
   .group-name {
     display: flex;

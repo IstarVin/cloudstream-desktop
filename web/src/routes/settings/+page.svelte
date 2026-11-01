@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from "#lib/api";
   import PluginSettings from "#lib/components/PluginSettings.svelte";
+  import SourceProfiles from "#lib/components/SourceProfiles.svelte";
   import { toasts } from "#lib/toast.svelte";
   import type {
     BrowserMode,
@@ -325,6 +326,11 @@
           placeholder="--fullscreen"
         />
       </label>
+    </section>
+
+    <section>
+      <h2>Source priority</h2>
+      <SourceProfiles settings={s} />
     </section>
 
     <section>
@@ -697,15 +703,19 @@
   }
   .pair-inputs {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
   }
   .pair-inputs label {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 4px;
     font-size: 13px;
     color: var(--muted);
+  }
+  .pair-inputs input {
+    width: 100%;
   }
   .pair {
     display: flex;

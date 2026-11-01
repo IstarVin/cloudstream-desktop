@@ -1,0 +1,54 @@
+{
+  "cases": [
+    {
+      "name": "Cloudstream defaults put 720p ahead of unknown quality",
+      "profile": {},
+      "links": [
+        { "id": "auto", "source": "A", "quality": 400, "priority": 5 },
+        { "id": "hd", "source": "A", "quality": 720, "priority": 6 },
+        { "id": "4k", "source": "A", "quality": 2160, "priority": 9 }
+      ],
+      "expected": ["4k", "hd", "auto"]
+    },
+    {
+      "name": "source priority can outweigh resolution and trigger early playback",
+      "profile": { "sourcePriorities": { "Preferred": 5 } },
+      "links": [
+        { "id": "4k", "source": "Other", "quality": 2160, "priority": 9 },
+        { "id": "hd", "source": "Preferred", "quality": 720, "priority": 10 }
+      ],
+      "expected": ["hd", "4k"]
+    },
+    {
+      "name": "quality overrides select a lower bandwidth stream",
+      "profile": { "qualityPriorities": { "480": 12, "1080": -5 } },
+      "links": [
+        { "id": "fullhd", "source": "A", "quality": 1080, "priority": -4 },
+        { "id": "sd", "source": "A", "quality": 480, "priority": 13 },
+        { "id": "hd", "source": "A", "quality": 720, "priority": 6 }
+      ],
+      "expected": ["sd", "hd", "fullhd"]
+    },
+    {
+      "name": "nonstandard resolutions use the nearest enum including unknown",
+      "profile": {},
+      "links": [
+        { "id": "zero", "source": "A", "quality": 0, "priority": 1 },
+        { "id": "tie", "source": "A", "quality": 380, "priority": 5 },
+        { "id": "near", "source": "A", "quality": 1000, "priority": 7 },
+        { "id": "large", "source": "A", "quality": 3000, "priority": 9 }
+      ],
+      "expected": ["large", "near", "tie", "zero"]
+    },
+    {
+      "name": "source labels are case sensitive and zero is an explicit override",
+      "profile": { "sourcePriorities": { "A": 0, "a": -10 } },
+      "links": [
+        { "id": "upper", "source": "A", "quality": 720, "priority": 5 },
+        { "id": "lower", "source": "a", "quality": 720, "priority": -5 },
+        { "id": "other", "source": "B", "quality": 720, "priority": 6 }
+      ],
+      "expected": ["other", "upper", "lower"]
+    }
+  ]
+}
