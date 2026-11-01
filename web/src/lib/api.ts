@@ -9,6 +9,7 @@ import type {
   Link,
   PlayerState,
   PluginInfo,
+  PluginSource,
   PrefEntry,
   Provider,
   SearchItem,
@@ -87,6 +88,14 @@ export const api = {
   plugins: () => get<PluginInfo[]>("/api/plugins"),
   rebuild: (modules?: string[]) => post("/api/plugins/rebuild", { modules }),
   buildLog: async () => (await fetch("/api/plugins/build-log")).text(),
+  pluginSource: () => get<PluginSource>("/api/plugins/source"),
+  checkUpdates: () => post<PluginSource>("/api/plugins/check-updates"),
+  updatePlugins: (modules?: string[]) =>
+    post<{ failed: Record<string, string>; source: PluginSource }>("/api/plugins/update", {
+      modules,
+    }),
+  rollbackPlugin: (name: string) =>
+    post<PluginSource>(`/api/plugins/${encodeURIComponent(name)}/rollback`),
   setPluginEnabled: (name: string, enabled: boolean) =>
     put(`/api/plugins/${encodeURIComponent(name)}/enabled`, { enabled }),
   pluginSettings: (name: string) =>

@@ -35,7 +35,29 @@ data class PluginDto(
     val linkage: List<String> = emptyList(),
     /** The first linkage error a call into the plugin hit. */
     val runtimeLinkage: String? = null,
+    /** Repo mode: the version the repo offers (when it publishes a desktop jar). */
+    val available: Int? = null,
+    /** Repo mode: the version a rollback would restore. */
+    val previous: Int? = null,
 )
+
+@Serializable
+data class PluginSourceDto(
+    /** `dev` (the local extensions repo, built with gradle) or `repo` (published jars). */
+    val mode: String,
+    val devPath: String,
+    val devAvailable: Boolean,
+    val repoUrl: String,
+    val repoName: String? = null,
+    /** When the repo's index was last read, or 0. */
+    val checkedAt: Long = 0,
+    val error: String? = null,
+    /** Installed plugins with a newer version in the repo. */
+    val updates: List<String> = emptyList(),
+)
+
+@Serializable
+data class UpdateResult(val failed: Map<String, String>, val source: PluginSourceDto)
 
 @Serializable
 data class BrowserCheckDto(val id: String, val kind: String, val host: String, val url: String, val since: Long, val solving: Boolean)

@@ -1,4 +1,5 @@
 [versions]
+dex2jar = "2.4.28"
 # The Cloudstream `library` JVM artifact. Pinned to the commit that matches the `cloudstream3:pre-release` stub the
 # extensions repo compiles against (fetched 2026-10-14; library sources unchanged until dc9d1f0f on 2026-10-21).
 cloudstream = "94e955836b"
@@ -12,6 +13,7 @@ jackson = "2.13.1"
 rhino = "1.8.1"
 
 [libraries]
+dex2jar = { module = "de.femtopedia.dex2jar:dex-translator", version.ref = "dex2jar" }
 cloudstream-library = { module = "com.github.recloudstream.cloudstream:library-jvm", version.ref = "cloudstream" }
 nicehttp = { module = "com.github.Blatzar:NiceHttp", version.ref = "nicehttp" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }

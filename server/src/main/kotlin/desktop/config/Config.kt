@@ -18,6 +18,8 @@ data class Config(
     val settingDefaults: Map<String, Any>,
 ) {
     companion object {
+        const val DEFAULT_REPO_URL = "https://raw.githubusercontent.com/NropVox/cloudstream-extensions-nropvox/builds/repo.json"
+
         fun load(file: File = Paths.configFile): Config {
             if (!file.exists()) {
                 file.parentFile.mkdirs()
@@ -30,6 +32,7 @@ data class Config(
             fun str(k: String) = t[k] as? String
             fun bool(k: String) = t[k] as? Boolean
             fun long(k: String) = (t[k] as? Number)?.toLong()
+            val devPath = File(str("plugins.dev_path") ?: "/mnt/AJ/Projects/cloudstream-extensions-istarvin")
 
             val defaults = mapOf(
                 Settings.MPV_EXTRA_ARGS to ((t["mpv.extra_args"] as? List<*>)?.map { it.toString() } ?: emptyList<String>()),
@@ -40,12 +43,16 @@ data class Config(
                 Settings.SHOW_NSFW to (bool("ui.show_nsfw") ?: false),
                 Settings.PROXY_ALL to (bool("playback.proxy_all") ?: false),
                 Settings.DISABLED_PLUGINS to ((t["plugins.disabled"] as? List<*>)?.map { it.toString() } ?: listOf("Fetcharr", "StreamCorner")),
+                // Without a local extensions repo, plugins come from the published one.
+                Settings.PLUGIN_SOURCE to (str("plugins.source")?.takeIf { it in Settings.choices.getValue(Settings.PLUGIN_SOURCE) }
+                    ?: if (File(devPath, "settings.gradle.kts").exists()) "dev" else "repo"),
+                Settings.PLUGIN_REPO_URL to (str("plugins.repo_url") ?: DEFAULT_REPO_URL),
                 Settings.CHROMIUM_MODE to (str("chromium.mode")?.takeIf { it in Settings.choices.getValue(Settings.CHROMIUM_MODE) } ?: "headless"),
             )
             return Config(
                 bindHost = host,
                 bindPort = port,
-                devPath = File(str("plugins.dev_path") ?: "/mnt/AJ/Projects/cloudstream-extensions-istarvin"),
+                devPath = devPath,
                 buildOnStart = bool("plugins.build_on_start") ?: true,
                 mpvPath = str("mpv.path") ?: "mpv",
                 androidSdk = str("android.sdk_path")?.let(::File),

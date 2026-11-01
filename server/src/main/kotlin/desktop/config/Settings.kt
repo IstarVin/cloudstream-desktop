@@ -50,7 +50,8 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
                 is Boolean -> (v as? JsonPrimitive)?.booleanOrNull != null
                 is Number -> (v as? JsonPrimitive)?.longOrNull != null
                 is List<*> -> v is JsonArray && v.all { it is JsonPrimitive && it.isString }
-                else -> v is JsonPrimitive && v.isString && choices[key].let { it == null || v.content in it }
+                else -> v is JsonPrimitive && v.isString && choices[key].let { it == null || v.content in it } &&
+                    (key != PLUGIN_REPO_URL || v.content.matches(Regex("""https?://\S+""")))
             }
             require(ok) { "Setting $key has the wrong type or value" }
             db.update("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, v.toString())
@@ -68,8 +69,13 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
         const val DISABLED_PLUGINS = "disabled_plugins"
         const val PROXY_ALL = "proxy_all"
         const val CHROMIUM_MODE = "chromium_mode"
+        const val PLUGIN_SOURCE = "plugin_source"
+        const val PLUGIN_REPO_URL = "plugin_repo_url"
 
         /** The allowed values of string settings that have a fixed set. */
-        val choices = mapOf(CHROMIUM_MODE to setOf("headless", "xvfb", "headed"))
+        val choices = mapOf(CHROMIUM_MODE to setOf("headless", "xvfb", "headed"), PLUGIN_SOURCE to setOf("dev", "repo"))
+
+        /** Settings only the desktop (loopback) may change: they decide what code the server downloads and runs. */
+        val desktopOnly = setOf(PLUGIN_SOURCE, PLUGIN_REPO_URL)
     }
 }

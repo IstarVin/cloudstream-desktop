@@ -44,7 +44,7 @@ fun serve(config: Config, db: Database, settings: Settings, host: PluginHost, sc
     val mpv = MpvManager(config, settings)
     val playback = Playback(scope, host, catalog, links, proxy, mpv, store, settings, config.bindPort)
     val auth = Auth()
-    val services = Services(host, catalog, links, proxy, playback, store, settings, auth, scope, config.bindPort)
+    val services = Services(host, catalog, links, proxy, playback, store, settings, auth, scope, config.bindPort, config.devPath)
 
     // Plugins build and load in the background; the UI shows progress through /api/status.
     scope.launch { host.start(scope) }

@@ -10,7 +10,9 @@ import desktop.db.Store
 import desktop.links.LinkService
 import desktop.links.StreamProxy
 import desktop.player.Playback
+import desktop.plugins.DevSource
 import desktop.plugins.PluginHost
+import desktop.plugins.RepoSource
 import io.ktor.http.CacheControl
 import io.ktor.http.ContentType
 import io.ktor.http.Cookie
@@ -47,6 +49,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import java.io.File
 import java.io.Writer
 
 class Services(
@@ -60,6 +63,7 @@ class Services(
     val auth: Auth,
     val scope: CoroutineScope,
     val port: Int,
+    val devPath: File,
 )
 
 @Serializable
@@ -243,7 +247,11 @@ fun Route.apiRoutes(s: Services) {
 
         get("/settings") { call.respond(s.settings.all()) }
         put("/settings") {
-            s.settings.update(call.receive<JsonObject>())
+            val values = call.receive<JsonObject>()
+            if (values.keys.any { it in Settings.desktopOnly } && !s.auth.isLoopback(call)) {
+                return@put call.respond(HttpStatusCode.Forbidden, mapOf("error" to "The plugin source can only be changed on the desktop"))
+            }
+            s.settings.update(values)
             call.respond(s.settings.all())
         }
 
@@ -251,6 +259,7 @@ fun Route.apiRoutes(s: Services) {
             val nsfw = s.settings.showNsfw
             val disabled = s.settings.disabledPlugins
             val providers = s.host.providers().groupBy { it.plugin.name }
+            val repo = s.host.source as? RepoSource
             call.respond(s.host.plugins.filter { nsfw || !it.info.nsfw }.map { r ->
                 PluginDto(
                     name = r.name,
@@ -266,8 +275,24 @@ fun Route.apiRoutes(s: Services) {
                     settingsFiles = r.loaded?.context?.openedPrefs?.sorted().orEmpty(),
                     linkage = r.linkage,
                     runtimeLinkage = r.runtimeLinkage,
+                    available = repo?.available(r.name)?.takeIf { repo.installable(r.name) }?.version,
+                    previous = repo?.installed(r.name)?.previous?.firstOrNull()?.entry?.version,
                 )
             })
+        }
+        get("/plugins/source") { call.respond(pluginSource(s)) }
+        post("/plugins/check-updates") {
+            s.host.checkUpdates()
+            call.respond(pluginSource(s))
+        }
+        post("/plugins/update") {
+            val req = runCatching { call.receive<RebuildRequest>() }.getOrDefault(RebuildRequest())
+            val failed = s.host.update(req.modules)
+            call.respond(UpdateResult(failed, pluginSource(s)))
+        }
+        post("/plugins/{name}/rollback") {
+            s.host.rollback(call.parameters["name"]!!)
+            call.respond(pluginSource(s))
         }
         post("/plugins/rebuild") {
             val req = runCatching { call.receive<RebuildRequest>() }.getOrDefault(RebuildRequest())
@@ -311,6 +336,21 @@ private fun browserStatus(): BrowserStatusDto {
         error = st.error,
         checks = st.challenges.map { BrowserCheckDto(it.id, it.kind, it.host, it.url, it.since, it.solving) },
         clearances = st.clearances,
+    )
+}
+
+private fun pluginSource(s: Services): PluginSourceDto {
+    val src = s.host.source
+    val repo = src as? RepoSource
+    return PluginSourceDto(
+        mode = if (repo != null) "repo" else "dev",
+        devPath = s.devPath.path,
+        devAvailable = DevSource(s.devPath).error == null,
+        repoUrl = s.settings.string(Settings.PLUGIN_REPO_URL),
+        repoName = repo?.repoName,
+        checkedAt = repo?.checkedAt ?: 0,
+        error = src.error,
+        updates = repo?.updates().orEmpty(),
     )
 }
 

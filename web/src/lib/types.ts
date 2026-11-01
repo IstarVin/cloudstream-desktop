@@ -27,6 +27,25 @@ export interface PluginInfo {
   linkage: string[];
   /** The first linkage error a call into the plugin hit. */
   runtimeLinkage?: string | null;
+  /** Repo mode: the version the repo offers, when it publishes a desktop jar. */
+  available?: number | null;
+  /** Repo mode: the version a rollback would restore. */
+  previous?: number | null;
+}
+
+export type PluginSourceMode = "dev" | "repo";
+
+export interface PluginSource {
+  mode: PluginSourceMode;
+  devPath: string;
+  devAvailable: boolean;
+  repoUrl: string;
+  repoName?: string | null;
+  /** When the repo's index was last read, or 0. */
+  checkedAt: number;
+  error?: string | null;
+  /** Installed plugins with a newer version in the repo. */
+  updates: string[];
 }
 
 export interface SearchItem {
@@ -194,6 +213,8 @@ export interface Settings {
   disabled_plugins: string[];
   proxy_all: boolean;
   chromium_mode: BrowserMode;
+  plugin_source: PluginSourceMode;
+  plugin_repo_url: string;
 }
 
 export type BrowserMode = "headless" | "xvfb" | "headed";

@@ -20,16 +20,19 @@ import org.slf4j.LoggerFactory
 import java.io.File
 import java.net.URLClassLoader
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipFile
 
 /**
- * Loads plugin jars from the extensions repo (`<Module>/build/<Module>.jar`), one class loader per plugin, the way the
- * app does. `registerMainAPI`/`registerExtractorAPI` fill the library's global lists, which `loadExtractor` reads, so
+ * Loads plugin jars from a [PluginSource] (the local extensions repo, or a published repo's jars), one class loader per
+ * plugin, the way the app does. `registerMainAPI`/`registerExtractorAPI` fill the library's global lists, which `loadExtractor` reads, so
  * plugins resolve hosts through each other (most need the Extractors plugin).
  */
 class PluginHost(private val config: Config, private val settings: Settings) {
     private val log = LoggerFactory.getLogger(PluginHost::class.java)
     private val builder = GradleBuilder(config.devPath)
+    private val dev = DevSource(config.devPath)
+    private val repoBase = File(Paths.dataDir, "repo")
     private val stubLoader = AndroidStubs.loader(AndroidStubs.findJar(config.androidSdk, config.devPath), javaClass.classLoader)
     private val mutex = Mutex()
     private val cacheDir = File(Paths.dataDir, "plugin-cache").apply { deleteRecursively(); mkdirs() }
@@ -40,11 +43,12 @@ class PluginHost(private val config: Config, private val settings: Settings) {
         val loader: URLClassLoader,
         val instance: BasePlugin,
         val context: DesktopContext,
-        val jarMtime: Long,
+        /** Path and mtime of the jar it came from, to notice a rebuilt or updated jar. */
+        val jarKey: String,
         val filename: String,
     )
 
-    class Record(val info: ModuleInfo) {
+    class Record(@Volatile var info: ModuleInfo) {
         @Volatile var status = Status.MISSING
         @Volatile var error: String? = null
         @Volatile var loaded: Loaded? = null
@@ -63,8 +67,12 @@ class PluginHost(private val config: Config, private val settings: Settings) {
 
     private val records = ConcurrentHashMap<String, Record>()
 
-    @Volatile var building = false
+    @Volatile var source: PluginSource = pickSource(null)
         private set
+
+    private val busyCount = AtomicInteger()
+    /** Building (dev mode) or downloading (repo mode) plugins. */
+    val building get() = busyCount.get() > 0
     @Volatile var lastBuildOutput: String = ""
         private set
 
@@ -79,12 +87,26 @@ class PluginHost(private val config: Config, private val settings: Settings) {
         it.plugin.lastUsed = System.currentTimeMillis()
     }
 
-    private fun jarOf(name: String) = File(config.devPath, "$name/build/$name.jar")
+    /** The settings' source; [current] is kept when it already is that source, so its state survives. */
+    private fun pickSource(current: PluginSource?): PluginSource = when (settings.string(Settings.PLUGIN_SOURCE)) {
+        "repo" -> settings.string(Settings.PLUGIN_REPO_URL).let { url ->
+            (current as? RepoSource)?.takeIf { it.url == url } ?: RepoSource(url, RepoSource.dirFor(repoBase, url))
+        }
+        else -> dev
+    }
 
-    /** Module folders in the extensions repo (every top-level folder with a build.gradle.kts, as its settings do). */
+    /** Adds a record for every plugin the source offers. */
     fun discover() {
-        val dirs = config.devPath.listFiles()?.filter { File(it, "build.gradle.kts").exists() }.orEmpty()
-        for (dir in dirs) records.computeIfAbsent(dir.name) { Record(ModuleInfo.read(dir)) }
+        for (info in source.discover()) records.computeIfAbsent(info.name) { Record(info) }
+    }
+
+    private suspend fun <T> busy(block: suspend () -> T): T {
+        busyCount.incrementAndGet()
+        try {
+            return block()
+        } finally {
+            busyCount.decrementAndGet()
+        }
     }
 
     private fun enabled(): List<String> {
@@ -94,17 +116,89 @@ class PluginHost(private val config: Config, private val settings: Settings) {
 
     suspend fun start(scope: CoroutineScope) {
         discover()
-        if (config.buildOnStart) rebuild()
+        source.error?.let { log.warn("Plugin source: {}", it) }
+        when (val src = source) {
+            is DevSource -> if (config.buildOnStart && src.error == null) rebuild()
+            // Load what's installed first (that works offline), then look for plugins that are new to the repo.
+            is RepoSource -> {
+                mutex.withLock { syncAll() }
+                fetchRepo(src)
+            }
+        }
         mutex.withLock { syncAll() }
         logLinkage()
         scope.launch { watch() }
-        settings.onChange { key -> if (key == Settings.DISABLED_PLUGINS) scope.launch { mutex.withLock { syncAll() } } }
+        settings.onChange { key ->
+            when (key) {
+                Settings.DISABLED_PLUGINS -> scope.launch {
+                    (source as? RepoSource)?.let { installEnabled(it) }
+                    mutex.withLock { syncAll() }
+                }
+                Settings.PLUGIN_SOURCE, Settings.PLUGIN_REPO_URL -> scope.launch { switchSource() }
+            }
+        }
+    }
+
+    /** Unloads everything and loads from the source the settings now name. */
+    private suspend fun switchSource() {
+        val next = mutex.withLock {
+            val next = pickSource(source)
+            if (next === source) return
+            records.values.forEach(::unload)
+            records.clear()
+            source = next
+            discover()
+            syncAll()
+            next
+        }
+        log.info("Plugin source is now {}", if (next is RepoSource) next.url else config.devPath)
+        if (next is RepoSource) {
+            fetchRepo(next)
+            mutex.withLock { syncAll() }
+        }
+    }
+
+    /** Refreshes the repo's index (keeping the saved one when that fails) and installs enabled plugins that are new. */
+    private suspend fun fetchRepo(repo: RepoSource) = busy {
+        runCatching { repo.refresh() }.onFailure { log.warn("Plugin repo {}: {}", repo.url, it.message) }
+        mutex.withLock { discover() }
+        installEnabled(repo)
+    }
+
+    private suspend fun installEnabled(repo: RepoSource) {
+        val missing = enabled().filter { (repo.installed(it) == null || repo.staleConversion(it)) && repo.installable(it) }
+        if (missing.isNotEmpty()) busy { repo.install(missing) }.forEach { (name, e) -> log.warn("Couldn't install {}: {}", name, e) }
+    }
+
+    private fun repo(): RepoSource = source as? RepoSource
+        ?: throw IllegalArgumentException("Updates come from a plugin repo; in dev mode, rebuild the local extensions repo")
+
+    /** Fetches the repo's index again and installs enabled plugins it added. Updates to installed ones wait for [update]. */
+    suspend fun checkUpdates() {
+        val repo = repo()
+        busy { repo.refresh() }
+        mutex.withLock { discover() }
+        installEnabled(repo)
+        mutex.withLock { syncAll() }
+    }
+
+    /** Installs the repo's version of [names] (default: every plugin with an update) and reloads them. Returns failures. */
+    suspend fun update(names: Collection<String>? = null): Map<String, String> {
+        val repo = repo()
+        val failed = busy { repo.install(names ?: repo.updates()) }
+        mutex.withLock { syncAll() }
+        return failed
+    }
+
+    suspend fun rollback(name: String) {
+        repo().rollback(name)
+        mutex.withLock { syncAll() }
     }
 
     /** Runs gradle for the enabled modules (or [only]); the watcher then reloads whichever jars changed. */
     suspend fun rebuild(only: Collection<String>? = null): GradleBuilder.Result {
-        building = true
-        try {
+        require(source is DevSource) { "Rebuild works on the local extensions repo; switch the plugin source to it first" }
+        return busy {
             val result = builder.build(only ?: enabled())
             lastBuildOutput = result.output.takeLast(20_000)
             mutex.withLock {
@@ -116,38 +210,50 @@ class PluginHost(private val config: Config, private val settings: Settings) {
                 }
                 syncAll()
             }
-            return result
-        } finally {
-            building = false
+            result
         }
     }
 
-    /** Brings every record in line with the settings and the jars on disk. Extractors loads first. */
+    /**
+     * Brings every record in line with the settings and the source's jars. Extractors loads first. A record shows the
+     * metadata of what's loaded, so it only takes the source's (possibly newer) metadata when it (re)loads or has no jar.
+     */
     private fun syncAll() {
+        val src = source
+        val infos = src.discover().associateBy { it.name }
         val disabled = settings.disabledPlugins
         val order = records.values.sortedBy { if (it.name == "Extractors") "" else it.name }
         for (r in order) {
-            val jar = jarOf(r.name)
+            val jar = src.jar(r.name)
             when {
                 r.name in disabled -> {
                     unload(r)
+                    infos[r.name]?.let { r.info = it }
                     r.status = Status.DISABLED
                     r.error = null
                 }
-                !jar.exists() -> {
+                jar == null -> {
                     unload(r)
-                    if (r.status != Status.ERROR) {
+                    infos[r.name]?.let { r.info = it }
+                    // A failed dev build keeps its error; a repo's reason (no jar published, download failed) is fresh.
+                    if (r.status != Status.ERROR || src is RepoSource) {
                         r.status = Status.MISSING
-                        r.error = "No jar yet: rebuild plugins"
+                        r.error = src.missingReason(r.name)
                     }
                 }
-                r.loaded?.jarMtime != jar.lastModified() -> load(r, jar)
+                r.loaded?.jarKey != keyOf(jar) -> {
+                    infos[r.name]?.let { r.info = it }
+                    load(r, jar)
+                }
             }
         }
     }
 
+    private fun keyOf(jar: File) = "${jar.absolutePath}:${jar.lastModified()}"
+
     private fun load(r: Record, jar: File) {
         unload(r)
+        val key = keyOf(jar)
         val mtime = jar.lastModified()
         // Load a private copy: gradle may rewrite the jar while the old class loader still has it open.
         val copy = File(cacheDir, "${r.name}-$mtime.jar")
@@ -159,7 +265,7 @@ class PluginHost(private val config: Config, private val settings: Settings) {
             instance.filename = copy.absolutePath
             val context = DesktopContext(r.name)
             if (instance is Plugin) instance.load(context) else instance.load()
-            r.loaded = Loaded(loader, instance, context, mtime, copy.absolutePath)
+            r.loaded = Loaded(loader, instance, context, key, copy.absolutePath)
             r.status = Status.LOADED
             r.error = null
             r.runtimeLinkage = null
@@ -220,25 +326,40 @@ class PluginHost(private val config: Config, private val settings: Settings) {
         extractorApis.removeAll { it.sourcePlugin == filename }
     }
 
-    /** Polls the jars every 2 s and reloads the ones gradle rewrote (`./gradlew :Name:make` or a UI rebuild). */
+    /**
+     * Dev mode: polls the jars every 2 s and reloads the ones gradle rewrote (`./gradlew :Name:make` or a UI rebuild).
+     * Repo mode: looks for plugins that are new to the repo every few hours.
+     */
     private suspend fun watch() {
         val mtimes = HashMap<String, Long>()
         while (kotlinx.coroutines.currentCoroutineContext().isActive) {
             delay(2000)
             if (building) continue
-            discover()
+            val src = source
+            if (src is RepoSource) {
+                if (System.currentTimeMillis() - src.checkedAt > REPO_CHECK_MS) {
+                    fetchRepo(src)
+                    mutex.withLock { syncAll() }
+                    // Offline: don't retry every tick.
+                    if (src.error != null) delay(REPO_RETRY_MS)
+                }
+                continue
+            }
+            mutex.withLock { discover() }
             var changed = false
             for (name in records.keys) {
-                val m = jarOf(name).lastModified()
+                val m = dev.jarPath(name).lastModified()
                 if (mtimes.put(name, m) != m) changed = true
             }
             // A jar that is still being written is usually smaller than a second old; wait for the next tick.
-            val settled = records.keys.none { System.currentTimeMillis() - jarOf(it).lastModified() < 1000 }
-            if (changed && settled) mutex.withLock { syncAll() }
+            val settled = records.keys.none { System.currentTimeMillis() - dev.jarPath(it).lastModified() < 1000 }
+            if (changed && settled) mutex.withLock { if (source === src) syncAll() }
         }
     }
 
     companion object {
+        private const val REPO_CHECK_MS = 6 * 3600_000L
+        private const val REPO_RETRY_MS = 10 * 60_000L
         private val ANNOTATION = "Lcom/lagradost/cloudstream3/plugins/CloudstreamPlugin;".toByteArray()
 
         /** The class carrying `@CloudstreamPlugin` (found by its descriptor in the class file's constant pool). */

@@ -5,7 +5,7 @@
   import Icon from "#lib/components/Icon.svelte";
   import PluginSettings from "#lib/components/PluginSettings.svelte";
   import { toasts } from "#lib/toast.svelte";
-  import type { BrowserMode, BrowserStatus, PluginInfo, Settings } from "#lib/types";
+  import type { BrowserMode, BrowserStatus, PluginInfo, PluginSource, PluginSourceMode, Settings } from "#lib/types";
 
   const client = useQueryClient();
   const settings = createQuery(() => ({ queryKey: ["settings"], queryFn: api.settings }));
@@ -13,6 +13,12 @@
   const plugins = createQuery(() => ({
     queryKey: ["plugins"],
     queryFn: api.plugins,
+    refetchInterval: () => (status.data?.building ? 2000 : false),
+  }));
+
+  const source = createQuery(() => ({
+    queryKey: ["plugin-source"],
+    queryFn: api.pluginSource,
     refetchInterval: () => (status.data?.building ? 2000 : false),
   }));
 
@@ -77,6 +83,53 @@
     client.invalidateQueries({ queryKey: ["status"] });
   }
 
+  /** The source the server loads plugins from; it unloads everything and loads from the new one. */
+  async function setSource(patch: Partial<Settings>) {
+    await save(patch);
+    setTimeout(() => client.invalidateQueries(), 400);
+  }
+
+  // Repo mode: which action is running ("check", "all" or a plugin name), so its button shows a spinner.
+  let working = $state<string | null>(null);
+  async function repoAction(key: string, fn: () => Promise<PluginSource | { failed: Record<string, string>; source: PluginSource }>) {
+    working = key;
+    try {
+      const r = await fn();
+      if ("failed" in r) {
+        client.setQueryData(["plugin-source"], r.source);
+        const failed = Object.entries(r.failed);
+        if (failed.length) toasts.error(new Error(failed.map(([n, e]) => `${n}: ${e}`).join("; ")));
+      } else client.setQueryData(["plugin-source"], r);
+    } catch (e) {
+      toasts.error(e);
+    } finally {
+      working = null;
+      // Updated plugins can add or drop providers.
+      client.invalidateQueries();
+    }
+  }
+
+  const sources: { id: PluginSourceMode; label: string }[] = [
+    { id: "repo", label: "Online repo (published plugins)" },
+    { id: "dev", label: "Local extensions repo (built with gradle)" },
+  ];
+
+  const ago = (t: number) => {
+    const m = Math.round((Date.now() - t) / 60000);
+    if (m < 1) return "just now";
+    if (m < 60) return `${m} min ago`;
+    if (m < 1440) return `${Math.round(m / 60)} h ago`;
+    return new Date(t).toLocaleDateString();
+  };
+
+  const src = $derived(source.data);
+  const repo = $derived(src?.mode === "repo");
+
+  let repoUrl = $state("");
+  $effect(() => {
+    if (settings.data) repoUrl = settings.data.plugin_repo_url;
+  });
+
   // Pairing (desktop only): QR code of the pairing link.
   let qr = $state<string | null>(null);
   let pairUrl = $state<string | null>(null);
@@ -95,6 +148,8 @@
     await showPairing();
     toasts.show("All devices signed out");
   }
+
+  const hasUpdate = (p: PluginInfo) => p.available != null && p.version != null && p.available > p.version && p.status !== "missing";
 
   const statusColor: Record<string, string> = { loaded: "good", error: "bad", missing: "warn", disabled: "off" };
 </script>
@@ -191,17 +246,53 @@
   <section>
     <div class="row-head">
       <h2>Plugins</h2>
-      <button class="btn" onclick={rebuild} disabled={status.data?.building}>
-        {#if status.data?.building}<span class="spinner"></span> Building…{:else}<Icon name="refresh" size={18} /> Rebuild{/if}
-      </button>
+      {#if repo}
+        <button class="btn" onclick={() => repoAction("check", api.checkUpdates)} disabled={working !== null || status.data?.building}>
+          {#if working === "check" || (working === null && status.data?.building)}<span class="spinner"></span> Checking…{:else}<Icon name="refresh" size={18} /> Check for updates{/if}
+        </button>
+      {:else if src}
+        <button class="btn" onclick={rebuild} disabled={status.data?.building || !src.devAvailable}>
+          {#if status.data?.building}<span class="spinner"></span> Building…{:else}<Icon name="refresh" size={18} /> Rebuild{/if}
+        </button>
+      {/if}
     </div>
-    <p class="muted small">
-      Built from the local extensions repo. Any new <code>&lt;Name&gt;/build/&lt;Name&gt;.jar</code> there is reloaded
-      automatically, so Rebuild (or <code>./gradlew :Name:make</code> for cross-platform plugins) is enough.
-      {#if status.data}{status.data.loaded} of {status.data.plugins} loaded.{/if}
-      <button class="link-btn" onclick={async () => (log = log === null ? await api.buildLog() : null)}>{log === null ? "Show build log" : "Hide build log"}</button>
-    </p>
-    {#if log !== null}<pre class="log">{log || "No build has run yet."}</pre>{/if}
+    {#if settings.data && src}
+      <label class="stack">
+        <b>Source</b>
+        {#if !status.data?.loopback}<small class="muted">Only the desktop can change where plugins come from.</small>{/if}
+        <select value={src.mode} disabled={!status.data?.loopback} onchange={(e) => setSource({ plugin_source: e.currentTarget.value as PluginSourceMode })}>
+          {#each sources as o (o.id)}<option value={o.id} disabled={o.id === "dev" && !src.devAvailable}>{o.label}{o.id === "dev" && !src.devAvailable ? " (not found)" : ""}</option>{/each}
+        </select>
+      </label>
+      {#if repo}
+        {#if status.data?.loopback}
+          <label class="stack">
+            <b>Repo URL</b>
+            <small class="muted">A Cloudstream <code>repo.json</code> or <code>plugins.json</code>. Only plugins it publishes as cross-platform jars run here.</small>
+            <input type="url" value={repoUrl} oninput={(e) => (repoUrl = e.currentTarget.value)} onchange={() => repoUrl.trim() && repoUrl !== settings.data?.plugin_repo_url && setSource({ plugin_repo_url: repoUrl.trim() })} />
+          </label>
+        {/if}
+        <p class="muted small">
+          {src.repoName ?? "The repo"}{src.checkedAt ? `, checked ${ago(src.checkedAt)}` : ""}.
+          {#if status.data}{status.data.loaded} of {status.data.plugins} loaded.{/if}
+          Downloaded jars are checked against the repo's hashes; the last two versions of each are kept for rollback.
+        </p>
+        {#if src.updates.length}
+          <button class="btn start primary" onclick={() => repoAction("all", () => api.updatePlugins())} disabled={working !== null}>
+            {#if working === "all"}<span class="spinner"></span> Updating…{:else}<Icon name="down" size={18} /> Update {src.updates.length} plugin{src.updates.length > 1 ? "s" : ""}{/if}
+          </button>
+        {/if}
+      {:else}
+        <p class="muted small">
+          Built from <code>{src.devPath}</code>. Any new <code>&lt;Name&gt;/build/&lt;Name&gt;.jar</code> there is reloaded
+          automatically, so Rebuild (or <code>./gradlew :Name:make</code> for cross-platform plugins) is enough.
+          {#if status.data}{status.data.loaded} of {status.data.plugins} loaded.{/if}
+          <button class="link-btn" onclick={async () => (log = log === null ? await api.buildLog() : null)}>{log === null ? "Show build log" : "Hide build log"}</button>
+        </p>
+        {#if log !== null}<pre class="log">{log || "No build has run yet."}</pre>{/if}
+      {/if}
+      {#if src.error}<div class="p-error flush">{src.error}</div>{/if}
+    {/if}
 
     <ul class="plugins">
       {#each plugins.data ?? [] as p (p.name)}
@@ -210,8 +301,13 @@
             <span class="dot {p.status === "loaded" && linkWarning(p) ? "warn" : statusColor[p.status]}" title={p.status}></span>
             <button class="p-name" onclick={() => (openPlugin = openPlugin === p.name ? null : p.name)} aria-expanded={openPlugin === p.name}>
               <b>{p.name}</b>
-              <small class="muted">v{p.version ?? "?"} · {p.providers.join(", ") || p.status}{p.nsfw ? " · NSFW" : ""}</small>
+              <small class="muted">v{p.version ?? "?"}{hasUpdate(p) ? ` → v${p.available}` : ""} · {p.providers.join(", ") || p.status}{p.nsfw ? " · NSFW" : ""}</small>
             </button>
+            {#if hasUpdate(p) || (p.status === "missing" && p.available != null && p.enabled)}
+              <button class="btn small-btn" onclick={() => repoAction(p.name, () => api.updatePlugins([p.name]))} disabled={working !== null}>
+                {#if working === p.name}<span class="spinner"></span>{:else}{p.status === "missing" ? "Install" : "Update"}{/if}
+              </button>
+            {/if}
             <input type="checkbox" checked={p.enabled} onchange={(e) => setEnabled(p.name, e.currentTarget.checked)} aria-label="Enable {p.name}" />
           </div>
           {#if p.error}<div class="p-error">{p.error}</div>{/if}
@@ -221,6 +317,9 @@
               {#if p.description}<p class="muted small">{p.description}</p>{/if}
               {#if p.linkage.length > 1}
                 <pre class="log">{p.linkage.join("\n")}</pre>
+              {/if}
+              {#if p.previous != null}
+                <button class="link-btn" onclick={() => repoAction(p.name, () => api.rollbackPlugin(p.name))} disabled={working !== null}>Roll back to v{p.previous}</button>
               {/if}
               {#if p.status === "loaded"}<PluginSettings name={p.name} />{/if}
             </div>
@@ -346,6 +445,14 @@
   .link-btn {
     color: var(--accent);
     font-weight: 600;
+  }
+  .link-btn:disabled {
+    opacity: 0.5;
+  }
+  .small-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+    flex-shrink: 0;
   }
   .log {
     max-height: 320px;

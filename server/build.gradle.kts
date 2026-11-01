@@ -24,6 +24,9 @@ dependencies {
     implementation(libs.bcpkix)
     implementation(libs.androidx.annotation)
 
+    // Repo mode: converts a plugin's .cs3 (Android dex) into a JVM jar when the repo publishes no jar for it.
+    implementation(libs.dex2jar)
+
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.content.negotiation)
