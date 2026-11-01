@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createQuery } from "@tanstack/svelte-query";
+  import { ChevronRight } from "@lucide/svelte";
   import { api } from "../api";
   import type { HomeSection } from "../types";
   import Poster from "./Poster.svelte";
@@ -30,7 +31,14 @@
   {#if row.data}
     {#each row.data.rows as r (r.name)}
       {#if r.items.length}
-        <h2 class="section-title">{r.name || section.name}</h2>
+        <div class="section-heading">
+          <h2 class="section-title">{r.name || section.name}</h2>
+          <a
+            class="view-all"
+            href={`/home-section?${new URLSearchParams({ provider, section: String(section.index), row: r.name, name: r.name || section.name })}`}
+            aria-label={`View all ${r.name || section.name}`}
+          >View all <ChevronRight size={16} strokeWidth={1.8} aria-hidden="true" /></a>
+        </div>
         <div class="scroll-x">
           {#each r.items as item (item.url)}
             <Poster
@@ -54,4 +62,31 @@
     {/if}
   {/if}
 </section>
+
+<style>
+  .section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 32px 0 16px;
+  }
+  .section-heading .section-title {
+    margin: 0;
+  }
+  .view-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 44px;
+    flex-shrink: 0;
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .view-all:hover {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+</style>
 

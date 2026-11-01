@@ -25,6 +25,9 @@
   const browser = createQuery(() => ({ queryKey: ["browser"], queryFn: api.browser, refetchInterval: 5000 }));
 
   let openPlugin = $state<string | null>(null);
+  let pluginSearch = $state("");
+  let pluginFilter = $state<"all" | "enabled" | "disabled" | "attention">("all");
+  let enabling = $state<string[]>([]);
   let log = $state<string | null>(null);
   let mpvArgs = $state("");
   $effect(() => {
@@ -73,8 +76,15 @@
     p.runtimeLinkage ?? (p.linkage.length ? `${p.linkage.length} call${p.linkage.length > 1 ? "s" : ""} into the runtime won't link, e.g. ${p.linkage[0]}` : null);
 
   async function setEnabled(name: string, enabled: boolean) {
-    await api.setPluginEnabled(name, enabled).catch(toasts.error);
-    setTimeout(() => client.invalidateQueries(), 400);
+    enabling = [...enabling, name];
+    try {
+      await api.setPluginEnabled(name, enabled);
+      await client.invalidateQueries();
+    } catch (e) {
+      toasts.error(e);
+    } finally {
+      enabling = enabling.filter((item) => item !== name);
+    }
   }
 
   async function rebuild() {
@@ -152,6 +162,12 @@
   const hasUpdate = (p: PluginInfo) => p.available != null && p.version != null && p.available > p.version && p.status !== "missing";
 
   const statusColor: Record<string, string> = { loaded: "good", error: "bad", missing: "warn", disabled: "off" };
+  const needsAttention = (p: PluginInfo) => p.status === "error" || p.status === "missing" || (p.status === "loaded" && !!linkWarning(p));
+  const visiblePlugins = $derived((plugins.data ?? []).filter((p) => {
+    const query = pluginSearch.trim().toLocaleLowerCase();
+    const matchesSearch = !query || [p.name, p.description ?? "", ...p.providers].some((value) => value.toLocaleLowerCase().includes(query));
+    return matchesSearch && (pluginFilter === "all" || (pluginFilter === "enabled" && p.enabled) || (pluginFilter === "disabled" && !p.enabled) || (pluginFilter === "attention" && needsAttention(p)));
+  }));
 </script>
 
 <div class="page narrow">
@@ -205,7 +221,7 @@
     <section>
       <h2>Content</h2>
       <label class="toggle">
-        <span><b>Show NSFW providers</b><small>Off hides them everywhere: home, search, history and the plugin list.</small></span>
+        <span><b>Show NSFW providers</b><small>Off hides them from home, search and the plugin list. NSFW content is never added to history.</small></span>
         <input type="checkbox" checked={s.show_nsfw} onchange={(e) => save({ show_nsfw: e.currentTarget.checked })} />
       </label>
     </section>
@@ -294,21 +310,47 @@
       {#if src.error}<div class="p-error flush">{src.error}</div>{/if}
     {/if}
 
+    {#if plugins.isPending}
+      <p class="muted small">Loading plugins…</p>
+    {:else if plugins.isError}
+      <p class="p-error flush">Could not load plugins. Try refreshing the page.</p>
+    {:else if !plugins.data?.length}
+      <p class="muted small">No plugins found. Check the source and its settings above.</p>
+    {:else}
+    <div class="plugin-tools">
+      <input type="search" bind:value={pluginSearch} placeholder="Search plugins or providers" aria-label="Search plugins or providers" />
+      <select bind:value={pluginFilter} aria-label="Filter plugins">
+        <option value="all">All plugins</option>
+        <option value="enabled">Enabled</option>
+        <option value="disabled">Disabled</option>
+        <option value="attention">Needs attention</option>
+      </select>
+    </div>
+    <p class="plugin-count" aria-live="polite">Showing {visiblePlugins.length} of {plugins.data.length} plugins</p>
+    {#if !visiblePlugins.length}
+      <div class="plugin-empty">
+        <p>No plugins match your search and filter.</p>
+        <button class="link-btn" onclick={() => { pluginSearch = ""; pluginFilter = "all"; }}>Clear search and filter</button>
+      </div>
+    {/if}
     <ul class="plugins">
-      {#each plugins.data ?? [] as p (p.name)}
+      {#each visiblePlugins as p (p.name)}
         <li>
           <div class="p-row">
             <span class="dot {p.status === "loaded" && linkWarning(p) ? "warn" : statusColor[p.status]}" title={p.status}></span>
             <button class="p-name" onclick={() => (openPlugin = openPlugin === p.name ? null : p.name)} aria-expanded={openPlugin === p.name}>
               <b>{p.name}</b>
-              <small class="muted">v{p.version ?? "?"}{hasUpdate(p) ? ` → v${p.available}` : ""} · {p.providers.join(", ") || p.status}{p.nsfw ? " · NSFW" : ""}</small>
+              <small class="muted"><span class="status-label">{p.status === "loaded" && linkWarning(p) ? "Loaded with warnings" : p.status}</span> · v{p.version ?? "?"}{hasUpdate(p) ? ` → v${p.available}` : ""}{p.providers.length ? ` · ${p.providers.join(", ")}` : ""}{p.nsfw ? " · NSFW" : ""}</small>
             </button>
             {#if hasUpdate(p) || (p.status === "missing" && p.available != null && p.enabled)}
               <button class="btn small-btn" onclick={() => repoAction(p.name, () => api.updatePlugins([p.name]))} disabled={working !== null}>
                 {#if working === p.name}<span class="spinner"></span>{:else}{p.status === "missing" ? "Install" : "Update"}{/if}
               </button>
             {/if}
-            <input type="checkbox" checked={p.enabled} onchange={(e) => setEnabled(p.name, e.currentTarget.checked)} aria-label="Enable {p.name}" />
+            <label class="plugin-toggle">
+              <input type="checkbox" checked={p.enabled} disabled={enabling.includes(p.name)} onchange={(e) => { const checked = e.currentTarget.checked; e.currentTarget.checked = p.enabled; setEnabled(p.name, checked); }} aria-label="Enable {p.name}" />
+              <span>{enabling.includes(p.name) ? "Saving…" : p.enabled ? "Enabled" : "Disabled"}</span>
+            </label>
           </div>
           {#if p.error}<div class="p-error">{p.error}</div>{/if}
           {#if p.status === "loaded" && linkWarning(p)}<div class="p-warn">{linkWarning(p)}</div>{/if}
@@ -327,6 +369,7 @@
         </li>
       {/each}
     </ul>
+    {/if}
   </section>
 </div>
 
@@ -468,6 +511,23 @@
     list-style: none;
     margin: 0;
     padding: 0;
+  }
+  .plugin-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  .plugin-tools input { flex: 1 1 220px; min-width: 0; }
+  .plugin-tools select { flex: 0 1 175px; }
+  .plugin-count { margin: 10px 0; color: var(--muted); font-size: 12.5px; }
+  .plugin-empty { padding: 12px 0 18px; }
+  .plugin-empty p { margin: 0 0 6px; }
+  .plugin-toggle { display: flex; align-items: center; gap: 7px; flex-shrink: 0; font-size: 12px; color: var(--muted); }
+  .status-label { text-transform: capitalize; }
+  @media (max-width: 480px) {
+    .plugin-tools select { flex: 1 1 100%; }
+    .plugin-toggle span { display: none; }
   }
   .plugins li {
     border-top: 1px solid var(--line);

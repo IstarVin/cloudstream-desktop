@@ -208,12 +208,12 @@ fun Route.apiRoutes(s: Services) {
             }
         }
 
-        get("/history") { call.respond(s.store.history(s.settings.showNsfw)) }
+        get("/history") { call.respond(s.store.history()) }
         delete("/history") {
             s.store.deleteHistory(call.param("provider"), call.param("url"))
             call.respond(mapOf("ok" to true))
         }
-        get("/continue") { call.respond(s.store.continueWatching(s.settings.showNsfw)) }
+        get("/continue") { call.respond(s.store.continueWatching()) }
         post("/progress") {
             val req = call.receive<WatchedRequest>()
             s.store.setWatched(req.provider, req.url, req.data, req.watched)

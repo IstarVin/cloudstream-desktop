@@ -10,7 +10,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StoreTest {
-    private val store = Store(Database(File(createTempDirectory().toFile(), "test.db")))
+    private val db = Database(File(createTempDirectory().toFile(), "test.db"))
+    private val store = Store(db)
 
     @Test
     fun resumesOnlyBetweenTheFirst30SecondsAnd90Percent() {
@@ -45,22 +46,63 @@ class StoreTest {
         Thread.sleep(5)
         store.saveProgress("P", "film", "film", null, 10.0, 6000.0, false)
 
-        val entries = store.continueWatching(showNsfw = false)
+        val entries = store.continueWatching()
         assertEquals(listOf("s1e2"), entries.map { it.episodeData }, "one entry per title; the film is under 30 s")
         assertEquals("S1E2", entries.single().episodeLabel)
     }
 
     @Test
-    fun nsfwEntriesAreFilteredAndDeletingHistoryDropsProgress() {
+    fun nsfwContentIsNeverRecordedInHistory() {
         store.touchHistory("P", "a", "A", null, "Movie", false)
-        store.touchHistory("N", "b", "B", null, "NSFW", true)
+        store.touchHistory("P", "unknown", "Unknown type", null, null, false)
+        store.touchHistory("N", "b", "B", null, "Movie", true)
+        store.touchHistory("P", "c", "C", null, "NSFW", false)
         store.saveProgress("N", "b", "b", null, 100.0, 1000.0, false)
-        assertEquals(listOf("a"), store.history(showNsfw = false).map { it.url })
-        assertEquals(setOf("a", "b"), store.history(showNsfw = true).map { it.url }.toSet())
-        assertTrue(store.continueWatching(showNsfw = false).isEmpty())
+        store.saveProgress("P", "c", "c", null, 100.0, 1000.0, false)
 
-        store.deleteHistory("N", "b")
-        assertNull(store.progress("N", "b"))
+        assertEquals(setOf("a", "unknown"), store.history().map { it.url }.toSet())
+        assertEquals(setOf("a", "unknown"), db.query("SELECT url FROM history") { it.getString(1) }.toSet())
+        assertTrue(store.continueWatching().isEmpty())
+    }
+
+    @Test
+    fun legacyNsfwEntriesAreExcludedBeforeApplyingHistoryLimits() {
+        store.touchHistory("P", "safe", "Safe", null, null, false)
+        store.saveProgress("P", "safe", "safe", null, 100.0, 1000.0, false)
+        for ((url, type, nsfw) in listOf(Triple("flagged", "Movie", 1), Triple("typed", "NSFW", 0))) {
+            db.update(
+                "INSERT INTO history(provider, url, title, type, nsfw, last_watched) VALUES(?,?,?,?,?,?)",
+                "P", url, url, type, nsfw, Long.MAX_VALUE,
+            )
+            store.saveProgress("P", url, url, null, 100.0, 1000.0, false)
+            db.update("UPDATE progress SET updated = ? WHERE provider = ? AND url = ?", Long.MAX_VALUE, "P", url)
+        }
+
+        assertEquals(listOf("safe"), store.history(limit = 1).map { it.url })
+        assertEquals(listOf("safe"), store.continueWatching(limit = 1).map { it.url })
+    }
+
+    @Test
+    fun titlesReclassifiedAsNsfwAreRemovedFromHistory() {
+        for ((url, type, nsfw) in listOf(Triple("flagged", "Movie", true), Triple("typed", "NSFW", false))) {
+            store.touchHistory("P", url, url, null, "Movie", false)
+            store.saveProgress("P", url, url, null, 100.0, 1000.0, false)
+            store.touchHistory("P", url, url, null, type, nsfw)
+        }
+
+        assertTrue(store.history().isEmpty())
+        assertTrue(store.continueWatching().isEmpty())
+        assertTrue(db.query("SELECT url FROM history") { it.getString(1) }.isEmpty())
+    }
+
+    @Test
+    fun deletingHistoryDropsProgress() {
+        store.touchHistory("P", "a", "A", null, "Movie", false)
+        store.saveProgress("P", "a", "a", null, 100.0, 1000.0, false)
+
+        store.deleteHistory("P", "a")
+        assertTrue(store.history().isEmpty())
+        assertNull(store.progress("P", "a"))
     }
 
     @Test

@@ -250,6 +250,9 @@ Work, in priority order:
 | GET/PUT | `/api/settings`, `/api/plugins/{name}/settings` | App and per-plugin settings. |
 | GET | `/proxy/{token}/…` | Header-injecting stream proxy (§4.4). |
 
+History never records NSFW content. `GET /api/history` and `GET /api/continue` always exclude NSFW entries,
+including older saved entries, regardless of the `show_nsfw` setting.
+
 Normalize Cloudstream types into stable DTOs (`SearchItem`, `Details`, `Episode`, `Link`, `Subtitle`). The UI should
 never depend on Cloudstream's class shapes. Cache `load()` results and link lists for a few minutes, keyed by
 `(provider, url/data)`.

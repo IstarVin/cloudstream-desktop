@@ -10,6 +10,11 @@ class Store(private val db: Database) {
     private fun now() = System.currentTimeMillis()
 
     fun touchHistory(provider: String, url: String, title: String, poster: String?, type: String?, nsfw: Boolean) {
+        if (nsfw || type == "NSFW") {
+            db.update("DELETE FROM history WHERE provider = ? AND url = ?", provider, url)
+            return
+        }
+
         db.update(
             """INSERT INTO history(provider, url, title, poster, type, nsfw, last_watched) VALUES(?,?,?,?,?,?,?)
                ON CONFLICT(provider, url) DO UPDATE SET title=excluded.title, poster=excluded.poster,
@@ -18,10 +23,10 @@ class Store(private val db: Database) {
         )
     }
 
-    fun history(showNsfw: Boolean, limit: Int = 200): List<HistoryEntry> =
+    fun history(limit: Int = 200): List<HistoryEntry> =
         db.query(
-            "SELECT provider, url, title, poster, type, last_watched FROM history WHERE (? OR nsfw = 0) ORDER BY last_watched DESC LIMIT ?",
-            showNsfw, limit,
+            "SELECT provider, url, title, poster, type, last_watched FROM history WHERE nsfw = 0 AND (type IS NULL OR type != 'NSFW') ORDER BY last_watched DESC LIMIT ?",
+            limit,
         ) { HistoryEntry(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5), it.getLong(6)) }
 
     fun deleteHistory(provider: String, url: String) {
@@ -62,14 +67,14 @@ class Store(private val db: Database) {
         }.toMap()
 
     /** Most recent unfinished item per title, newest first. */
-    fun continueWatching(showNsfw: Boolean, limit: Int = 30): List<ContinueEntry> =
+    fun continueWatching(limit: Int = 30): List<ContinueEntry> =
         db.query(
             """SELECT p.provider, p.url, h.title, h.poster, p.episode_data, p.label, p.position, p.duration, p.updated
                FROM progress p JOIN history h ON h.provider = p.provider AND h.url = p.url
-               WHERE p.watched = 0 AND p.position > 30 AND (? OR h.nsfw = 0)
+               WHERE p.watched = 0 AND p.position > 30 AND h.nsfw = 0 AND (h.type IS NULL OR h.type != 'NSFW')
                AND p.updated = (SELECT MAX(updated) FROM progress q WHERE q.provider = p.provider AND q.url = p.url)
                ORDER BY p.updated DESC LIMIT ?""",
-            showNsfw, limit,
+            limit,
         ) {
             ContinueEntry(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5),
                 it.getString(6), it.getDouble(7), it.getDouble(8), it.getLong(9))

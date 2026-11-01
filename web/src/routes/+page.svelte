@@ -5,6 +5,8 @@
   import HomeRow from "#lib/components/HomeRow.svelte";
   import LoadingSkeleton from "#lib/components/LoadingSkeleton.svelte";
   import Poster from "#lib/components/Poster.svelte";
+  import ProviderPicker from "#lib/components/ProviderPicker.svelte";
+  import { matchesContentType } from "#lib/content-types";
 
   const providers = createQuery(() => ({ queryKey: ["providers"], queryFn: api.providers, staleTime: 30_000 }));
   const status = createQuery(() => ({ queryKey: ["status"], queryFn: api.status, refetchInterval: 4000 }));
@@ -12,7 +14,9 @@
 
   const withHome = $derived((providers.data ?? []).filter((p) => p.hasMainPage));
   let chosen = $state<string | null>(read());
-  const current = $derived(withHome.find((p) => p.name === chosen) ?? withHome[0]);
+  let contentType = $state("all");
+  const matching = $derived(withHome.filter((p) => matchesContentType(p.types, contentType)));
+  const current = $derived(matching.find((p) => p.name === chosen) ?? matching[0]);
 
   function read() {
     try {
@@ -28,6 +32,14 @@
     } catch {
       // Private mode: the choice just isn't remembered.
     }
+  }
+
+  function filter(type: string) {
+    contentType = type;
+    // Keep the selected source when it supports the filter; otherwise switch to a compatible one.
+    const next = withHome.find((p) => p.name === chosen && matchesContentType(p.types, type))
+      ?? withHome.find((p) => matchesContentType(p.types, type));
+    if (next) choose(next.name);
   }
 
   const sections = createQuery(() => ({
@@ -50,6 +62,11 @@
 
   {#if providers.isPending}
     <LoadingSkeleton variant="home" />
+  {:else if providers.isError}
+    <div class="empty">
+      <p>Couldn't load sources: {providers.error.message}</p>
+      <button class="btn" onclick={() => providers.refetch()}>Try again</button>
+    </div>
   {:else if !withHome.length}
     <div class="empty">
       <Layers size={32} strokeWidth={1.8} aria-hidden="true" />
@@ -58,14 +75,13 @@
       <a class="btn" href="/settings"><Settings2 size={17} strokeWidth={1.8} aria-hidden="true" /> Open settings</a>
     </div>
   {:else}
-    <div class="scroll-x pickers" role="group" aria-label="Provider">
-      {#each withHome as p (p.name)}
-        <button class="chip" class:on={p.name === current?.name} aria-pressed={p.name === current?.name} onclick={() => choose(p.name)}>
-          {#if p.iconUrl}<img src={p.iconUrl} alt="" width="16" height="16" referrerpolicy="no-referrer" />{/if}
-          {p.name}
-        </button>
-      {/each}
-    </div>
+    <ProviderPicker providers={withHome} {current} {contentType} onchoose={choose} onfilter={filter} />
+    {#if !current}
+      <div class="empty">
+        <p>No sources available for this content type.</p>
+        <button class="btn" onclick={() => filter("all")}>Show all sources</button>
+      </div>
+    {/if}
 
     {#if continueQ.data?.length}
       <h2 class="section-title">Continue watching</h2>
@@ -122,12 +138,5 @@
   .building .spinner {
     width: 14px;
     height: 14px;
-  }
-  .pickers {
-    gap: 8px;
-    padding-bottom: 8px;
-  }
-  .pickers img {
-    border-radius: 4px;
   }
 </style>
