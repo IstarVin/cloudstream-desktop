@@ -70,6 +70,7 @@ export const api = {
   history: () => get<HistoryEntry[]>("/api/history"),
   deleteHistory: (provider: string, url: string) =>
     request("DELETE", `/api/history?${q({ provider, url })}`),
+  clearHistory: () => request("DELETE", "/api/history/all"),
   continueWatching: () => get<ContinueEntry[]>("/api/continue"),
   setWatched: (provider: string, url: string, data: string, watched: boolean) =>
     post("/api/progress", { provider, url, data, watched }),

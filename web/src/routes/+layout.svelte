@@ -4,7 +4,7 @@
   import { QueryClient, QueryClientProvider } from "@tanstack/svelte-query";
   import { api } from "#lib/api";
   import BrowserChecks from "#lib/components/BrowserChecks.svelte";
-  import { House, Library, Play, Search, Settings2 } from "@lucide/svelte";
+  import { CircleCheck, CircleAlert, House, Library, Play, Search, Settings2, X } from "@lucide/svelte";
   import NowPlaying from "#lib/components/NowPlaying.svelte";
   import Pairing from "#lib/components/Pairing.svelte";
   import SourcesSheet from "#lib/components/SourcesSheet.svelte";
@@ -42,7 +42,7 @@
 {:else if authed}
   <QueryClientProvider {client}>
     <a class="skip-link" href="#main-content">Skip to content</a>
-    <div class="shell" class:with-bar={player.active}>
+    <div class={["shell", { "with-bar": player.active }]}>
       <nav aria-label="Main">
         <div class="brand">
           <span class="brand-icon"
@@ -52,9 +52,8 @@
         </div>
         {#each nav as n (n.href)}
           <a
-            class="nav-link"
+            class={["nav-link", { active: isActive(n.href) }]}
             href={n.href}
-            class:active={isActive(n.href)}
             aria-current={isActive(n.href) ? "page" : undefined}
           >
             <n.icon size={22} strokeWidth={1.8} aria-hidden="true" />
@@ -77,9 +76,17 @@
   </div>
 {/if}
 
-<div class="toasts" aria-live="polite">
+<div class={["toasts", { "with-bar": player.active }]} aria-live="polite" aria-relevant="additions">
   {#each toasts.items as t (t.id)}
-    <div class="toast" class:error={t.error}>{t.text}</div>
+    <div class={["toast", { error: t.error }]}>
+      <span class="toast-icon" aria-hidden="true">
+        {#if t.error}<CircleAlert size={20} />{:else}<CircleCheck size={20} />{/if}
+      </span>
+      <p>{t.text}</p>
+      <button class="toast-dismiss" aria-label="Dismiss notification" onclick={() => toasts.dismiss(t.id)}>
+        <X size={18} aria-hidden="true" />
+      </button>
+    </div>
   {/each}
 </div>
 
@@ -153,24 +160,76 @@
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    bottom: calc(var(--nav-h) + var(--bar-h) + var(--safe-b) + 24px);
+    bottom: calc(var(--nav-h) + var(--safe-b) + 16px);
     display: flex;
     flex-direction: column;
     gap: 8px;
     z-index: 100;
-    width: min(92vw, 420px);
+    width: min(calc(100% - 32px), 420px);
     pointer-events: none;
   }
-  .toast {
-    background: var(--surface-3);
-    border: 1px solid var(--line);
-    padding: 10px 14px;
-    border-radius: 10px;
-    font-size: 14px;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+  .toasts.with-bar {
+    bottom: calc(var(--nav-h) + var(--bar-h) + var(--safe-b) + 16px);
   }
-  .toast.error {
-    border-color: rgb(255 97 112 / 0.5);
+  .toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 12px 12px 16px;
+    border-radius: 14px;
+    background: var(--surface-3);
+    box-shadow: 0 10px 32px rgb(0 0 0 / 0.4);
+    pointer-events: auto;
+    animation: toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .toast-icon {
+    display: flex;
+    flex: none;
+    margin-top: 3px;
+    color: var(--accent);
+  }
+  .toast.error .toast-icon {
+    color: #ff7d89;
+  }
+  .toast p {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    padding: 3px 0;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+  .toast-dismiss {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    margin: -3px -3px -3px 0;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .toast-dismiss:hover {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+  .toast-dismiss:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .toast { animation: none; }
   }
   @media (min-width: 900px) {
     .shell,
@@ -232,7 +291,10 @@
       letter-spacing: 0.04em;
     }
     .toasts {
-      bottom: calc(var(--bar-h) + 32px);
+      bottom: 24px;
+    }
+    .toasts.with-bar {
+      bottom: calc(var(--bar-h) + 24px);
     }
   }
 </style>

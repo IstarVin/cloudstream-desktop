@@ -106,6 +106,25 @@ class StoreTest {
     }
 
     @Test
+    fun clearingHistoryRemovesAllEntriesAndTheirProgressButKeepsOtherData() {
+        repeat(201) { i ->
+            store.touchHistory("P", "url$i", "Title", null, "Movie", false)
+            store.saveProgress("P", "url$i", "episode$i", null, 100.0, 1000.0, false)
+        }
+        store.saveProgress("P", "other", "other", null, 100.0, 1000.0, false)
+        store.setBookmark("P", "url0", "Title", null, "Movie", false, "planned")
+
+        store.clearHistory()
+
+        assertTrue(store.history().isEmpty())
+        assertTrue(store.continueWatching().isEmpty())
+        assertNull(store.progress("P", "episode0"))
+        assertNull(store.progress("P", "episode200"))
+        assertEquals(100.0, store.resumePosition("P", "other"))
+        assertEquals("planned", store.bookmarkList("P", "url0"))
+    }
+
+    @Test
     fun linkScoresAreSmoothedSuccessRatios() {
         assertTrue(store.linkScores("P").isEmpty())
         repeat(3) { store.recordLink("P", "Good", success = true) }

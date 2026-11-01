@@ -213,6 +213,10 @@ fun Route.apiRoutes(s: Services) {
             s.store.deleteHistory(call.param("provider"), call.param("url"))
             call.respond(mapOf("ok" to true))
         }
+        delete("/history/all") {
+            s.store.clearHistory()
+            call.respond(mapOf("ok" to true))
+        }
         get("/continue") { call.respond(s.store.continueWatching()) }
         post("/progress") {
             val req = call.receive<WatchedRequest>()

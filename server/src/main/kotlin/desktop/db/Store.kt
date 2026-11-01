@@ -34,6 +34,11 @@ class Store(private val db: Database) {
         db.update("DELETE FROM progress WHERE provider = ? AND url = ?", provider, url)
     }
 
+    fun clearHistory() {
+        db.update("DELETE FROM progress WHERE EXISTS (SELECT 1 FROM history WHERE history.provider = progress.provider AND history.url = progress.url)")
+        db.update("DELETE FROM history")
+    }
+
     fun saveProgress(provider: String, url: String, episodeData: String, label: String?, position: Double, duration: Double, watched: Boolean) {
         db.update(
             """INSERT INTO progress(provider, episode_data, url, label, position, duration, watched, updated) VALUES(?,?,?,?,?,?,?,?)
