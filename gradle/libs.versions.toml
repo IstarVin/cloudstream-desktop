@@ -1,0 +1,38 @@
+[versions]
+# The Cloudstream `library` JVM artifact. Pinned to the commit that matches the `cloudstream3:pre-release` stub the
+# extensions repo compiles against (fetched 2026-10-14; library sources unchanged until dc9d1f0f on 2026-10-21).
+cloudstream = "94e955836b"
+ktor = "3.5.2"
+coroutines = "1.11.0"
+serialization = "1.11.0"
+# The plugin runtime: same versions the extensions repo's root build.gradle.kts pins.
+nicehttp = "0.4.18"
+jsoup = "1.22.2"
+jackson = "2.13.1"
+rhino = "1.8.1"
+
+[libraries]
+cloudstream-library = { module = "com.github.recloudstream.cloudstream:library-jvm", version.ref = "cloudstream" }
+nicehttp = { module = "com.github.Blatzar:NiceHttp", version.ref = "nicehttp" }
+jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
+jackson-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+fuzzywuzzy = { module = "me.xdrop:fuzzywuzzy", version = "1.4.0" }
+gson = { module = "com.google.code.gson:gson", version = "2.14.0" }
+bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version = "1.84" }
+androidx-annotation = { module = "androidx.annotation:annotation-jvm", version = "1.10.0" }
+
+ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
+ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor" }
+ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation", version.ref = "ktor" }
+ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.ref = "ktor" }
+ktor-server-status-pages = { module = "io.ktor:ktor-server-status-pages", version.ref = "ktor" }
+ktor-server-call-logging = { module = "io.ktor:ktor-server-call-logging", version.ref = "ktor" }
+ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
+ktor-serialization-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version = "3.54.1.0" }
+logback = { module = "ch.qos.logback:logback-classic", version = "1.5.38" }
+jul-to-slf4j = { module = "org.slf4j:jul-to-slf4j", version = "2.0.17" }

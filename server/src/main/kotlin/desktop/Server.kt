@@ -1,0 +1,74 @@
+package desktop
+
+import desktop.api.Catalog
+import desktop.api.NotFound
+import desktop.api.Services
+import desktop.api.apiRoutes
+import desktop.api.webRoutes
+import desktop.auth.Auth
+import desktop.config.Config
+import desktop.config.Settings
+import desktop.db.Database
+import desktop.db.Store
+import desktop.links.LinkService
+import desktop.links.StreamProxy
+import desktop.player.MpvManager
+import desktop.player.NoDisplayException
+import desktop.player.Playback
+import desktop.plugins.PluginHost
+import io.ktor.http.HttpStatusCode
+import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.application.install
+import io.ktor.server.cio.CIO
+import io.ktor.server.engine.embeddedServer
+import io.ktor.server.plugins.BadRequestException
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.response.respond
+import io.ktor.server.routing.routing
+import io.ktor.server.websocket.WebSockets
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
+
+fun serve(config: Config, db: Database, settings: Settings, host: PluginHost, scope: CoroutineScope) {
+    val log = LoggerFactory.getLogger("desktop.Server")
+    val store = Store(db)
+    val catalog = Catalog(host, settings, store)
+    val links = LinkService(scope, store)
+    val proxy = StreamProxy()
+    val mpv = MpvManager(config, settings)
+    val playback = Playback(scope, host, catalog, links, proxy, mpv, store, settings, config.bindPort)
+    val auth = Auth()
+    val services = Services(host, catalog, links, proxy, playback, store, settings, auth, scope, config.bindPort)
+
+    // Plugins build and load in the background; the UI shows progress through /api/status.
+    scope.launch { host.start(scope) }
+    Runtime.getRuntime().addShutdownHook(Thread { mpv.stop() })
+
+    log.info("Listening on http://{}:{}", config.bindHost, config.bindPort)
+    embeddedServer(CIO, port = config.bindPort, host = config.bindHost) {
+        install(ContentNegotiation) {
+            json(Json { encodeDefaults = true; ignoreUnknownKeys = true; explicitNulls = false })
+        }
+        install(WebSockets)
+        install(Auth.plugin(auth))
+        install(StatusPages) {
+            exception<NotFound> { call, e -> call.respond(HttpStatusCode.NotFound, mapOf("error" to e.message)) }
+            exception<IllegalArgumentException> { call, e -> call.respond(HttpStatusCode.BadRequest, mapOf("error" to e.message)) }
+            exception<BadRequestException> { call, e -> call.respond(HttpStatusCode.BadRequest, mapOf("error" to (e.cause?.message ?: e.message))) }
+            exception<NoDisplayException> { call, e -> call.respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to e.message)) }
+            exception<TimeoutCancellationException> { call, _ -> call.respond(HttpStatusCode.GatewayTimeout, mapOf("error" to "The provider took too long")) }
+            exception<Throwable> { call, e ->
+                log.warn("Request {} failed", call.request.local.uri, e)
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: e.javaClass.simpleName)))
+            }
+        }
+        routing {
+            apiRoutes(services)
+            webRoutes()
+        }
+    }.start(wait = true)
+}

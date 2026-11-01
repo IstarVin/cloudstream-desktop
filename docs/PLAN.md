@@ -9,6 +9,39 @@ _Last updated: 2026-11-01_
 
 ---
 
+## Status (2026-11-01)
+
+Phases 0–6 are implemented. Each phase's check was run against live providers, with mpv on a null video/audio
+output. Phase 7 (Chromium/CDP) has not started.
+
+**Phase 0 findings**
+
+- Runtime artifact: `com.github.recloudstream.cloudstream:library-jvm:94e955836b` (JitPack). It matches the
+  `cloudstream3:pre-release` stub fetched on 2026-10-14; the library's sources didn't change until `dc9d1f0f` on
+  2026-10-21. It pulls Kotlin 2.4.0, coroutines 1.11, NiceHttp 0.4.18 (OkHttp 5.3.2), Jackson 2.13.1 and Rhino 1.8.1.
+- The JVM target has `WebViewResolver` (same signatures as the app's) but no `CloudflareKiller` or `DdosGuardKiller`.
+- `newExtractorLink` works on the JVM as is. The "app's crypto library" note in the extensions repo doesn't apply,
+  because `library-jvm` brings `cryptography-provider-optimal`.
+- Dulo and OmniStream return links, and they play in mpv with their headers. All 36 enabled plugins load, tier B
+  included.
+
+**Where the implementation differs from the plan**
+
+- *No changes to the extensions repo (§6).* The server builds jars with a Gradle init script
+  (`server/src/main/resources/gradle/desktop-jars.init.gradle`). It forces `isCrossPlatform` and skips the jdeps
+  check, so tier A′ and B plugins get jars without version bumps or a publish. The §6 seams are still worth doing
+  upstream, but v1 no longer depends on them.
+- *android.jar as a verifier layer.* Plugins that subclass `Plugin` build their settings dialogs in lambdas whose
+  bodies live in the plugin class. The JVM verifier therefore loads `Activity`, `EditText` and similar classes even
+  though those dialogs never run. The server puts the SDK's `android.jar` stubs in a class loader between the host
+  and the plugins. Delegation is parent-first, so the working shims win.
+- *Plugin settings* use a generic key/value form. Keys appear once a plugin has read them (the shim records reads
+  and their defaults), or they can be added by hand.
+- *Extra setting* `playback.proxy_all` sends every stream through the proxy, for sites that reject mpv's direct
+  requests.
+- *Not done yet:* the global per-host `Semaphore(2)` (§9). Per-provider timeouts are in place. A few TonkaCine
+  sources fail with `AEADBadTagException` on the JVM; this hasn't been investigated.
+
 ## 1. Goals
 
 1. **Same plugins, no rewrite.** Run the existing Kotlin plugins (about 26k lines across 37 modules plus `shared/`) as

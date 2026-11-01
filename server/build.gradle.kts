@@ -1,0 +1,91 @@
+plugins {
+    kotlin("jvm")
+    kotlin("plugin.serialization")
+    application
+    id("com.gradleup.shadow")
+}
+
+dependencies {
+    implementation(project(":compat:android-shim"))
+    implementation(project(":compat:webview-cdp"))
+    implementation(libs.cloudstream.library)
+
+    // The plugin runtime. Plugin jars don't bundle their `implementation` dependencies, so the host provides the
+    // versions the extensions repo builds against.
+    implementation(libs.nicehttp)
+    implementation(libs.jsoup)
+    implementation(libs.jackson.kotlin)
+    implementation(libs.jackson.databind)
+    implementation(libs.rhino)
+    implementation(libs.coroutines.core)
+    implementation(libs.serialization.json)
+    implementation(libs.fuzzywuzzy)
+    implementation(libs.gson)
+    implementation(libs.bcpkix)
+    implementation(libs.androidx.annotation)
+
+    implementation(libs.ktor.server.core)
+    implementation(libs.ktor.server.cio)
+    implementation(libs.ktor.server.content.negotiation)
+    implementation(libs.ktor.server.websockets)
+    implementation(libs.ktor.server.status.pages)
+    implementation(libs.ktor.serialization.json)
+    implementation(libs.sqlite.jdbc)
+    implementation(libs.logback)
+    implementation(libs.jul.to.slf4j)
+
+    testImplementation(kotlin("test"))
+    testImplementation(libs.ktor.server.test.host)
+}
+
+application {
+    mainClass.set("desktop.MainKt")
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+}
+
+kotlin {
+    compilerOptions {
+        optIn.add("com.lagradost.cloudstream3.Prerelease")
+        optIn.add("com.lagradost.cloudstream3.InternalAPI")
+    }
+}
+
+// The web UI: `vp build` writes the static SPA into src/main/resources/web, which Ktor serves at `/`.
+val webDir = rootProject.file("web")
+val webInstall by tasks.registering(Exec::class) {
+    workingDir = webDir
+    commandLine("vp", "install")
+    inputs.files(webDir.resolve("package.json"), webDir.resolve("pnpm-lock.yaml"))
+    outputs.dir(webDir.resolve("node_modules"))
+}
+val webBuild by tasks.registering(Exec::class) {
+    dependsOn(webInstall)
+    workingDir = webDir
+    commandLine("vp", "build")
+    inputs.dir(webDir.resolve("src"))
+    inputs.files(webDir.resolve("package.json"), webDir.resolve("vite.config.ts"))
+    outputs.dir(layout.projectDirectory.dir("src/main/resources/web"))
+}
+
+// The mpv script ships inside the server jar (extracted at runtime when not running from a checkout).
+tasks.processResources {
+    dependsOn(webBuild)
+    from(rootProject.file("mpv")) { into("mpv") }
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+
+tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
+    archiveFileName.set("cloudstream-desktop.jar")
+    // Ktor, sqlite-jdbc and kotlinx register implementations through META-INF/services.
+    mergeServiceFiles()
+}
+
+tasks.named<JavaExec>("run") {
+    // `./gradlew :server:run --args="spike Dulo dune"` passes CLI args; the working dir is the repo root so the
+    // mpv script path resolves without an install.
+    workingDir = rootDir
+    standardInput = System.`in`
+}

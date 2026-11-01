@@ -1,0 +1,24 @@
+# cloudstream-desktop configuration. Restart the service after editing.
+# Settings marked (UI) can also be changed on the Settings page; the page's value wins once set there.
+
+bind = "0.0.0.0:6969"            # LAN remote is a v1 goal; use 127.0.0.1 to keep it desktop-only
+
+plugins.dev_path = "/mnt/AJ/Projects/cloudstream-extensions-istarvin"
+plugins.build_on_start = true    # run gradlew for enabled modules at startup
+plugins.disabled = ["Fetcharr", "StreamCorner"]   # (UI)
+
+mpv.path = "mpv"
+mpv.extra_args = []              # (UI) e.g. ["--profile=gpu-hq"]
+
+playback.autoplay_best = true    # (UI)
+playback.autoplay_min_links = 3  # (UI)
+playback.autoplay_wait_ms = 6000 # (UI)
+playback.autoplay_next = true    # (UI)
+playback.proxy_all = false       # (UI) send every stream through the built-in proxy, not just ones mpv can't fetch
+
+ui.show_nsfw = false             # (UI)
+
+# Where android.jar comes from (only its class shapes are used). Defaults to the SDK the extensions repo builds with.
+# android.sdk_path = "/home/you/Android/Sdk"
+
+# v1.1: chromium.path = "chromium", chromium.mode = "headless" | "xvfb" | "headed"

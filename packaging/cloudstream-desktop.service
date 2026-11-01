@@ -1,0 +1,18 @@
+[Unit]
+Description=Cloudstream Desktop server (web UI on :6969, plays in mpv)
+Documentation=file://%h/.local/share/cloudstream-desktop/README.md
+# Tied to the graphical session so mpv gets DISPLAY/WAYLAND_DISPLAY and stops with the session.
+PartOf=graphical-session.target
+After=graphical-session.target network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/cloudstream-desktop
+ExecStart=/usr/bin/env java --enable-native-access=ALL-UNNAMED -jar %h/.local/share/cloudstream-desktop/cloudstream-desktop.jar serve
+Restart=on-failure
+RestartSec=5
+# The extensions repo is built with its own gradle wrapper; give it a sane PATH.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=graphical-session.target

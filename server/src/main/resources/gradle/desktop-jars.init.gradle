@@ -1,0 +1,11 @@
+// Applied by cloudstream-desktop when it builds the extensions repo (`gradlew -I <this> :Name:compilePluginJar`).
+// Forces a plain JVM jar for every plugin module, including ones that import Android classes: the desktop host
+// provides those through its compat layer, so the jdeps "no Android imports" check doesn't apply here.
+allprojects { p ->
+    p.afterEvaluate {
+        def cs = p.extensions.findByName("cloudstream")
+        if (cs != null) cs.crossPlatform = true
+        p.tasks.matching { it.name == "compilePluginJar" }.configureEach { it.hasCrossPlatformSupport.set(true) }
+        p.tasks.matching { it.name == "ensureJarCompatibility" }.configureEach { it.enabled = false }
+    }
+}

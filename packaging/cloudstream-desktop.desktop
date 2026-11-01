@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Cloudstream
+GenericName=Streaming
+Comment=Browse your Cloudstream providers and play in mpv
+Exec=xdg-open http://127.0.0.1:6969
+Icon=cloudstream-desktop
+Terminal=false
+Categories=AudioVideo;Video;Player;
+Keywords=stream;anime;movies;mpv;
