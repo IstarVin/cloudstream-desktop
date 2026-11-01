@@ -1,35 +1,41 @@
 <script lang="ts">
-  import { createQuery } from "@tanstack/svelte-query";
+  import { createInfiniteQuery } from "@tanstack/svelte-query";
   import { ChevronRight } from "@lucide/svelte";
-  import { api } from "../api";
+  import { homePagesOptions, mergeHomeRows } from "../home";
   import type { HomeSection } from "../types";
   import Poster from "./Poster.svelte";
   import LoadingSkeleton from "./LoadingSkeleton.svelte";
+  import InfiniteLoader from "./InfiniteLoader.svelte";
 
   let { provider, section }: { provider: string; section: HomeSection } = $props();
 
-  // Rows load when they scroll near the viewport: one getMainPage request per row, like the app.
+  // Fetch the first page only when the section approaches the viewport.
   let visible = $state(false);
-  let el: HTMLElement;
-  $effect(() => {
-    const io = new IntersectionObserver((e) => e.some((x) => x.isIntersecting) && (visible = true), {
-      rootMargin: "400px",
-    });
-    io.observe(el);
+  function observeRow(element: HTMLElement) {
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        visible = true;
+        io.disconnect();
+      }
+    }, { rootMargin: "400px" });
+    io.observe(element);
     return () => io.disconnect();
-  });
+  }
 
-  const row = createQuery(() => ({
-    queryKey: ["home", provider, section.index],
-    queryFn: () => api.homeRow(provider, section.index),
+  const row = createInfiniteQuery(() => ({
+    ...homePagesOptions(provider, section.index),
     enabled: visible,
-    staleTime: 5 * 60_000,
   }));
+  const rows = $derived(mergeHomeRows(row.data?.pages ?? []));
+
+  function loadMore() {
+    if (row.hasNextPage && !row.isFetching) void row.fetchNextPage({ cancelRefetch: false });
+  }
 </script>
 
-<section bind:this={el}>
+<section {@attach observeRow}>
   {#if row.data}
-    {#each row.data.rows as r (r.name)}
+    {#each rows as r (r.name)}
       {#if r.items.length}
         <div class="section-heading">
           <h2 class="section-title">{r.name || section.name}</h2>
@@ -40,7 +46,7 @@
           >View all <ChevronRight size={16} strokeWidth={1.8} aria-hidden="true" /></a>
         </div>
         <div class="scroll-x">
-          {#each r.items as item (item.url)}
+          {#each r.items as item (JSON.stringify([item.provider, item.url]))}
             <Poster
               provider={item.provider}
               url={item.url}
@@ -50,6 +56,13 @@
               meta={[item.year, item.quality].filter(Boolean).join(" · ")}
             />
           {/each}
+          <InfiniteLoader
+            hasNext={row.hasNextPage}
+            loading={row.isFetching}
+            error={row.isFetchNextPageError ? row.error?.message : null}
+            horizontal
+            onloadmore={loadMore}
+          />
         </div>
       {/if}
     {/each}

@@ -1,13 +1,12 @@
 <script lang="ts">
   import { page } from "$app/state";
-  import { createInfiniteQuery, useQueryClient } from "@tanstack/svelte-query";
+  import { createInfiniteQuery } from "@tanstack/svelte-query";
   import { ArrowLeft } from "@lucide/svelte";
-  import { api } from "#lib/api";
-  import type { HomePage, SearchItem } from "#lib/types";
+  import { homePagesOptions, mergeHomeRows } from "#lib/home";
   import Poster from "#lib/components/Poster.svelte";
   import LoadingSkeleton from "#lib/components/LoadingSkeleton.svelte";
+  import InfiniteLoader from "#lib/components/InfiniteLoader.svelte";
 
-  const client = useQueryClient();
   const provider = $derived(page.url.searchParams.get("provider") ?? "");
   const sectionParam = $derived(page.url.searchParams.get("section"));
   const section = $derived(Number(sectionParam));
@@ -16,35 +15,16 @@
   const valid = $derived(!!provider && sectionParam !== null && /^\d+$/.test(sectionParam) && Number.isSafeInteger(section));
 
   const titles = createInfiniteQuery(() => ({
-    queryKey: ["home-pages", provider, section],
-    queryFn: ({ pageParam }) => api.homeRow(provider, section, pageParam),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage, _pages, lastPageParam) =>
-      lastPage.hasNext && lastPage.rows.some((row) => row.items.length) ? lastPageParam + 1 : undefined,
+    ...homePagesOptions(provider, section),
     enabled: valid,
-    staleTime: 5 * 60_000,
-    initialData: () => {
-      const cached = client.getQueryData<HomePage>(["home", provider, section]);
-      return cached ? { pages: [cached], pageParams: [1] } : undefined;
-    },
-    initialDataUpdatedAt: () => client.getQueryState(["home", provider, section])?.dataUpdatedAt,
   }));
 
-  const rows = $derived(titles.data?.pages.flatMap((p) => p.rows.filter((r) => r.name === rowName)) ?? []);
-  const horizontal = $derived(rows[0]?.horizontal ?? false);
-  const items = $derived.by(() => {
-    const unique = new Map<string, SearchItem>();
-    for (const row of rows) {
-      for (const item of row.items) {
-        const key = JSON.stringify([item.provider, item.url]);
-        if (!unique.has(key)) unique.set(key, item);
-      }
-    }
-    return [...unique.values()];
-  });
+  const row = $derived(mergeHomeRows(titles.data?.pages ?? []).find((r) => r.name === rowName));
+  const horizontal = $derived(row?.horizontal ?? false);
+  const items = $derived(row?.items ?? []);
 
   function loadMore() {
-    if (titles.hasNextPage && !titles.isFetching) void titles.fetchNextPage();
+    if (titles.hasNextPage && !titles.isFetching) void titles.fetchNextPage({ cancelRefetch: false });
   }
 </script>
 
@@ -94,15 +74,12 @@
           {items.length} {items.length === 1 ? "title" : "titles"}{titles.hasNextPage ? " loaded" : " · All loaded"}
         {/if}
       </p>
-      {#if titles.isFetchNextPageError}
-        <p class="load-error" role="alert">Couldn't load more titles: {titles.error?.message}</p>
-      {/if}
-      {#if titles.hasNextPage}
-        <button class="btn" onclick={loadMore} disabled={titles.isFetching}>
-          {#if titles.isFetchingNextPage}<span class="spinner" aria-hidden="true"></span>{/if}
-          {titles.isFetchingNextPage ? "Loading…" : titles.isFetchNextPageError ? "Try again" : "Load more"}
-        </button>
-      {/if}
+      <InfiniteLoader
+        hasNext={titles.hasNextPage}
+        loading={titles.isFetching}
+        error={titles.isFetchNextPageError ? titles.error?.message : null}
+        onloadmore={loadMore}
+      />
     </div>
   {/if}
 </div>
@@ -130,7 +107,6 @@
     text-align: center;
   }
   .pagination p { margin: 0 0 16px; }
-  .load-error { color: var(--danger); }
   @media (min-width: 900px) {
     .poster-grid { grid-template-columns: repeat(auto-fill, minmax(164px, 1fr)); }
     .poster-grid.horizontal { grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); }
