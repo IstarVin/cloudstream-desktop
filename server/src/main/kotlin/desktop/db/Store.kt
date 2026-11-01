@@ -108,9 +108,16 @@ class Store(private val db: Database) {
         )
     }
 
-    /** Success ratio per source for [provider], smoothed so a new source starts at 0.5. */
-    fun linkScores(provider: String): Map<String, Double> =
+    /** How each of [provider]'s sources has done before. */
+    fun linkStats(provider: String): Map<String, LinkStat> =
         db.query("SELECT source_name, successes, failures FROM link_stats WHERE provider = ?", provider) {
-            it.getString(1) to (it.getInt(2) + 1.0) / (it.getInt(2) + it.getInt(3) + 2.0)
+            it.getString(1) to LinkStat(it.getInt(2), it.getInt(3))
         }.toMap()
+
+    /** Success ratio per source for [provider], smoothed so a new source starts at 0.5. */
+    fun linkScores(provider: String): Map<String, Double> = linkStats(provider).mapValues { it.value.score }
+}
+
+data class LinkStat(val successes: Int, val failures: Int) {
+    val score get() = (successes + 1.0) / (successes + failures + 2.0)
 }

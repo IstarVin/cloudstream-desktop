@@ -68,12 +68,18 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
         const val SHOW_NSFW = "show_nsfw"
         const val DISABLED_PLUGINS = "disabled_plugins"
         const val PROXY_ALL = "proxy_all"
+        /** prompt | auto | off: what to do inside an AniSkip opening, ending or recap. */
+        const val SKIP_SEGMENTS = "skip_segments"
         const val CHROMIUM_MODE = "chromium_mode"
         const val PLUGIN_SOURCE = "plugin_source"
         const val PLUGIN_REPO_URL = "plugin_repo_url"
 
         /** The allowed values of string settings that have a fixed set. */
-        val choices = mapOf(CHROMIUM_MODE to setOf("headless", "xvfb", "headed"), PLUGIN_SOURCE to setOf("dev", "repo"))
+        val choices = mapOf(
+            CHROMIUM_MODE to setOf("headless", "xvfb", "headed"),
+            PLUGIN_SOURCE to setOf("dev", "repo"),
+            SKIP_SEGMENTS to setOf("prompt", "auto", "off"),
+        )
 
         /** Settings only the desktop (loopback) may change: they decide what code the server downloads and runs. */
         val desktopOnly = setOf(PLUGIN_SOURCE, PLUGIN_REPO_URL)

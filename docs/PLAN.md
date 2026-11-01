@@ -12,7 +12,7 @@ _Last updated: 2026-11-01_
 ## Status (2026-11-01)
 
 Phases 0–9 are implemented (v1, v1.1 and v1.2). Each phase's check was run against live providers, with mpv on a null
-video/audio output. Phase 10 is later work.
+video/audio output. Phase 10 (v1.3) is implemented; its StreamCorner check is still open (below).
 
 **Phase 0 findings**
 
@@ -119,8 +119,41 @@ video/audio output. Phase 10 is later work.
   conversion through the repo, reconversion after a converter bump, and the converter loading a real KissKH `.cs3`)
   and 12 web tests.
 
-**Next:** Phase 10. The real-session check from Phase 7 is still open. Upstream, the Vidnest secret and MkvDrama's new
-site need plugin fixes.
+**Phase 10 results (v1.3)**
+
+- Live, on an isolated server instance (dev mode, mpv on null outputs), with Frieren on OmniAnime:
+  - *AniSkip:* E2 got an opening at 6–96 s and an ending at 1460–1550 s, matched to the 1560 s file. mpv's
+    `chapter-list` held Opening/Episode/Ending/Episode. `PlayerState.skip` named the opening while inside it, and
+    `POST /api/player/skip` jumped past it. E3 found its own ranges.
+  - *Ids:* the first run found no ids at all. The library's sync-id keys are all `""` on the JVM, so `addMalId` and
+    `addAniListId` overwrote each other; fixed by setting the app's keys at startup (`SyncIdTest`).
+  - *Prefetch:* seeking past 85% took `next` from `waiting` to `resolving` (2, then 17 links) to `ready` (21 links)
+    in about 4 s. Next then picked a link within a second, from the prefetched set.
+  - *Ranking:* `/api/links` carries `order`, `score`, `successes` and `failures`. AnimoTv showed 1 success after
+    E2's play.
+- *Settings schema:* the four plugins report their fields over `/api/plugins` in dev mode. The freshly built `.cs3`s
+  of OmniStream, Kayoanime, Extractors and JavHdz still carry the schema after dex2jar, and they link cleanly.
+- *ClearKey:* checked against a local CENC-encrypted DASH stream. mpv with `demuxer-lavf-o=cenc_decryption_key`
+  decodes it without warnings; without a key, or with a wrong one, it logs hundreds of decode errors.
+- *uosc:* not installed here, so only the `mp.input.select` path ran. The uosc calls follow uosc's wiki
+  (`open-menu`/`update-menu` keyed by `type`, `set-button`) but haven't run against a real uosc.
+- *StreamCorner (open):* the emulation passes its tests on real Chromium (interceptor-served page on a real origin,
+  JS bridge with return values, an out-of-process iframe, a module worker, blocked navigation, no leaked tabs). Live,
+  the plugin loads and builds its bridge page, the page reports ready over the bridge, and the site's decoder worker
+  loads. But the worker never answers the plugin's `provider-list` message, so home rows time out.
+  - A plain CDP probe with no emulation at all (the same page, real origin, headless Chromium, with or without a GPU)
+    behaves the same way, while the site's own page does fetch its data.
+  - So it's the site's worker refusing this setup (fingerprint gating, or a protocol change since StreamCorner's
+    2026-10-30 update), not the WebView layer. It needs a run in xvfb/headed mode, or a comparison with the phone.
+  - StreamCorner stays in the default `plugins.disabled` list until then.
+- Tests: 52 server tests (new: ranking parity, AniSkip parsing/cache/auto-skip, settings schema, sync ids, ClearKey
+  keys, Android API parity, and the WebView shim on Chromium) and 23 web tests (new: ranking parity).
+- Upstream (extensions repo, uncommitted): `SETTINGS_SCHEMA` on OmniStream, Kayoanime, Extractors and JavHdz, with
+  version bumps (Extractors 22, Kayoanime 4, JavHdz 15; OmniStream was already at 9 in the working tree).
+
+**Next:** StreamCorner's live check (above). The real-session check from Phase 7 is still open; a real uosc and the
+phone remote's Skip button belong in it. Upstream, the Vidnest secret and MkvDrama's new site need plugin fixes, and
+MkvDrama's settings get a schema once it works again.
 
 ## 1. Goals
 
@@ -265,8 +298,9 @@ Work, in priority order:
    - Turnstile often fails in pure headless mode. Support headed mode under Xvfb, or a visible window for manual solves.
    - Keep the repo's rules: one solve per host behind a `Mutex`, and at most `Semaphore(2)` requests per host after
      that.
-4. **Tier D (StreamCorner):** don't emulate `WebView`. Add a seam in the extensions repo (a `StreamCornerEngine`
-   interface) with an Android WebView implementation and a CDP implementation. Defer this until after v1.
+4. **Tier D (StreamCorner):** first planned as a `StreamCornerEngine` seam in the extensions repo. Phase 10f instead
+   emulates the slice of `android.webkit` that StreamCorner uses on the shared Chromium, so the plugin runs unchanged,
+   including from its converted `.cs3`.
 
 ### 4.3 Server API (Ktor)
 
@@ -300,8 +334,9 @@ never depend on Cloudstream's class shapes. Cache `load()` results and link list
   plugin's own `app` client and rewrites M3U8 playlists so segment and key URIs go back through the proxy.
 - **Plugin-local servers:** `KissKHLocalServer` and `ReanimeLocalServer` bind to `127.0.0.1:<random>` inside the JVM.
   This works because mpv runs on the same machine. LAN viewers only control mpv; they never fetch those URLs.
-- **Types:** `M3U8` and `VIDEO` play directly. Pass `DASH` to mpv as-is. `DrmExtractorLink` / ClearKey is unsupported
-  in v1: show it in the UI but disable it.
+- **Types:** `M3U8` and `VIDEO` play directly. Pass `DASH` to mpv as-is. `DrmExtractorLink` is unsupported in v1:
+  show it in the UI but disable it. Phase 10f enables single-key ClearKey through FFmpeg's `cenc_decryption_key`.
+  Widevine stays unsupported.
 - **Ranking:** sort links by `quality`, then by a per-source success history (§4.6).
 - **Auto-play (default on):** the server starts the best link once 3 links have arrived or 6 s have passed since the
   first one, the same way OmniStream's race works. It keeps collecting links so they can still be picked from the sources
@@ -384,8 +419,8 @@ integration can follow if uosc is installed.
   failed, trying Movy 1080p…".
 - **Loading state:** while the server resolves the next item, show a "Resolving links…" overlay so mpv never looks
   frozen. This needs `--idle` + `--force-window`.
-- **Skip intro/outro (later):** the server sends chapter ranges (for example from AniSkip for anime), and the script
-  adds chapters and a "Skip" prompt.
+- **Skip intro/outro (Phase 10c):** the server sends AniSkip ranges for anime. The script adds them as chapters and
+  shows a "Skip" prompt, and the server does the seek, so the phone remote skips the same way.
 
 The server stays the source of truth. The script sends intents and displays what the server tells it, so the browser
 and the player can't disagree.
@@ -424,9 +459,9 @@ version bump per plugin as its `CLAUDE.md` requires:
 1. Set `isCrossPlatform = true` on the tier A′ modules after checking that they have no Android imports.
 2. Move the `Context`/`SharedPreferences` use in Kayoanime, JavHdz, Extractors, MissAV, SexTB, JavStream and MkvDrama
    behind a seam, so the provider works without a `Context`. The settings UI stays Android-only.
-3. Later: a `StreamCornerEngine` seam (tier D).
-4. Optional: a lightweight settings schema (key, type, label, default) that the web UI can render, in place of the
-   Android fragments.
+3. ~~A `StreamCornerEngine` seam (tier D).~~ Not needed: Phase 10f emulates the `WebView` slice on the desktop.
+4. A lightweight settings schema that the web UI can render, in place of the Android fragments. Phase 10e defines it:
+   a `SETTINGS_SCHEMA` JSON constant on each `Plugin` class that has settings.
 
 ---
 
@@ -466,7 +501,7 @@ network.max_requests_per_host = 2
 ## 8. Phases
 
 Each phase ends with a check that can be shown working. **v1 = Phases 0–6 (done).** Phase 7 hardens v1 (done).
-**v1.1 = Phase 8 (done)**, **v1.2 = Phase 9 (done)**, and Phase 10 is later work.
+**v1.1 = Phase 8 (done)**, **v1.2 = Phase 9 (done)**, and **v1.3 = Phase 10 (done; StreamCorner live check open)**.
 
 **Phase 0: spike (de-risk the core decision)**
 - Pin the `recloudstream` `library` JVM artifact (JitPack) to a commit that matches the `cloudstream3:pre-release`
@@ -584,14 +619,155 @@ This phase settles v1 before Chromium adds more moving parts.
 - **Done when:** a fresh install with no local extensions repo loads every tier A–C plugin from the `builds` branch,
   and a plugin version bump upstream reaches the desktop through the UI.
 
-**Phase 10: later**
+**Phase 10 (v1.3): player polish, sources UI, plugin settings, StreamCorner (done; StreamCorner live check open)**
 
-- **Player:** skip intro/outro (AniSkip chapters plus a "Skip" prompt in the script) and uosc integration.
-- **UI:** show the success-history ranking on the sources sheet, per-plugin settings forms from the schema, and
-  next-episode prefetch status.
-- **Plugins:** StreamCorner (tier D, through a `StreamCornerEngine` seam) and Fetcharr rebuilt as a native web UI
-  action.
-- **Still out of scope:** downloads, DRM, and running the server on a different machine from mpv.
+Six independent steps, smallest first. Each step ships and is checked on its own. The bullets below describe what
+was built; see the Phase 10 results in the status section for what was verified live.
+
+*10a. Next-episode prefetch status*
+- `Session` keeps the `LinkSet` that `onTick` starts at 85%. A watcher on its `version` publishes
+  `PlayerState.next = {label, status, links}`, where `status` is `waiting` (before 85%), `resolving`, `ready` or
+  `failed`.
+- If the prefetched set goes stale (`LinkService.TTL`, for example after a long pause), resolve it again while the
+  position is still past 85%. That way `start()` on EOF always finds fresh links.
+- Web: the now-playing bar and the phone remote show "Next: S1E4 · 6 links ready" next to the next-episode button.
+
+*10b. Success-history ranking on the sources sheet*
+- `Store.linkScores` also returns the raw `successes` and `failures`. `LinkDto` gains `order`, `score`, `successes`
+  and `failures`, filled in when the link is emitted.
+- `PlayerState` gains `failedLinks`: the ids tried this session that didn't play.
+- Web: `sources.svelte.ts` sorts with the same comparator as `LinkService.ranked`: quality (Auto counts as 1079), then
+  score, then arrival order. Today it sorts by quality only. Each source group shows its record ("worked 8 of 10", or
+  "new"). The link that auto-play would pick is marked Best, and links that failed this session are marked as failed.
+- The two comparators are tested on the same cases (Kotlin and `vp test`), so the sheet and auto-play can't disagree.
+
+*10c. Skip intro/outro (AniSkip)*
+- IDs: `Mapper.details` exposes `malId` and `aniListId` from the load response's `syncData`. AniPm, AnimeX,
+  OmniAnime and Reanime set them through `addMalId` / `addAniListId` (Miruro doesn't). When only an AniList id is
+  known, map it with AniList's GraphQL `Media(id) { idMal }` and cache the result.
+  - On the JVM the library leaves the `syncData` keys (`malIdPrefix`, `aniListIdPrefix`, …) as `""`, so every id
+    overwrote the others. `PluginRuntime.setSyncIdPrefixes` sets the app's values ("MAL", "AniList", "Kitsu",
+    "SIMKL") at startup.
+- `desktop.player.SkipTimes`: once mpv reports `duration`, fetch
+  `api.aniskip.com/v2/skip-times/{malId}/{episode}?types=op&types=ed&types=mixed-op&types=mixed-ed&types=recap&episodeLength=0`.
+  Only `kind == anime` episodes with an episode number qualify. The request uses the host's own client, not the
+  plugins' `app`. Results are cached in a new `skip_times(mal_id, episode, json, fetched)` table (found for a week,
+  "not found" for a day).
+  - `episodeLength=0` turns off AniSkip's own length filter, so one cached answer serves every link of an episode.
+    `SkipTimes.matching` keeps, per type, the first result whose cut is within 15 s of the file's length.
+  - If nothing matches, the episode plays as normal.
+- Server → script: `skips {ranges: [{type, start, end}]}` after `file-loaded`. `PlayerState.skip = {type, end}` is
+  set while the position is inside a range, so the web UI can show the same button.
+- Script:
+  - Merge the ranges into `chapter-list` as "Opening", "Ending" and "Recap".
+  - While inside a range, show a "Skip opening" prompt and bind `key_skip` (default `TAB`). The key is bound only
+    while the prompt is visible, so it doesn't take the key away the rest of the time.
+  - The key sends `cs-event {"type":"skip"}`. The server seeks to the range's end, so mpv, the browser and the
+    phone all skip the same way.
+- New setting `playback.skip_segments = "prompt"` (`prompt | auto | off`). In `auto`, the server seeks when the
+  position enters a range, once per range per file, so seeking back into an opening on purpose still works.
+
+*10d. uosc integration*
+- uosc isn't installed here, so install it for this step. `install.sh` doesn't bundle it.
+- `script-message-to uosc` fails when uosc isn't loaded, so every call to uosc doubles as the presence check (the
+  `uosc-version` broadcast can arrive before this script registers for it). Without uosc, or with `uosc=no` in
+  `cloudstream.conf`, the pickers use `mp.input.select`.
+- With uosc:
+  - The source and episode pickers open as uosc menus (`open-menu` with `items: [{title, hint, value, active}]`,
+    where `hint` carries the quality and the source's record from 10b).
+  - The sources menu updates while links are still arriving (`update-menu`).
+  - Skip ranges show on uosc's timeline for free, because they're chapters.
+  - On uosc ≥ 5, the script registers previous/next episode, sources, episodes and skip buttons (`set-button`:
+    `cs_prev`, `cs_next`, `cs_sources`, `cs_episodes`, `cs_skip`), which users can place in `uosc.conf` `controls`.
+    `cs_skip` is hidden outside a skip range.
+
+*10e. Per-plugin settings forms from a schema*
+- Upstream (the extensions repo, with a version bump each): plugins with settings declare
+  `const val SETTINGS_SCHEMA` on their `Plugin` class. These are OmniStream (Pixeldrain key), Extractors, Kayoanime
+  (Drive API key), JavHdz, and MkvDrama once its new site is fixed. The value is a JSON string:
+  `[{file, key, type: string|secret|boolean|int|choice, label, help, default, options}]`.
+  - It's a plain string rather than a shared type, so the Cloudstream library doesn't change.
+  - It's a static field, so it survives dex2jar and works for published jars and converted `.cs3` alike.
+  - Android ignores it; its fragments stay as they are.
+- Desktop: `PluginHost` reads the field by reflection at load and passes it on in `PluginDto.settingsSchema`.
+  `PluginSettings.svelte` renders labelled fields: a password input for `secret`, a toggle, a number input or a
+  select. Keys the plugin read that aren't in the schema stay editable below, under "Other", in the current generic
+  form.
+
+*10f. StreamCorner (tier D): emulate the slice of `android.webkit` it uses, on the shared Chromium*
+
+This replaces the `StreamCornerEngine` seam that §4.2 planned. StreamCorner isn't `isCrossPlatform`, so repo mode
+converts its `.cs3`. A seam would need the desktop engine inside the plugin, or a reflective hook into the host.
+All of its WebView use sits in `StreamCornerBridge.kt`, and that surface is small. Emulating it runs the plugin
+unchanged in both modes, with no upstream change, as the `CookieManager` shim already does.
+
+- `compat/webview-cdp` adds `android.webkit.WebView`, `WebViewClient`, `WebSettings`, `WebResourceRequest`,
+  `WebResourceResponse` and `JavascriptInterface`, plus `CookieManager.setAcceptThirdPartyCookies`. Delegation is
+  parent-first, so these win over the android.jar stubs, as `CookieManager` does today. Each `WebView` is one tab of
+  the shared `desktop.cdp.Chromium`.
+  - `loadUrl` maps to `Page.navigate`, and `evaluateJavascript` to `Runtime.evaluate`.
+  - `shouldInterceptRequest`: `Fetch.enable` on every request at the Request stage. `Fetch.requestPaused` calls the
+    client on a worker thread, then answers with `Fetch.fulfillRequest` (status, headers, body) or
+    `continueRequest`. `isForMainFrame` means a Document request in the top frame.
+  - `shouldOverrideUrlLoading`: top-frame Document requests after the `loadUrl` one are offered to the client. A
+    `true` answer becomes `Fetch.failRequest(Aborted)`, which keeps pop-unders and the devtools trap off the page.
+  - `addJavascriptInterface(obj, name)`:
+    - Find the `@JavascriptInterface` methods by reflection.
+    - Define `window[name].method(…)` with `Page.addScriptToEvaluateOnNewDocument`. Each stub posts `{o, m, a}` to
+      `/__cs_javabridge__` on the page's own origin with a synchronous XHR, which the request interception answers
+      with the method's return value.
+    - So calls run in order and return values reach the page, as on Android. A CDP binding was the first plan, but
+      `Runtime.addBinding` doesn't survive the cross-process navigation without `Runtime.enable`, which pages can
+      detect (the site has a devtools trap).
+    - Methods run on a "JavaBridge" thread, with String, Int, Long, Float, Double and Boolean arguments.
+  - Out-of-process iframes are auto-attached (`Target.setAutoAttach`, paused until set up) and get their own request
+    interception. Dedicated workers have no `Fetch` domain; their requests pause in the page's session, so a worker is
+    only resumed, once on attach and again on `Inspector.workerScriptLoaded` (a resume before its script has loaded
+    is ignored, and a module worker stayed paused).
+  - `settings.userAgentString` reports Chromium's real user agent. `layout(…)` maps to
+    `Emulation.setDeviceMetricsOverride`. The remaining `WebSettings` setters do nothing. `destroy` closes the tab.
+  - Members outside the slice don't exist, so a plugin that calls one fails with `NoSuchMethodError`
+    (`LinkageCheck` skips `android/` references, so this shows at call time, not at load). An API-parity test checks
+    every emulated member against android.jar's signature, as the `WebViewResolver` shadow test does.
+  - Debug aid: `-Dcs.debug.webview` prints every CDP event and request decision of the emulated WebViews.
+- `Dispatchers.Main`: the JVM has none, and StreamCorner is the only plugin that uses it. A
+  `kotlinx.coroutines.internal.MainDispatcherFactory` service (one "main" thread) in `compat/android-shim` provides
+  it, next to a minimal `android.net.Uri` (what `WebResourceRequest.getUrl()` returns).
+- ClearKey: StreamCorner's Amazon feeds are single-key ClearKey DASH (`DrmExtractorLink` with a `kid` and `key`).
+  FFmpeg 9 (installed) has `cenc_decryption_key` on its DASH demuxer. So single-key ClearKey links become playable:
+  - Convert the key from base64url (or hex) to hex, and pass the per-file option
+    `demuxer-lavf-o=cenc_decryption_key=<hex>` (`ClearKey.hexKey`, `ResolvedLink.clearKey`).
+  - Mark these links "ClearKey" on the sheet.
+  - Widevine stays out of scope. Multi-key feeds stay disabled. So do ClearKey links whose manifest is carried
+    inline in `extractorData` (StreamCorner's NBA replays): the desktop doesn't serve inline manifests yet.
+
+**Done when:**
+- **Prefetch:** at 85%, the now-playing bar shows the next episode go from `resolving` to `ready` with a link count.
+  On EOF, the next episode starts from the prefetched set without a new `loadLinks`.
+- **Ranking:** the sources sheet's order matches the server's auto-play choice, and it shows each source's record
+  and this session's failed links.
+- **Skip:** an anime episode from OmniAnime or AniPm shows Opening/Ending chapters. The skip prompt appears in mpv and
+  on the phone remote, and both skip. `auto` skips with no input. A title without AniSkip data plays normally.
+- **uosc:** with uosc installed, the pickers open as uosc menus, and the sources menu fills while links resolve.
+  Without uosc, `mp.input.select` still works.
+- **Settings:** OmniStream and Kayoanime settings render as labelled forms from their schema, in dev mode and from
+  converted `.cs3` files in repo mode. Keys outside the schema stay editable.
+- **StreamCorner:** it loads in dev and repo mode, home and load work, and an HLS stream and a ClearKey DASH feed both
+  play in mpv. No Chromium tabs are left open after 10 plays.
+- **Tests (new):**
+  - AniSkip parsing and its cache, and the auto-skip rule (once per range).
+  - Ranking parity, in Kotlin and in web tests.
+  - Reading the schema from a jar and from a converted `.cs3`.
+  - The WebView shim against a local page: intercept and fulfill, a JS bridge round trip with return values, an
+    out-of-process iframe's requests, a module worker driven through `evaluateJavascript`, a blocked top-frame
+    navigation, no tabs left after `destroy`, and the API-parity test.
+  - Sync ids (MAL and AniList both survive) and ClearKey key formats.
+  - The Main dispatcher.
+
+**Later (not planned yet)**
+
+- Fetcharr stays excluded (§4.2). It can come back as a native web UI action.
+- **Still out of scope:** downloads, Widevine DRM, and running the server on a different machine from mpv.
 
 ---
 
@@ -608,4 +784,5 @@ This phase settles v1 before Chromium adds more moving parts.
 | The server listens on the LAN by default. | Anyone on the network could control playback or use the proxy. | A token is required for every non-loopback request, including `/proxy`. Pairing by QR, with token rotation. |
 | A systemd user service has no display environment. | mpv fails to open a window. | `PartOf=graphical-session.target` and importing the environment into the unit. The server checks for a display before launching mpv and shows a clear error in the UI. |
 | dex2jar mistranslates a `.cs3` (repo mode, plugins without a published jar). | A converted plugin fails to load or misbehaves. | Any method dex2jar can't translate fails the conversion. `LinkageCheck` and the JVM verifier run on the result. The converter version triggers reconversion after a fix, and dev mode and published jars avoid conversion altogether. |
+| The `android.webkit` emulation (Phase 10f) drifts from how StreamCorner uses WebView, or a new plugin needs more of it. | StreamCorner breaks after an upstream change, or a new tier D plugin fails. | Only the members StreamCorner uses are emulated; others fail with `NoSuchMethodError`. The API-parity test, plus a check of `StreamCornerBridge.kt` changes on each StreamCorner bump. A seam upstream remains the fallback. |
 | SvelteKit doesn't work under `vp`. | Phase 3 setup takes longer. | Fall back to plain Svelte 5 + Vite+ with a small client-side router. |

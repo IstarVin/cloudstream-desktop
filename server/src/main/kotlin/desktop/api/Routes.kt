@@ -178,7 +178,7 @@ fun Route.apiRoutes(s: Services) {
                 var sentSubs = 0
                 while (true) {
                     val v = set.version.value
-                    while (sentLinks < set.links.size) emit("link", sseJson.encodeToString(set.links[sentLinks++].dto()))
+                    while (sentLinks < set.links.size) emit("link", sseJson.encodeToString(s.links.dto(set.links[sentLinks++])))
                     while (sentSubs < set.subtitles.size) emit("subtitle", sseJson.encodeToString(set.subtitles[sentSubs++].dto()))
                     if (set.done && sentLinks == set.links.size && sentSubs == set.subtitles.size) break
                     withTimeoutOrNull(15_000) { set.version.first { it != v } } ?: emit("ping", "{}")
@@ -277,6 +277,7 @@ fun Route.apiRoutes(s: Services) {
                     runtimeLinkage = r.runtimeLinkage,
                     available = repo?.available(r.name)?.takeIf { repo.installable(r.name) }?.version,
                     previous = repo?.installed(r.name)?.previous?.firstOrNull()?.entry?.version,
+                    settingsSchema = r.loaded?.settingsSchema.orEmpty(),
                 )
             })
         }
@@ -354,9 +355,12 @@ private fun pluginSource(s: Services): PluginSourceDto {
     )
 }
 
+/** The preference files the plugin opened, plus any its settings schema names. */
 private fun prefFiles(s: Services, name: String): Set<String> {
     val r = s.host.plugins.firstOrNull { it.name == name } ?: throw NotFound("No plugin $name")
-    return r.loaded?.context?.openedPrefs?.toSet()?.ifEmpty { null } ?: setOf(name)
+    val opened = r.loaded?.context?.openedPrefs?.toSet().orEmpty()
+    val declared = r.loaded?.settingsSchema.orEmpty().mapNotNull { it.file }
+    return (opened + declared).ifEmpty { setOf(name) }
 }
 
 private fun pluginSettings(s: Services, name: String): PluginSettingsDto {

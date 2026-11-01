@@ -5,6 +5,8 @@ import com.lagradost.cloudstream3.AnimeSearchResponse
 import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.LiveStreamLoadResponse
 import com.lagradost.cloudstream3.LoadResponse
+import com.lagradost.cloudstream3.LoadResponse.Companion.getAniListId
+import com.lagradost.cloudstream3.LoadResponse.Companion.getMalId
 import com.lagradost.cloudstream3.MovieLoadResponse
 import com.lagradost.cloudstream3.MovieSearchResponse
 import com.lagradost.cloudstream3.SearchResponse
@@ -101,6 +103,8 @@ object Mapper {
             episodes = episodes,
             movieData = movieData,
             nsfw = providerNsfw || r.type == TvType.NSFW,
+            malId = runCatching { r.getMalId()?.toIntOrNull() }.getOrNull(),
+            aniListId = runCatching { r.getAniListId()?.toIntOrNull() }.getOrNull(),
         )
     }
 

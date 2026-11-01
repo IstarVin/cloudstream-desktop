@@ -1,4 +1,5 @@
 import { api, streamLinks } from "./api";
+import { compareLinks } from "./ranking";
 import { toasts } from "./toast.svelte";
 import type { Link, Subtitle } from "./types";
 
@@ -24,14 +25,16 @@ class Sources {
   chosenSubs = $state<string[]>([]);
   private close: (() => void) | null = null;
 
-  /** Links grouped by source, each group sorted by quality, groups ordered by their best link. */
+  /** Links in the order auto-play tries them (the server's ranking). */
+  get ranked() {
+    return [...this.links].sort(compareLinks);
+  }
+
+  /** Links grouped by source in ranked order, groups ordered by their best link. */
   get groups() {
     const by = new Map<string, Link[]>();
-    for (const l of this.links) by.set(l.source, [...(by.get(l.source) ?? []), l]);
-    const rank = (l: Link) => (l.playable ? 1 : 0) * 10000 + (l.quality === 400 ? 1079 : l.quality);
-    return [...by.entries()]
-      .map(([source, links]) => ({ source, links: links.sort((a, b) => rank(b) - rank(a)) }))
-      .sort((a, b) => rank(b.links[0]) - rank(a.links[0]));
+    for (const l of this.ranked) by.set(l.source, [...(by.get(l.source) ?? []), l]);
+    return [...by.entries()].map(([source, links]) => ({ source, links }));
   }
 
   /** Starts playback of an episode (the server auto-picks unless that's off) and shows its sources. */

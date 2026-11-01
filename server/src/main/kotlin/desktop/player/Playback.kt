@@ -46,6 +46,16 @@ import org.slf4j.LoggerFactory
 @Serializable
 data class Track(val id: Int, val type: String, val title: String?, val lang: String?, val selected: Boolean, val external: Boolean)
 
+/** The next episode's links, resolved in the background near the end of the current one. */
+@Serializable
+data class NextEpisode(
+    val label: String?,
+    /** waiting (before 85%) | resolving | ready | failed */
+    val status: String,
+    /** Playable links found so far. */
+    val links: Int = 0,
+)
+
 @Serializable
 data class PlayerState(
     /** idle | resolving | playing | paused | error */
@@ -67,6 +77,11 @@ data class PlayerState(
     val hasNext: Boolean = false,
     val hasPrev: Boolean = false,
     val mpvRunning: Boolean = false,
+    val next: NextEpisode? = null,
+    /** Links of this item that failed to play this session. */
+    val failedLinks: List<String> = emptyList(),
+    /** The opening, ending or recap the position is in (AniSkip), while the player offers to skip it. */
+    val skip: SkipRange? = null,
 )
 
 /** One title being played: its details and episode list (one dub for anime), and which entry is current. */
@@ -100,13 +115,19 @@ object AutoPlay {
 
 private class Session(val item: Item, val set: LinkSet, val generation: Int, var startAt: Double?) {
     val tried = mutableSetOf<String>()
+    val failed = mutableSetOf<String>()
     var link: ResolvedLink? = null
     var entryId: Long? = null
     val addedSubs = mutableSetOf<String>()
     var chosenSubs: List<String> = emptyList()
     var playStartedAt: Double? = null
     var recordedSuccess = false
-    var prefetched = false
+    /** The next episode's links, once the prefetch near the end has started. */
+    var nextSet: LinkSet? = null
+    /** AniSkip ranges for the loaded file, and the ones already skipped in it. */
+    var skips: List<SkipRange> = emptyList()
+    val skipped = mutableSetOf<SkipRange>()
+    var skipsRequested = false
     var lastSaved = 0L
     var finished = false
     /** True once mpv has loaded the current link; position events before that belong to the previous file. */
@@ -128,6 +149,7 @@ class Playback(
     private val store: Store,
     private val settings: Settings,
     private val port: Int,
+    private val skipTimes: SkipTimes,
 ) {
     private val log = LoggerFactory.getLogger(Playback::class.java)
     private val json = Json { encodeDefaults = true }
@@ -179,7 +201,8 @@ class Playback(
                 status = "resolving", message = "Resolving links…", position = 0.0, duration = 0.0,
                 title = d.name, episodeLabel = item.label, provider = d.provider, url = d.url, data = item.data,
                 poster = d.poster, link = null, audioTracks = emptyList(), subTracks = emptyList(),
-                hasNext = item.hasNext, hasPrev = item.hasPrev,
+                hasNext = item.hasNext, hasPrev = item.hasPrev, failedLinks = emptyList(),
+                next = if (item.hasNext) NextEpisode(item.at(item.index + 1).label, "waiting") else null,
             )
         }
         val ipc = try {
@@ -233,6 +256,9 @@ class Playback(
         s.finished = false
         s.fileLoaded = false
         s.addedSubs.clear()
+        s.skips = emptyList()
+        s.skipped.clear()
+        s.skipsRequested = false
         val l = link.link
         val headers = l.headers.toMutableMap()
         val ua = headers.keys.firstOrNull { it.equals("User-Agent", true) }?.let(headers::remove) ?: USER_AGENT
@@ -255,9 +281,10 @@ class Playback(
                 if (headers.isNotEmpty()) put("http-header-fields", headers.entries.joinToString(",") { "${it.key}: ${it.value}" })
             }
             if (startAt != null && startAt > 0) put("start", "%.1f".format(java.util.Locale.ROOT, startAt))
+            link.clearKey?.let { put("demuxer-lavf-o", "cenc_decryption_key=$it") }
         }
         log.info("Playing {} [{}] {} via {}", l.source, Mapper.qualityLabel(l.quality), if (needsProxy) "proxy" else "direct", l.url)
-        _state.update { it.copy(status = "resolving", message = "Loading ${l.source} ${Mapper.qualityLabel(l.quality)}…", link = link.dto(), position = startAt ?: 0.0, duration = 0.0) }
+        _state.update { it.copy(status = "resolving", message = "Loading ${l.source} ${Mapper.qualityLabel(l.quality)}…", link = links.dto(link), position = startAt ?: 0.0, duration = 0.0, skip = null) }
         try {
             val reply = ipc.command("loadfile", url, "replace", -1, opts)
             s.entryId = (reply as? JsonObject)?.get("playlist_entry_id")?.jsonPrimitive?.longOrNull
@@ -269,6 +296,8 @@ class Playback(
     private suspend fun onLinkFailed(s: Session, reason: String) {
         val failed = s.link ?: return
         store.recordLink(s.item.provider, failed.link.source, success = false)
+        s.failed.add(failed.id)
+        _state.update { it.copy(failedLinks = s.failed.toList()) }
         val next = links.ranked(s.set).firstOrNull { it.id !in s.tried }
         log.info("Link {} failed ({}); next: {}", failed.link.source, reason, next?.link?.source)
         val msg = if (next != null) "Link failed, trying ${next.link.source} ${Mapper.qualityLabel(next.link.quality)}…" else "Link failed, waiting for more links…"
@@ -375,7 +404,13 @@ class Playback(
                 _state.update { it.copy(position = pos) }
                 if (s != null) onTick(s, pos)
             }
-            "duration" -> if (s?.fileLoaded == true) (data as? JsonPrimitive)?.doubleOrNull?.let { d -> _state.update { it.copy(duration = d) } }
+            "duration" -> if (s?.fileLoaded == true) (data as? JsonPrimitive)?.doubleOrNull?.let { d ->
+                _state.update { it.copy(duration = d) }
+                if (d > 0 && !s.skipsRequested) {
+                    s.skipsRequested = true
+                    scope.launch { loadSkips(s, d) }
+                }
+            }
             "pause" -> (data as? JsonPrimitive)?.booleanOrNull?.let { p ->
                 _state.update { it.copy(paused = p, status = if (it.status == "playing" || it.status == "paused") (if (p) "paused" else "playing") else it.status) }
             }
@@ -413,10 +448,62 @@ class Playback(
             s.lastSaved = now
             saveProgress()
         }
-        // Resolve the next episode's links in the background near the end.
-        if (!s.prefetched && duration > 0 && pos > duration * 0.85 && s.item.hasNext) {
-            s.prefetched = true
-            host.provider(s.item.provider)?.let { links.resolve(it.api, s.item.episodes[s.item.index + 1].data) }
+        updateSkip(s, pos)
+        // Resolve the next episode's links in the background near the end, and again if they go stale (a long pause)
+        // so the next episode always starts from fresh links.
+        if (duration > 0 && pos > duration * 0.85 && s.item.hasNext && s.nextSet?.stale != false) prefetchNext(s)
+    }
+
+    /** Fetches AniSkip ranges for an anime episode once its length is known, and hands them to the script. */
+    private suspend fun loadSkips(s: Session, duration: Double) {
+        val d = s.item.details
+        val episode = s.item.episode?.episode
+        if (d.kind != "anime" || episode == null || (d.malId == null && d.aniListId == null)) return
+        if (settings.string(Settings.SKIP_SEGMENTS) == "off") return
+        val entry = s.entryId
+        val ranges = skipTimes.forEpisode(d.malId, d.aniListId, episode, duration)
+        if (ranges.isEmpty() || s.generation != generation || s.entryId != entry) return
+        log.info("AniSkip for {} {}: {}", d.name, s.item.label, ranges.joinToString { "${it.type} ${it.start.toInt()}–${it.end.toInt()}" })
+        s.skips = ranges
+        script("skips", mapOf("ranges" to ranges.map { mapOf("type" to it.type, "label" to it.label, "start" to it.start, "end" to it.end) },
+            "auto" to (settings.string(Settings.SKIP_SEGMENTS) == "auto")))
+    }
+
+    /** Publishes the range the position is in, and in auto mode seeks past it (once per range per file). */
+    private fun updateSkip(s: Session, pos: Double) {
+        if (s.skips.isEmpty()) return
+        val mode = settings.string(Settings.SKIP_SEGMENTS)
+        // A range already skipped stays hidden, so the prompt doesn't flash back while the seek lands.
+        val current = SkipRule.current(s.skips, pos)?.takeIf { mode != "off" && it !in s.skipped }
+        if (_state.value.skip != current) _state.update { it.copy(skip = current) }
+        if (mode == "auto") SkipRule.autoSkip(s.skips, pos, s.skipped)?.let { skipTo(s, it, auto = true) }
+    }
+
+    private fun skipTo(s: Session, range: SkipRange, auto: Boolean) {
+        s.skipped.add(range)
+        mpv.ipc?.post("seek", range.end, "absolute")
+        _state.update { it.copy(skip = null) }
+        if (auto) osd("Skipped ${range.label.lowercase()}")
+    }
+
+    private fun prefetchNext(s: Session) {
+        val provider = host.provider(s.item.provider) ?: return
+        val next = s.item.at(s.item.index + 1)
+        val set = links.resolve(provider.api, next.data)
+        s.nextSet = set
+        scope.launch {
+            while (s.generation == generation && s.nextSet === set) {
+                val v = set.version.value
+                val playable = set.links.count { it.playable }
+                val status = when {
+                    !set.done -> "resolving"
+                    playable > 0 -> "ready"
+                    else -> "failed"
+                }
+                _state.update { it.copy(next = NextEpisode(next.label, status, playable)) }
+                if (set.done) return@launch
+                withTimeoutOrNull(1000) { set.version.first { it != v } }
+            }
         }
     }
 
@@ -465,6 +552,7 @@ class Playback(
                 if (s.item.hasNext) start(s.item.at(s.item.index + 1))
             }
             "episode" -> if (s != null) body.value?.toInt()?.takeIf { it in s.item.episodes.indices }?.let { start(s.item.at(it)) }
+            "skip" -> if (s != null) SkipRule.current(s.skips, _state.value.position)?.let { skipTo(s, it, auto = false) }
             "track" -> {
                 val prop = when (body.type) { "audio" -> "aid"; "sub" -> "sid"; else -> throw IllegalArgumentException("type must be audio or sub") }
                 ipc?.command("set_property", prop, body.id ?: "no")
@@ -494,9 +582,15 @@ class Playback(
             "next" -> command("next", PlayerCommand())
             "prev" -> command("prev", PlayerCommand())
             "watched-next" -> command("watched-next", PlayerCommand())
+            "skip" -> command("skip", PlayerCommand())
             "sources" -> if (s != null) {
+                val stats = store.linkStats(s.item.provider)
                 val list = links.ranked(s.set).map { l ->
-                    mapOf("id" to l.id, "label" to "${l.link.source} · ${Mapper.qualityLabel(l.link.quality)}${if (l.id in s.tried && l != s.link) " (failed)" else ""}", "current" to (l == s.link))
+                    val quality = Mapper.qualityLabel(l.link.quality)
+                    val failed = if (l.id in s.failed && l != s.link) " (failed)" else ""
+                    val record = stats[l.link.source]?.let { "worked ${it.successes} of ${it.successes + it.failures}" } ?: "new"
+                    mapOf("id" to l.id, "label" to "${l.link.source} · $quality$failed", "current" to (l == s.link),
+                        "title" to l.link.source, "hint" to "$quality$failed · $record")
                 }
                 script("sources", mapOf("items" to list, "loading" to !s.set.done))
             }

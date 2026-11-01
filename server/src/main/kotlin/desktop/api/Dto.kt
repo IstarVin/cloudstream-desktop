@@ -1,5 +1,6 @@
 package desktop.api
 
+import desktop.plugins.SettingField
 import kotlinx.serialization.Serializable
 
 // Stable shapes for the web UI and the mpv script. Nothing here mirrors Cloudstream's classes directly, so a library
@@ -39,6 +40,8 @@ data class PluginDto(
     val available: Int? = null,
     /** Repo mode: the version a rollback would restore. */
     val previous: Int? = null,
+    /** Labelled settings the plugin declares; the form shows any other keys below them. */
+    val settingsSchema: List<SettingField> = emptyList(),
 )
 
 @Serializable
@@ -151,6 +154,9 @@ data class Details(
     val movieProgress: Progress? = null,
     val nsfw: Boolean,
     val bookmarked: String? = null,
+    /** MyAnimeList and AniList ids, when the provider sets them (anime); used for AniSkip. */
+    val malId: Int? = null,
+    val aniListId: Int? = null,
 )
 
 @Serializable
@@ -167,6 +173,12 @@ data class LinkDto(
     /** Played through the header-injecting proxy instead of directly. */
     val proxied: Boolean,
     val host: String,
+    /** Arrival order within its episode's links. */
+    val order: Int = 0,
+    /** The source's success ratio for this provider, smoothed so a new source starts at 0.5. */
+    val score: Double = 0.5,
+    val successes: Int = 0,
+    val failures: Int = 0,
 )
 
 @Serializable

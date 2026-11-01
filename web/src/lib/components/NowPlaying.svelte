@@ -3,7 +3,7 @@
   import { player } from "../player.svelte";
   import { sources } from "../sources.svelte";
   import { toasts } from "../toast.svelte";
-  import { ChevronDown, Layers, MonitorPlay, Pause, Play, RotateCcw, RotateCw, SkipBack, SkipForward, Square, Subtitles, Volume1, Volume2 } from "@lucide/svelte";
+  import { ChevronDown, FastForward, Layers, MonitorPlay, Pause, Play, RotateCcw, RotateCw, SkipBack, SkipForward, Square, Subtitles, Volume1, Volume2 } from "@lucide/svelte";
 
   const s = $derived(player.state);
   const pct = $derived(s.duration > 0 ? (s.position / s.duration) * 100 : 0);
@@ -23,6 +23,25 @@
     if (!s.provider || !s.url || !s.data) return;
     sources.show({ provider: s.provider, url: s.url, data: s.data, title: s.title ?? "", label: s.episodeLabel ?? null });
   }
+
+  const nextText = $derived.by(() => {
+    const n = s.next;
+    if (!n) return null;
+    const label = n.label ?? "next episode";
+    const links = `${n.links} link${n.links === 1 ? "" : "s"}`;
+    switch (n.status) {
+      case "waiting":
+        return null;
+      case "resolving":
+        return `Next: ${label} · finding links${n.links ? ` (${links} so far)` : "…"}`;
+      case "ready":
+        return `Next: ${label} · ${links} ready`;
+      case "failed":
+        return `Next: ${label} · no links found`;
+    }
+  });
+
+  const skipLabel = $derived(s.skip ? `Skip ${{ op: "opening", ed: "ending", recap: "recap" }[s.skip.type]}` : null);
 
   function trackLabel(t: { id: number; title: string | null; lang: string | null; external: boolean }) {
     return [t.lang?.toUpperCase(), t.title].filter(Boolean).join(" · ") || `Track ${t.id}`;
@@ -46,11 +65,14 @@
       </div>
     </button>
     {#if busy}<div class="spinner"></div>{/if}
+    {#if skipLabel}
+      <button class="skip-btn" onclick={() => cmd("skip")}><FastForward size={16} strokeWidth={1.8} aria-hidden="true" /> {skipLabel}</button>
+    {/if}
     <button class="icon-btn" onclick={() => cmd("toggle")} aria-label={s.paused ? "Play" : "Pause"} disabled={busy}>
       {#if s.paused}<Play size={22} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />{:else}<Pause size={22} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />{/if}
     </button>
     {#if s.hasNext}
-      <button class="icon-btn hide-sm" onclick={() => cmd("next")} aria-label="Next episode"><SkipForward size={22} strokeWidth={1.8} aria-hidden="true" /></button>
+      <button class="icon-btn hide-sm" class:primed={s.next?.status === "ready"} onclick={() => cmd("next")} aria-label="Next episode" title={nextText ?? "Next episode"}><SkipForward size={22} strokeWidth={1.8} aria-hidden="true" /></button>
     {/if}
   </div>
 {/if}
@@ -79,6 +101,7 @@
         {#if s.episodeLabel}<div class="episode">{s.episodeLabel}</div>{/if}
         {#if s.link}<div class="faint">{s.link.source} · {s.link.qualityLabel}{s.link.proxied ? " · proxied" : ""}</div>{/if}
         {#if s.message}<div class={["msg", { err: s.status === "error" }]}>{s.message}</div>{/if}
+        {#if nextText}<div class={["next", s.next?.status]}>{nextText}</div>{/if}
       </div>
 
       <div class="seek">
@@ -98,6 +121,10 @@
         />
         <div class="times"><span>{formatTime(scrub ?? s.position)}</span><span>-{formatTime(s.duration - (scrub ?? s.position))}</span></div>
       </div>
+
+      {#if skipLabel}
+        <button class="skip-btn big" onclick={() => cmd("skip")}><FastForward size={18} strokeWidth={1.8} aria-hidden="true" /> {skipLabel}</button>
+      {/if}
 
       <div class="controls">
         <button class="icon-btn lg" onclick={() => cmd("prev")} disabled={!s.hasPrev} aria-label="Previous episode"><SkipBack size={26} strokeWidth={1.8} aria-hidden="true" /></button>
@@ -292,6 +319,29 @@
   .faint { color: var(--muted); font-size: 13px; }
   .msg { margin-top: 6px; font-size: 14px; color: var(--accent); }
   .msg.err { color: var(--danger); }
+  .next { margin-top: 4px; font-size: 13px; color: var(--muted); }
+  .next.ready { color: var(--good); }
+  .next.failed { color: var(--danger); }
+  .icon-btn.primed { color: var(--good); }
+  .skip-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface-3);
+    font-size: 13px;
+    font-weight: 650;
+    white-space: nowrap;
+    transition: background-color 150ms ease, transform 150ms ease;
+    animation: bar-in 200ms ease-out both;
+  }
+  .skip-btn:hover { background: var(--accent-soft); color: var(--accent); }
+  .skip-btn:active { transform: scale(0.95); }
+  .skip-btn.big { align-self: flex-end; height: 44px; padding: 0 18px; margin-top: 14px; font-size: 14px; }
   .seek input, .vol input { width: 100%; padding: 0; accent-color: var(--accent); background: none; border: 0; cursor: pointer; }
   .seek input:disabled { cursor: default; }
   .times { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }

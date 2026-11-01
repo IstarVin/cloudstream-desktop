@@ -1,0 +1,48 @@
+{
+  "_comment": "Link ranking cases shared by server/src/test/kotlin/desktop/RankingTest.kt and web/src/lib/ranking.test.ts, so the sources sheet and auto-play order links the same way. Quality 400 is Qualities.Unknown (\"Auto\").",
+  "cases": [
+    {
+      "name": "quality first",
+      "links": [
+        { "id": "a", "quality": 720, "score": 0.9, "order": 0, "playable": true },
+        { "id": "b", "quality": 1080, "score": 0.1, "order": 1, "playable": true },
+        { "id": "c", "quality": 2160, "score": 0.5, "order": 2, "playable": true }
+      ],
+      "expected": ["c", "b", "a"]
+    },
+    {
+      "name": "auto HLS ranks just under 1080p",
+      "links": [
+        { "id": "auto", "quality": 400, "score": 0.5, "order": 0, "playable": true },
+        { "id": "p1080", "quality": 1080, "score": 0.5, "order": 1, "playable": true },
+        { "id": "p720", "quality": 720, "score": 0.5, "order": 2, "playable": true }
+      ],
+      "expected": ["p1080", "auto", "p720"]
+    },
+    {
+      "name": "success history breaks quality ties",
+      "links": [
+        { "id": "flaky", "quality": 1080, "score": 0.2, "order": 0, "playable": true },
+        { "id": "new", "quality": 1080, "score": 0.5, "order": 1, "playable": true },
+        { "id": "solid", "quality": 1080, "score": 0.9, "order": 2, "playable": true }
+      ],
+      "expected": ["solid", "new", "flaky"]
+    },
+    {
+      "name": "arrival order breaks the rest",
+      "links": [
+        { "id": "late", "quality": 720, "score": 0.5, "order": 5, "playable": true },
+        { "id": "early", "quality": 720, "score": 0.5, "order": 1, "playable": true }
+      ],
+      "expected": ["early", "late"]
+    },
+    {
+      "name": "unplayable links go last",
+      "links": [
+        { "id": "drm", "quality": 2160, "score": 0.9, "order": 0, "playable": false },
+        { "id": "sd", "quality": 480, "score": 0.1, "order": 1, "playable": true }
+      ],
+      "expected": ["sd", "drm"]
+    }
+  ]
+}

@@ -46,6 +46,8 @@ class PluginHost(private val config: Config, private val settings: Settings) {
         /** Path and mtime of the jar it came from, to notice a rebuilt or updated jar. */
         val jarKey: String,
         val filename: String,
+        /** Labelled settings the plugin declares (see [SettingsSchema]). */
+        val settingsSchema: List<SettingField> = emptyList(),
     )
 
     class Record(@Volatile var info: ModuleInfo) {
@@ -265,7 +267,10 @@ class PluginHost(private val config: Config, private val settings: Settings) {
             instance.filename = copy.absolutePath
             val context = DesktopContext(r.name)
             if (instance is Plugin) instance.load(context) else instance.load()
-            r.loaded = Loaded(loader, instance, context, key, copy.absolutePath)
+            // load() has opened the plugin's preference files by now; a schema entry without a file means the first one.
+            val defaultFile = context.openedPrefs.sorted().firstOrNull() ?: r.name
+            val schema = SettingsSchema.read(instance.javaClass).map { it.copy(file = it.file ?: defaultFile) }
+            r.loaded = Loaded(loader, instance, context, key, copy.absolutePath, schema)
             r.status = Status.LOADED
             r.error = null
             r.runtimeLinkage = null

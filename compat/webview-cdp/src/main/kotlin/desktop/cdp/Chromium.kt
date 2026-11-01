@@ -91,6 +91,9 @@ object Chromium {
 
         suspend fun send(method: String, params: JsonObject = CdpConnection.EMPTY) = conn.send(method, params, sessionId)
 
+        /** Sends to one of this tab's child sessions (an out-of-process iframe or a worker it auto-attached). */
+        suspend fun sendTo(session: String, method: String, params: JsonObject = CdpConnection.EMPTY) = conn.send(method, params, session)
+
         suspend fun navigate(url: String, referrer: String? = null) {
             send("Page.navigate", buildJsonObject {
                 put("url", url)
@@ -197,6 +200,13 @@ object Chromium {
         }
     }
 
+    /** Open tabs (not counting their iframe and worker sessions); 0 when Chromium isn't running. */
+    fun openTabs(): Int = browser?.tabs?.count { (session, tab) -> session == tab.sessionId } ?: 0
+
+    /** Chromium's user agent for pages (what a WebView reports as `userAgentString`), without starting it. */
+    fun pageUserAgent(): String = WebViewResolver.webViewUserAgent ?: executable()?.let(::userAgent)
+        ?: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+
     private suspend fun openTab(b: Browser): Tab {
         val targetId = b.conn.send("Target.createTarget", buildJsonObject { put("url", "about:blank") })["targetId"]!!.jsonPrimitive.content
         val sessionId = b.conn.send("Target.attachToTarget", buildJsonObject {
@@ -213,9 +223,17 @@ object Chromium {
     private fun route(b: Browser, e: CdpEvent) {
         when {
             e.method == CdpConnection.DISCONNECTED -> b.tabs.values.forEach { it.events.close() }
-            e.method == "Target.detachedFromTarget" ->
-                e.params["sessionId"]?.jsonPrimitive?.content?.let { b.tabs[it]?.events?.close() }
-            e.sessionId != null -> b.tabs[e.sessionId]?.events?.trySend(e)
+            e.method == "Target.detachedFromTarget" -> e.params["sessionId"]?.jsonPrimitive?.content?.let { id ->
+                // A child session (iframe, worker) going away only drops its route; the tab itself closes its channel.
+                val tab = b.tabs.remove(id)
+                if (tab?.sessionId == id) tab.events.close()
+            }
+            else -> {
+                val tab = e.sessionId?.let { b.tabs[it] } ?: return
+                // Sessions a tab auto-attaches (Target.setAutoAttach) route to the same tab, tagged with their own id.
+                if (e.method == "Target.attachedToTarget") e.params["sessionId"]?.jsonPrimitive?.content?.let { b.tabs[it] = tab }
+                tab.events.trySend(e)
+            }
         }
     }
 

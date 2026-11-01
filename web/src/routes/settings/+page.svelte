@@ -5,7 +5,7 @@
   import { ChevronDown, RefreshCw, Smartphone, Square } from "@lucide/svelte";
   import PluginSettings from "#lib/components/PluginSettings.svelte";
   import { toasts } from "#lib/toast.svelte";
-  import type { BrowserMode, BrowserStatus, PluginInfo, PluginSource, PluginSourceMode, Settings } from "#lib/types";
+  import type { BrowserMode, BrowserStatus, PluginInfo, PluginSource, PluginSourceMode, Settings, SkipMode } from "#lib/types";
 
   const client = useQueryClient();
   const settings = createQuery(() => ({ queryKey: ["settings"], queryFn: api.settings }));
@@ -207,6 +207,15 @@
         <span><b>Play the next episode automatically</b></span>
         <input type="checkbox" checked={s.autoplay_next} onchange={(e) => save({ autoplay_next: e.currentTarget.checked })} />
       </label>
+      <label class="stack">
+        <b>Skip anime openings and endings</b>
+        <small class="muted">Times come from AniSkip, for providers that give the MyAnimeList or AniList id. They also show as chapters in mpv.</small>
+        <select value={s.skip_segments} onchange={(e) => save({ skip_segments: e.currentTarget.value as SkipMode })}>
+          <option value="prompt">Offer a Skip button</option>
+          <option value="auto">Skip automatically</option>
+          <option value="off">Off</option>
+        </select>
+      </label>
       <label class="toggle">
         <span><b>Send every stream through the proxy</b><small>Only needed when a site rejects mpv's direct requests.</small></span>
         <input type="checkbox" checked={s.proxy_all} onchange={(e) => save({ proxy_all: e.currentTarget.checked })} />
@@ -363,7 +372,7 @@
               {#if p.previous != null}
                 <button class="link-btn" onclick={() => repoAction(p.name, () => api.rollbackPlugin(p.name))} disabled={working !== null}>Roll back to v{p.previous}</button>
               {/if}
-              {#if p.status === "loaded"}<PluginSettings name={p.name} />{/if}
+              {#if p.status === "loaded"}<PluginSettings name={p.name} schema={p.settingsSchema ?? []} />{/if}
             </div>
           {/if}
         </li>

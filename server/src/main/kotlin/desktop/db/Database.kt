@@ -38,6 +38,12 @@ class Database(file: File) {
                     PRIMARY KEY(provider, source_name))"""
             )
             st.execute("CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            // AniSkip's answer per MyAnimeList id and episode (desktop.player.SkipTimes).
+            st.execute(
+                """CREATE TABLE IF NOT EXISTS skip_times(
+                    mal_id INTEGER NOT NULL, episode INTEGER NOT NULL, json TEXT NOT NULL, fetched INTEGER NOT NULL,
+                    PRIMARY KEY(mal_id, episode))"""
+            )
         }
     }
 

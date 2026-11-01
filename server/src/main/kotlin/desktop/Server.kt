@@ -17,6 +17,7 @@ import desktop.links.StreamProxy
 import desktop.player.MpvManager
 import desktop.player.NoDisplayException
 import desktop.player.Playback
+import desktop.player.SkipTimes
 import desktop.plugins.PluginHost
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
@@ -42,7 +43,7 @@ fun serve(config: Config, db: Database, settings: Settings, host: PluginHost, sc
     val links = LinkService(scope, store, host)
     val proxy = StreamProxy()
     val mpv = MpvManager(config, settings)
-    val playback = Playback(scope, host, catalog, links, proxy, mpv, store, settings, config.bindPort)
+    val playback = Playback(scope, host, catalog, links, proxy, mpv, store, settings, config.bindPort, SkipTimes(db))
     val auth = Auth()
     val services = Services(host, catalog, links, proxy, playback, store, settings, auth, scope, config.bindPort, config.devPath)
 

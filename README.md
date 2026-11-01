@@ -35,6 +35,7 @@ The first start writes `~/.config/cloudstream-desktop/config.toml`; set `plugins
 | Web UI with hot reload | `cd web && vp dev` (proxies `/api` to a running server) |
 | Web checks and tests | `cd web && vp check && vpr check && vp test` |
 | Exercise link fallback | run the server with `-Dcs.debug.failSources="Dulo Pickle,…"` |
+| Trace emulated WebViews | run the server with `-Dcs.debug.webview` (every CDP event and request decision, on stderr) |
 
 In dev mode, plugins hot-reload whenever `<Module>/build/<Module>.jar` changes in the extensions repo. Settings → Plugins →
 Rebuild runs `gradlew -I desktop-jars.init.gradle :Name:compilePluginJar`, which also produces jars for modules that
@@ -43,11 +44,15 @@ aren't marked `isCrossPlatform`.
 ## Layout
 
 - `server/`: Ktor app (plugin host, API, mpv manager, HLS proxy, SQLite).
-- `compat/android-shim/`: `Context`, JSON-backed `SharedPreferences`, `Log`, `Base64`, `Plugin`, `CloudStreamApp`,
-  `DataStore`, and empty fragment classes the verifier needs for converted plugins' settings sheets.
-- `compat/webview-cdp/`: `WebViewResolver`, `CloudflareKiller` and `CookieManager` on a shared Chromium over CDP.
-  It must come before `library-jvm` on the classpath, because the library has a `WebViewResolver` of its own.
+- `compat/android-shim/`: `Context`, JSON-backed `SharedPreferences`, `Log`, `Base64`, `Uri`, `Dispatchers.Main`,
+  `Plugin`, `CloudStreamApp`, `DataStore`, and empty fragment classes the verifier needs for converted plugins'
+  settings sheets.
+- `compat/webview-cdp/`: `WebViewResolver`, `CloudflareKiller`, `CookieManager` and the slice of `android.webkit.WebView`
+  StreamCorner uses, on a shared Chromium over CDP. It must come before `library-jvm` on the classpath, because the
+  library has a `WebViewResolver` of its own.
 - `web/`: SvelteKit SPA on Vite+, built into the server's resources.
-- `mpv/`: `cloudstream.lua` and its default keybindings.
+- `mpv/`: `cloudstream.lua` (OSD, pickers, AniSkip chapters and Skip prompt, uosc menus and buttons when uosc is
+  installed) and its default keybindings.
+- `testdata/`: cases shared by the server and web tests (link ranking).
 - `packaging/`: systemd unit, `.desktop` entry, installer.
 - `.github/workflows/ci.yml`: web checks and server tests.

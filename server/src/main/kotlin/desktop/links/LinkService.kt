@@ -2,6 +2,7 @@ package desktop.links
 
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.utils.CLEARKEY_UUID
 import com.lagradost.cloudstream3.utils.DrmExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
@@ -10,6 +11,7 @@ import desktop.api.LinkDto
 import desktop.api.Mapper
 import desktop.api.SubtitleDto
 import desktop.api.describe
+import desktop.db.LinkStat
 import desktop.db.Store
 import desktop.plugins.PluginHost
 import kotlinx.coroutines.CoroutineScope
@@ -33,11 +35,13 @@ class ResolvedLink(
     val interceptor: Interceptor?,
     val order: Int,
 ) {
-    val playable = link !is DrmExtractorLink && link.url.startsWith("http") &&
+    /** For a ClearKey DASH link with one key, the key in hex: mpv's DASH demuxer decrypts with it. */
+    val clearKey: String? = (link as? DrmExtractorLink)?.let(ClearKey::hexKey)
+    val playable = (link !is DrmExtractorLink || clearKey != null) && link.url.startsWith("http") &&
         link.type in setOf(ExtractorLinkType.VIDEO, ExtractorLinkType.M3U8, ExtractorLinkType.DASH)
     val proxied = interceptor != null
 
-    fun dto() = LinkDto(
+    fun dto(stat: LinkStat? = null) = LinkDto(
         id = id,
         source = link.source,
         name = link.name,
@@ -48,7 +52,47 @@ class ResolvedLink(
         playable = playable,
         proxied = proxied,
         host = runCatching { URI(link.url).host }.getOrNull().orEmpty(),
+        order = order,
+        score = (stat ?: LinkStat(0, 0)).score,
+        successes = stat?.successes ?: 0,
+        failures = stat?.failures ?: 0,
     )
+}
+
+/** ClearKey (not Widevine) links mpv can play: FFmpeg's DASH demuxer decrypts CENC with a known key. */
+object ClearKey {
+    private val HEX = Regex("^[0-9a-fA-F]{32}$")
+
+    /**
+     * The key of [link] as 32 hex digits when it's a single-key ClearKey DASH link with a real manifest URL; null
+     * otherwise. Keys come as hex or base64url (the JWK form plugins use). A manifest carried inline in
+     * `extractorData` (the app serves it itself) isn't supported yet.
+     */
+    fun hexKey(link: DrmExtractorLink): String? {
+        if (link.uuid != CLEARKEY_UUID || link.type != ExtractorLinkType.DASH || !link.extractorData.isNullOrEmpty()) return null
+        return toHex(link.key ?: return null)
+    }
+
+    fun toHex(key: String): String? {
+        val k = key.trim()
+        if (HEX.matches(k)) return k.lowercase()
+        val bytes = runCatching { java.util.Base64.getUrlDecoder().decode(k.replace('+', '-').replace('/', '_').trimEnd('=')) }.getOrNull()
+        return bytes?.takeIf { it.size == 16 }?.joinToString("") { "%02x".format(it) }
+    }
+}
+
+/**
+ * The order links are offered in, best first: playable links before the rest, then quality (an adaptive "Auto" HLS
+ * counts as just under 1080p), then how often the source has worked before, then arrival order. The web UI's sources
+ * sheet sorts the same way (`web/src/lib/ranking.ts`); `testdata/ranking-cases.json` keeps the two in step.
+ */
+object LinkRanking {
+    fun quality(q: Int) = if (q == Qualities.Unknown.value) 1079 else q
+
+    val comparator: Comparator<LinkDto> = compareByDescending<LinkDto> { it.playable }
+        .thenByDescending { quality(it.quality) }
+        .thenByDescending { it.score }
+        .thenBy { it.order }
 }
 
 class ResolvedSubtitle(val id: String, val sub: SubtitleFile) {
@@ -64,6 +108,9 @@ class LinkSet(val provider: String, val data: String) {
     @Volatile var firstLinkAt: Long? = null
     val created = System.currentTimeMillis()
     lateinit var job: Job
+
+    /** Old enough that [LinkService.resolve] would run `loadLinks` again (stream URLs expire). */
+    val stale get() = System.currentTimeMillis() - created > LinkService.TTL
 
     /** Bumped on every new link, subtitle or completion, so listeners can wait for changes. */
     private val _version = MutableStateFlow(0)
@@ -93,9 +140,8 @@ class LinkService(private val scope: CoroutineScope, private val store: Store, p
         expire()
         val key = api.name to data
         sets[key]?.let { s ->
-            val stale = System.currentTimeMillis() - s.created > TTL
             val useless = s.done && s.links.none { it.playable }
-            if (!fresh && !stale && !useless) return s
+            if (!fresh && !s.stale && !useless) return s
         }
         val set = LinkSet(api.name, data)
         sets[key] = set
@@ -134,18 +180,16 @@ class LinkService(private val scope: CoroutineScope, private val store: Store, p
         set.bump()
     }
 
-    /**
-     * Playable links, best first: by quality (an adaptive "Auto" HLS counts as just under 1080p), then by how often
-     * the source has worked before, then arrival order.
-     */
+    /** [link] for the UI, with its source's success history. */
+    fun dto(link: ResolvedLink): LinkDto = link.dto(store.linkStats(link.provider)[link.link.source])
+
+    /** Playable links, best first (see [LinkRanking]). */
     fun ranked(set: LinkSet): List<ResolvedLink> {
-        val scores = store.linkScores(set.provider)
-        fun q(l: ResolvedLink) = if (l.link.quality == Qualities.Unknown.value) 1079 else l.link.quality
-        return set.links.filter { it.playable }.sortedWith(
-            compareByDescending<ResolvedLink> { q(it) }
-                .thenByDescending { scores[it.link.source] ?: 0.5 }
-                .thenBy { it.order }
-        )
+        val stats = store.linkStats(set.provider)
+        return set.links.filter { it.playable }
+            .map { it to it.dto(stats[it.link.source]) }
+            .sortedWith(compareBy(LinkRanking.comparator) { it.second })
+            .map { it.first }
     }
 
     private fun expire() {

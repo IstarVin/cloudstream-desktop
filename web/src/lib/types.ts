@@ -31,6 +31,18 @@ export interface PluginInfo {
   available?: number | null;
   /** Repo mode: the version a rollback would restore. */
   previous?: number | null;
+  /** Labelled settings the plugin declares; the form shows any other keys below them. */
+  settingsSchema?: SettingField[];
+}
+
+export interface SettingField {
+  file: string | null;
+  key: string;
+  type: "string" | "secret" | "boolean" | "int" | "choice";
+  label: string;
+  help?: string | null;
+  default?: string | null;
+  options: { value: string; label: string }[];
 }
 
 export type PluginSourceMode = "dev" | "repo";
@@ -121,6 +133,8 @@ export interface Details {
   movieProgress?: Progress | null;
   nsfw: boolean;
   bookmarked?: string | null;
+  malId?: number | null;
+  aniListId?: number | null;
 }
 
 export interface Link {
@@ -134,6 +148,12 @@ export interface Link {
   playable: boolean;
   proxied: boolean;
   host: string;
+  /** Arrival order within the episode's links. */
+  order: number;
+  /** The source's smoothed success ratio for this provider (0.5 when new). */
+  score: number;
+  successes: number;
+  failures: number;
 }
 
 export interface Subtitle {
@@ -170,6 +190,25 @@ export interface PlayerState {
   hasNext: boolean;
   hasPrev: boolean;
   mpvRunning: boolean;
+  /** The next episode's links, resolved in the background near the end. */
+  next?: NextEpisode | null;
+  /** Links of this item that failed to play this session. */
+  failedLinks?: string[];
+  /** The opening, ending or recap the position is in, while the player offers to skip it. */
+  skip?: SkipRange | null;
+}
+
+export interface SkipRange {
+  type: "op" | "ed" | "recap";
+  start: number;
+  end: number;
+}
+
+export interface NextEpisode {
+  label: string | null;
+  status: "waiting" | "resolving" | "ready" | "failed";
+  /** Playable links found so far. */
+  links: number;
 }
 
 export interface HistoryEntry {
@@ -212,10 +251,13 @@ export interface Settings {
   show_nsfw: boolean;
   disabled_plugins: string[];
   proxy_all: boolean;
+  skip_segments: SkipMode;
   chromium_mode: BrowserMode;
   plugin_source: PluginSourceMode;
   plugin_repo_url: string;
 }
+
+export type SkipMode = "prompt" | "auto" | "off";
 
 export type BrowserMode = "headless" | "xvfb" | "headed";
 

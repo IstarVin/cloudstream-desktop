@@ -1,11 +1,15 @@
 <script lang="ts">
   import { player } from "../player.svelte";
+  import { AUTO_QUALITY, sourceRecord } from "../ranking";
   import { sources } from "../sources.svelte";
   import { Check, Subtitles, TriangleAlert, X } from "@lucide/svelte";
 
   const t = $derived(sources.target);
   const playingThis = $derived(!!t && player.state.provider === t.provider && player.state.data === t.data);
   const currentLink = $derived(playingThis ? player.state.link?.id : null);
+  const failed = $derived(new Set(playingThis ? (player.state.failedLinks ?? []) : []));
+  // What auto-play would pick next: the best link that hasn't failed.
+  const best = $derived(sources.ranked.find((l) => l.playable && !failed.has(l.id))?.id);
   let subsOpen = $state(false);
 
   function toggleSub(id: string) {
@@ -45,19 +49,28 @@
     <div class="list">
       {#each sources.groups as g (g.source)}
         <div class="group">
-          <div class="group-name">{g.source}</div>
+          <div class="group-name">
+            <span>{g.source}</span>
+            <span class="record" class:good={g.links[0].score > 0.6} class:poor={g.links[0].score < 0.4}>{sourceRecord(g.links[0])}</span>
+          </div>
           {#each g.links as l (l.id)}
             <button
               class="link"
               class:current={l.id === currentLink}
+              class:failed={failed.has(l.id) && l.id !== currentLink}
               disabled={!l.playable}
               onclick={() => sources.pick(l, playingThis)}
             >
-              <span class="q" class:hd={l.quality >= 720 && l.quality !== 400}>{l.qualityLabel}</span>
+              <span class="q" class:hd={l.quality >= 720 && l.quality !== AUTO_QUALITY}>{l.qualityLabel}</span>
               <span class="lname">
                 <span class="ellipsis">{l.name}</span>
-                <span class="host">{l.host}{l.proxied ? " · proxied" : ""}{l.drm ? " · DRM (unsupported)" : ""}</span>
+                <span class="host">{l.host}{l.proxied ? " · proxied" : ""}{l.drm ? (l.playable ? " · ClearKey" : " · DRM (unsupported)") : ""}</span>
               </span>
+              {#if failed.has(l.id) && l.id !== currentLink}
+                <span class="tag bad">Failed</span>
+              {:else if l.id === best && l.id !== currentLink}
+                <span class="tag">Best</span>
+              {/if}
               <span class="type">{l.type}</span>
               {#if l.id === currentLink}<Check size={18} strokeWidth={1.8} aria-hidden="true" />{/if}
             </button>
@@ -175,12 +188,45 @@
     flex: 1;
   }
   .group-name {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
     font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--faint);
     padding: 12px 8px 4px;
+  }
+  .record {
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 12px;
+  }
+  .record.good {
+    color: var(--good);
+  }
+  .record.poor {
+    color: var(--danger);
+  }
+  .tag {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .tag.bad {
+    background: transparent;
+    color: var(--danger);
+    border: 1px solid currentColor;
+  }
+  .link.failed .lname {
+    opacity: 0.6;
   }
   .link {
     width: 100%;

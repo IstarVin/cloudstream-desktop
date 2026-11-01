@@ -1,5 +1,6 @@
 package desktop.plugins
 
+import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.network.WebViewResolver
 import desktop.cdp.Chromium
@@ -9,7 +10,10 @@ import desktop.config.Settings
 import org.slf4j.LoggerFactory
 import java.io.File
 
-/** Process-wide setup of what plugins run on: the shared HTTP client's limits and the Chromium behind tier C. */
+/**
+ * Process-wide setup of what plugins run on: the shared HTTP client's limits, the sync-id keys and the Chromium
+ * behind tier C.
+ */
 object PluginRuntime {
     private val log = LoggerFactory.getLogger(PluginRuntime::class.java)
 
@@ -17,6 +21,7 @@ object PluginRuntime {
         checkWebViewResolver()
 
         limitRequestsPerHost(config.maxRequestsPerHost)
+        setSyncIdPrefixes()
 
         Chromium.configure(
             Chromium.Options(
@@ -43,6 +48,18 @@ object PluginRuntime {
      */
     fun limitRequestsPerHost(max: Int) {
         app.baseClient.dispatcher.maxRequestsPerHost = max
+    }
+
+    /**
+     * `addMalId`, `addAniListId` and friends store ids in a load response's `syncData` under these keys. The app sets
+     * them from its sync services at startup; on the JVM they're all "", so every id would overwrite the others.
+     * Same values as the app's (MALApi, AniListApi, KitsuApi, SimklApi `idPrefix`).
+     */
+    fun setSyncIdPrefixes() {
+        LoadResponse.malIdPrefix = "MAL"
+        LoadResponse.aniListIdPrefix = "AniList"
+        LoadResponse.kitsuIdPrefix = "Kitsu"
+        LoadResponse.simklIdPrefix = "SIMKL"
     }
 
     /**

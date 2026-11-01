@@ -42,6 +42,7 @@ data class Config(
                 Settings.AUTOPLAY_NEXT to (bool("playback.autoplay_next") ?: true),
                 Settings.SHOW_NSFW to (bool("ui.show_nsfw") ?: false),
                 Settings.PROXY_ALL to (bool("playback.proxy_all") ?: false),
+                Settings.SKIP_SEGMENTS to (str("playback.skip_segments")?.takeIf { it in Settings.choices.getValue(Settings.SKIP_SEGMENTS) } ?: "prompt"),
                 Settings.DISABLED_PLUGINS to ((t["plugins.disabled"] as? List<*>)?.map { it.toString() } ?: listOf("Fetcharr", "StreamCorner")),
                 // Without a local extensions repo, plugins come from the published one.
                 Settings.PLUGIN_SOURCE to (str("plugins.source")?.takeIf { it in Settings.choices.getValue(Settings.PLUGIN_SOURCE) }

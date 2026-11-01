@@ -21,6 +21,11 @@ class CookieManager private constructor() {
 
     fun setAcceptCookie(@Suppress("UNUSED_PARAMETER") accept: Boolean) {}
 
+    /** Chromium's own third-party cookie policy applies; a WebView's iframes keep their cookies. */
+    fun setAcceptThirdPartyCookies(@Suppress("UNUSED_PARAMETER") webview: WebView, @Suppress("UNUSED_PARAMETER") accept: Boolean) {}
+
+    fun acceptThirdPartyCookies(@Suppress("UNUSED_PARAMETER") webview: WebView): Boolean = true
+
     fun flush() {}
 
     companion object {
