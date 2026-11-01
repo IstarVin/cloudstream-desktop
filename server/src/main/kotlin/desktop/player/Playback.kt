@@ -114,6 +114,24 @@ object AutoPlay {
         fallback || done || candidates >= minLinks || (firstLinkAt != null && now - firstLinkAt >= waitMs)
 }
 
+/** Source labels are supplied by some aggregate providers as a suffix, e.g. "English (Reanime)". */
+object SubtitlePreference {
+    private val sourceLabel = Regex("[\\(\\[]([^()\\[\\]]+)[)\\]]\\s*$")
+
+    fun matchesSource(language: String, source: String, name: String): Boolean {
+        val label = sourceLabel.find(language)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        return listOf(source, name).any { value ->
+            value.equals(label, ignoreCase = true) ||
+                (value.startsWith(label, ignoreCase = true) && value.getOrNull(label.length)?.isLetterOrDigit() == false)
+        }
+    }
+
+    fun order(subtitles: List<ResolvedSubtitle>, source: String, name: String, done: Boolean): List<ResolvedSubtitle> {
+        val matching = subtitles.filter { matchesSource(it.sub.lang, source, name) }
+        return if (done) matching + subtitles.filterNot { it in matching } else matching
+    }
+}
+
 private class Session(val item: Item, val set: LinkSet, val generation: Int, var startAt: Double?) {
     val tried = mutableSetOf<String>()
     val failed = mutableSetOf<String>()
@@ -121,6 +139,7 @@ private class Session(val item: Item, val set: LinkSet, val generation: Int, var
     var entryId: Long? = null
     val addedSubs = mutableSetOf<String>()
     var chosenSubs: List<String> = emptyList()
+    var subtitleSelectionMade = false
     var playStartedAt: Double? = null
     var recordedSuccess = false
     /** The next episode's links, once the prefetch near the end has started. */
@@ -257,6 +276,7 @@ class Playback(
         s.finished = false
         s.fileLoaded = false
         s.addedSubs.clear()
+        s.subtitleSelectionMade = false
         s.skips = emptyList()
         s.skipped.clear()
         s.skipsRequested = false
@@ -341,13 +361,15 @@ class Playback(
         val wanted = s.set.subtitles.filter { sub ->
             sub.id in s.chosenSubs || prefs.any { p -> sub.sub.lang.lowercase().startsWith(p) || sub.sub.langTag?.lowercase() == p }
         }
-        val auto = wanted.filter { it.id !in s.chosenSubs }.take(3)
+        val link = s.link?.link ?: return
+        val auto = SubtitlePreference.order(wanted.filter { it.id !in s.chosenSubs }, link.source, link.name, s.set.done).take(3)
         // Without an explicit choice, turn the first preferred-language subtitle on, except for dubs.
-        val select = s.chosenSubs.firstOrNull()
-            ?: auto.firstOrNull()?.id?.takeIf { s.item.episode?.dub != "Dubbed" && s.addedSubs.isEmpty() }
+        val select = if (s.subtitleSelectionMade) null else s.chosenSubs.firstOrNull()
+            ?: auto.firstOrNull()?.id?.takeIf { s.item.episode?.dub != "Dubbed" }
         for (sub in wanted.filter { it.id in s.chosenSubs } + auto) {
             if (!s.addedSubs.add(sub.id)) continue
             addSubtitle(ipc, sub, select = sub.id == select)
+            if (sub.id == select) s.subtitleSelectionMade = true
         }
     }
 
@@ -563,6 +585,7 @@ class Playback(
             "skip" -> if (s != null) SkipRule.current(s.skips, _state.value.position)?.let { skipTo(s, it, auto = false) }
             "track" -> {
                 val prop = when (body.type) { "audio" -> "aid"; "sub" -> "sid"; else -> throw IllegalArgumentException("type must be audio or sub") }
+                if (body.type == "sub" && s != null) s.subtitleSelectionMade = true
                 ipc?.command("set_property", prop, body.id ?: "no")
             }
             "source" -> {
@@ -573,7 +596,10 @@ class Playback(
             }
             "sub-add" -> {
                 val sub = body.id?.let(links::subtitle) ?: throw IllegalArgumentException("Unknown subtitle")
-                if (s != null && ipc != null && s.addedSubs.add(sub.id)) addSubtitle(ipc, sub, select = true)
+                if (s != null && ipc != null && s.addedSubs.add(sub.id)) {
+                    s.subtitleSelectionMade = true
+                    addSubtitle(ipc, sub, select = true)
+                }
             }
             else -> throw IllegalArgumentException("Unknown player command $cmd")
         }
