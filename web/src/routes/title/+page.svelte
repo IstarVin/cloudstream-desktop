@@ -2,7 +2,9 @@
   import { page } from "$app/state";
   import { createQuery, useQueryClient } from "@tanstack/svelte-query";
   import { api, episodeLabel, formatTime } from "#lib/api";
-  import Icon from "#lib/components/Icon.svelte";
+  import EpisodeBrowser from "#lib/components/EpisodeBrowser.svelte";
+  import LoadingSkeleton from "#lib/components/LoadingSkeleton.svelte";
+  import { ArrowLeft, Bookmark, ChevronDown, Film, Play, RefreshCw, Star, Subtitles, Volume2 } from "@lucide/svelte";
   import Poster from "#lib/components/Poster.svelte";
   import { player } from "#lib/player.svelte";
   import { sources } from "#lib/sources.svelte";
@@ -25,23 +27,15 @@
     client.invalidateQueries({ queryKey: ["details", provider, url] });
   });
 
-  let dub = $state<string | null>(null);
-  let season = $state<number | null>(null);
+  let dubChoice = $state<{ title: string; value: string } | null>(null);
+  const titleKey = $derived(JSON.stringify([provider, url]));
+  const dub = $derived(dubChoice?.title === titleKey ? dubChoice.value : null);
 
   const d = $derived(details.data);
   const dubs = $derived([...new Set((d?.episodes ?? []).map((e) => e.dub).filter((x): x is string => !!x))]);
   const activeDub = $derived(dub && dubs.includes(dub) ? dub : (dubs.find((x) => x === "Subbed") ?? dubs[0] ?? null));
   const byDub = $derived((d?.episodes ?? []).filter((e) => !activeDub || e.dub === activeDub));
-  const seasons = $derived([...new Set(byDub.map((e) => e.season ?? 0))].sort((a, b) => a - b));
   const resumeEp = $derived(nextUp(byDub));
-  const activeSeason = $derived(season != null && seasons.includes(season) ? season : (resumeEp?.season ?? seasons[0] ?? 0));
-  const shown = $derived(byDub.filter((e) => (e.season ?? 0) === activeSeason));
-
-  function seasonName(n: number) {
-    const s = d?.seasons.find((x) => x.season === n);
-    return s?.name ?? (n === 0 ? "Episodes" : `Season ${s?.displaySeason ?? n}`);
-  }
-
   /** The episode to resume: the last one in progress, else the first unwatched after the last watched one. */
   function nextUp(eps: Episode[]): Episode | undefined {
     const inProgress = eps.filter((e) => e.progress && !e.progress.watched && e.progress.position > 30);
@@ -76,26 +70,26 @@
   const plainText = (html: string) =>
     new DOMParser().parseFromString(html.replace(/<br\s*\/?>/gi, "\n"), "text/html").body.textContent?.trim() ?? "";
 
-  const playing = (data: string) => player.state.provider === provider && player.state.data === data;
+  const playing = (data: string) => player.active && player.state.provider === provider && player.state.url === url && player.state.data === data;
 </script>
 
 {#if details.isPending}
-  <div class="empty"><div class="spinner" style="margin: 0 auto"></div></div>
+  <LoadingSkeleton variant="title" />
 {:else if details.isError}
   <div class="page">
     <div class="empty">
       <p>Couldn't load this title.</p>
       <p class="muted">{details.error.message}</p>
-      <button class="btn" onclick={() => details.refetch()}><Icon name="refresh" size={18} /> Retry</button>
+      <button class="btn" onclick={() => details.refetch()}><RefreshCw size={18} strokeWidth={1.8} aria-hidden="true" /> Retry</button>
     </div>
   </div>
 {:else if d}
   <div class="hero" style:--hero={d.background || d.poster ? `url("${d.background || d.poster}")` : "none"}></div>
   <div class="page detail">
-    <button class="back" onclick={() => history.back()} aria-label="Back"><Icon name="back" /></button>
+    <button class="back" onclick={() => history.back()} aria-label="Go back"><ArrowLeft size={18} strokeWidth={1.8} aria-hidden="true" /></button>
     <div class="head">
       <div class="poster">
-        {#if d.poster}<img src={d.poster} alt="" referrerpolicy="no-referrer" />{/if}
+        {#if d.poster}<img src={d.poster} alt="" referrerpolicy="no-referrer" />{:else}<Film size={36} strokeWidth={1.8} aria-hidden="true" />{/if}
       </div>
       <div class="info">
         {#if d.logo}
@@ -105,7 +99,7 @@
         {/if}
         <div class="facts">
           {#if d.year}<span>{d.year}</span>{/if}
-          {#if d.score}<span class="score"><Icon name="star" size={14} fill /> {d.score.toFixed(1)}</span>{/if}
+          {#if d.score}<span class="score"><Star size={14} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /> {d.score.toFixed(1)}</span>{/if}
           {#if d.contentRating}<span class="badge">{d.contentRating}</span>{/if}
           {#if d.duration}<span>{d.duration} min</span>{/if}
           {#if d.showStatus}<span>{d.showStatus}</span>{/if}
@@ -117,13 +111,13 @@
           {#if d.movieData}
             {@const p = d.movieProgress}
             <button class="btn primary" onclick={() => play(d, d.movieData!, null)}>
-              <Icon name="play" size={18} fill />
+              <Play size={18} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />
               {p && !p.watched && p.position > 30 ? `Resume ${formatTime(p.position)}` : d.kind === "live" ? "Watch live" : "Play"}
             </button>
           {:else if resumeEp}
             {@const i = byDub.indexOf(resumeEp)}
             <button class="btn primary" onclick={() => play(d, resumeEp.data, episodeLabel(resumeEp, i))}>
-              <Icon name="play" size={18} fill />
+              <Play size={18} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />
               {resumeEp.progress && !resumeEp.progress.watched && resumeEp.progress.position > 30 ? "Resume" : "Play"}
               {episodeLabel({ ...resumeEp, name: null }, i)}
             </button>
@@ -131,11 +125,12 @@
             <span class="muted">Torrents aren't supported.</span>
           {/if}
           <label class="bm">
-            <Icon name="bookmark" size={18} fill={!!d.bookmarked} />
+            <span class="bm-icon"><Bookmark size={18} fill={d.bookmarked ? "currentColor" : "none"} strokeWidth={1.8} aria-hidden="true" /></span>
             <select value={d.bookmarked ?? ""} onchange={(e) => bookmark(e.currentTarget.value || null)} aria-label="Library list">
-              <option value="">Add to library</option>
+              <option value="">{d.bookmarked ? "Remove from library" : "Add to library"}</option>
               {#each BOOKMARK_LISTS as l (l)}<option value={l}>{l[0].toUpperCase() + l.slice(1)}</option>{/each}
             </select>
+            <span class="bm-chevron"><ChevronDown size={16} strokeWidth={1.8} aria-hidden="true" /></span>
           </label>
         </div>
       </div>
@@ -144,51 +139,29 @@
     {#if d.plot}<p class="plot">{plainText(d.plot)}</p>{/if}
 
     {#if d.episodes.length}
-      <div class="ep-head">
-        {#if dubs.length > 1}
-          <div class="seg" role="tablist" aria-label="Audio">
-            {#each dubs as x (x)}
-              <button role="tab" aria-selected={x === activeDub} class:on={x === activeDub} onclick={() => (dub = x)}>{x === "Dubbed" ? "Dub" : x === "Subbed" ? "Sub" : x}</button>
-            {/each}
-          </div>
-        {/if}
-        {#if seasons.length > 1}
-          <div class="scroll-x seasons">
-            {#each seasons as n (n)}
-              <button class="chip" class:on={n === activeSeason} onclick={() => (season = n)}>{seasonName(n)}</button>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
-      <ol class="episodes">
-        {#each shown as e (e.data)}
-          {@const i = byDub.indexOf(e)}
-          {@const p = e.progress}
-          <li class:watched={p?.watched} class:now={playing(e.data)}>
-            <button class="ep" onclick={() => play(d, e.data, episodeLabel(e, i))}>
-              <div class="thumb">
-                {#if e.poster}<img src={e.poster} alt="" loading="lazy" referrerpolicy="no-referrer" />{/if}
-                <span class="num">{e.episode ?? i + 1}</span>
-                {#if p && !p.watched && p.duration > 0}<div class="bar"><div style="width: {(p.position / p.duration) * 100}%"></div></div>{/if}
+      {#key titleKey}
+        <EpisodeBrowser
+          episodes={byDub}
+          seasons={d.seasons}
+          nextEpisode={resumeEp}
+          onplay={(episode, index) => play(d, episode.data, episodeLabel(episode, index))}
+          onwatched={toggleWatched}
+          isPlaying={playing}
+        >
+          {#snippet audio(resetFilters: () => void)}
+            {#if dubs.length > 1}
+              <div class="seg" role="group" aria-label="Audio version">
+                {#each dubs as x (x)}
+                  <button aria-pressed={x === activeDub} class:on={x === activeDub} onclick={() => { resetFilters(); dubChoice = { title: titleKey, value: x }; }}>
+                    {#if x === "Dubbed"}<Volume2 size={15} strokeWidth={1.8} aria-hidden="true" />{:else}<Subtitles size={15} strokeWidth={1.8} aria-hidden="true" />{/if}
+                    {x === "Dubbed" ? "Dub" : x === "Subbed" ? "Sub" : x}
+                  </button>
+                {/each}
               </div>
-              <div class="ep-text">
-                <div class="ep-name">{e.name ?? `Episode ${e.episode ?? i + 1}`}</div>
-                <div class="ep-meta">
-                  {#if playing(e.data)}<span class="accent">Playing</span>{/if}
-                  {#if p && !p.watched && p.position > 30}<span>{formatTime(p.position)} watched</span>{/if}
-                  {#if e.runtime}<span>{e.runtime} min</span>{/if}
-                  {#if e.date}<span>{new Date(e.date).toLocaleDateString()}</span>{/if}
-                </div>
-                {#if e.description}<div class="ep-desc">{e.description}</div>{/if}
-              </div>
-            </button>
-            <button class="mark" onclick={() => toggleWatched(e)} aria-label={p?.watched ? "Mark unwatched" : "Mark watched"} aria-pressed={!!p?.watched}>
-              <Icon name="check" size={18} />
-            </button>
-          </li>
-        {/each}
-      </ol>
+            {/if}
+          {/snippet}
+        </EpisodeBrowser>
+      {/key}
     {/if}
 
     {#if d.actors.length}
@@ -219,12 +192,13 @@
   .hero {
     position: absolute;
     inset: 0 0 auto 0;
-    height: 420px;
+    height: 480px;
     background-image: linear-gradient(180deg, rgb(14 15 19 / 0.2), var(--bg)), var(--hero);
     background-size: cover;
     background-position: center 20%;
-    z-index: -1;
-    opacity: 0.55;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.4;
     mask-image: linear-gradient(180deg, #000 40%, transparent);
   }
   .detail {
@@ -237,14 +211,17 @@
     place-items: center;
     border-radius: 50%;
     background: rgb(0 0 0 / 0.35);
-    margin-bottom: 12px;
+    margin-bottom: 24px;
   }
   .head {
     display: flex;
-    gap: 16px;
-    align-items: flex-end;
+    gap: 28px;
+    align-items: center;
   }
   .poster {
+    display: grid;
+    place-items: center;
+    color: var(--muted);
     width: 112px;
     aspect-ratio: 2 / 3;
     flex-shrink: 0;
@@ -263,8 +240,9 @@
     flex: 1;
   }
   h1 {
-    font-size: 24px;
-    font-weight: 800;
+    font-size: clamp(24px, 3.5vw, 42px);
+    text-wrap: balance;
+    font-weight: 750;
   }
   .logo {
     max-width: 100%;
@@ -303,31 +281,36 @@
     margin-top: 14px;
   }
   .bm {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding-left: 12px;
-    border-radius: 999px;
-    background: var(--surface-2);
-    border: 1px solid var(--line);
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
     color: var(--muted);
   }
-  .bm select {
-    border: 0;
-    background: none;
-    padding: 9px 12px 9px 0;
+  .bm-icon, .bm-chevron {
+    position: absolute;
+    top: 50%;
+    display: flex;
+    transform: translateY(-50%);
+    pointer-events: none;
   }
+  .bm-icon { left: 14px; }
+  .bm-chevron { right: 14px; }
+  .bm select {
+    appearance: none;
+    max-width: 100%;
+    min-height: 44px;
+    padding: 9px 40px 9px 42px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .bm select:hover { background: var(--surface-3); }
   .plot {
-    margin: 18px 0 0;
-    color: #cfd2da;
+    margin: 28px 0 0;
+    color: var(--muted);
     max-width: 75ch;
     white-space: pre-line;
-  }
-  .ep-head {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin: 26px 0 8px;
+    line-height: 1.75;
   }
   .seg {
     display: inline-flex;
@@ -337,7 +320,11 @@
     padding: 3px;
   }
   .seg button {
-    padding: 6px 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 38px;
+    padding: 6px 14px;
     border-radius: 999px;
     font-weight: 600;
     font-size: 14px;
@@ -346,124 +333,6 @@
   .seg button.on {
     background: var(--surface-3);
     color: var(--text);
-  }
-  .seasons {
-    margin: 0 -16px;
-    padding: 0 16px;
-  }
-  .episodes {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .episodes li {
-    display: flex;
-    align-items: center;
-    border-radius: var(--radius);
-  }
-  .episodes li:hover {
-    background: var(--surface);
-  }
-  .episodes li.now {
-    background: var(--accent-soft);
-  }
-  .ep {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    gap: 12px;
-    padding: 8px;
-    text-align: left;
-    align-items: flex-start;
-  }
-  .thumb {
-    position: relative;
-    width: 128px;
-    aspect-ratio: 16 / 9;
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-    background: var(--surface-2);
-    flex-shrink: 0;
-    display: grid;
-    place-items: center;
-  }
-  .thumb img {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  .num {
-    position: relative;
-    font-weight: 800;
-    font-size: 18px;
-    color: var(--faint);
-  }
-  .thumb img + .num {
-    position: absolute;
-    left: 6px;
-    bottom: 4px;
-    font-size: 13px;
-    color: #fff;
-    text-shadow: 0 1px 3px #000;
-  }
-  .bar {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 3px;
-    background: rgb(0 0 0 / 0.5);
-  }
-  .bar div {
-    height: 100%;
-    background: var(--accent);
-  }
-  .watched .thumb {
-    opacity: 0.55;
-  }
-  .ep-text {
-    min-width: 0;
-  }
-  .ep-name {
-    font-weight: 600;
-  }
-  .ep-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0 10px;
-    font-size: 12.5px;
-    color: var(--muted);
-  }
-  .accent {
-    color: var(--accent);
-    font-weight: 600;
-  }
-  .ep-desc {
-    margin-top: 2px;
-    font-size: 13px;
-    color: var(--faint);
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .mark {
-    width: 44px;
-    height: 44px;
-    display: grid;
-    place-items: center;
-    border-radius: 50%;
-    color: var(--faint);
-    flex-shrink: 0;
-  }
-  .mark[aria-pressed="true"] {
-    color: var(--good);
   }
   .cast {
     gap: 14px;
@@ -494,19 +363,25 @@
     font-size: 11.5px;
     color: var(--muted);
   }
+  @media (max-width: 599px) {
+    .head { align-items: flex-start; gap: 16px; }
+    .poster { width: 86px; }
+    .facts { gap: 5px 10px; font-size: 12px; }
+    .actions { margin-top: 16px; }
+    .actions .btn { white-space: normal; text-align: left; padding-block: 10px; }
+    .bm select { border-radius: var(--radius-sm); }
+    .seg button { padding-inline: 10px; gap: 5px; font-size: 13px; }
+  }
   @media (min-width: 900px) {
     .poster {
-      width: 200px;
+      width: 208px;
     }
     h1 {
-      font-size: 34px;
+      font-size: clamp(32px, 3.5vw, 46px);
     }
     .hero {
       left: var(--rail-w);
       height: 520px;
-    }
-    .thumb {
-      width: 176px;
     }
   }
 </style>

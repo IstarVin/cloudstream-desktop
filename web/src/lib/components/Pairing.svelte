@@ -1,10 +1,10 @@
 <script lang="ts">
-  import Icon from "./Icon.svelte";
+  import { Smartphone } from "@lucide/svelte";
 </script>
 
 <main class="pair">
   <div class="card">
-    <div class="icon"><Icon name="phone" size={32} /></div>
+    <div class="icon"><Smartphone size={32} strokeWidth={1.8} aria-hidden="true" /></div>
     <h1>Pair this device</h1>
     <p>
       On your desktop, open Cloudstream and go to <b>Settings → Pair a phone</b>, then scan the code with this device's

@@ -177,6 +177,10 @@ overrides:
 importers:
 
   .:
+    dependencies:
+      '@lucide/svelte':
+        specifier: ^1.65.0
+        version: 1.65.0(svelte@5.57.3)
     devDependencies:
       '@sveltejs/adapter-static':
         specifier: ^4.0.1
@@ -244,6 +248,11 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@lucide/svelte@1.65.0':
+    resolution: {integrity: sha512-VfM4Ej7JFYz33WXm/JdqtOsOqRtfca5H9eFcyfcbFthWvbOnvvCerY/YkEk0ZiAvOvqo5hpK3u+opC0zY7Caxw==}
+    peerDependencies:
+      svelte: ^5
 
   '@oxc-project/runtime@0.155.0':
     resolution: {integrity: sha512-VbW9raczGS5ZZ1FMunUBYHe4uV/R684qlQCoMdE3n5JT1PcqQsvmFpMYkF8AD+W04fBLGAq6Tr7YsTk0jjvDBA==}
@@ -1411,6 +1420,10 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
+
+  '@lucide/svelte@1.65.0(svelte@5.57.3)':
+    dependencies:
+      svelte: 5.57.3
 
   '@oxc-project/runtime@0.155.0': {}
 

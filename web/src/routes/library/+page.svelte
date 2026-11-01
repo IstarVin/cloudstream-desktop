@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createQuery, useQueryClient } from "@tanstack/svelte-query";
   import { api } from "#lib/api";
-  import Icon from "#lib/components/Icon.svelte";
+  import { Bookmark, History, X } from "@lucide/svelte";
   import Poster from "#lib/components/Poster.svelte";
   import { toasts } from "#lib/toast.svelte";
   import { BOOKMARK_LISTS } from "#lib/types";
@@ -26,10 +26,13 @@
 </script>
 
 <div class="page">
-  <h1 class="page-title">Library</h1>
-  <div class="seg" role="tablist">
-    <button role="tab" aria-selected={tab === "history"} class:on={tab === "history"} onclick={() => (tab = "history")}>History</button>
-    <button role="tab" aria-selected={tab === "bookmarks"} class:on={tab === "bookmarks"} onclick={() => (tab = "bookmarks")}>Bookmarks</button>
+  <div class="page-heading">
+    <h1 class="page-title">Library</h1>
+    <p>Your watchlist and the stories you’ve started.</p>
+  </div>
+  <div class="seg" role="group" aria-label="Library view">
+    <button aria-pressed={tab === "history"} class:on={tab === "history"} onclick={() => (tab = "history")}><History size={17} strokeWidth={1.8} aria-hidden="true" /> History</button>
+    <button aria-pressed={tab === "bookmarks"} class:on={tab === "bookmarks"} onclick={() => (tab = "bookmarks")}><Bookmark size={17} strokeWidth={1.8} aria-hidden="true" /> Bookmarks</button>
   </div>
 
   {#if tab === "history"}
@@ -38,7 +41,7 @@
         {#each history.data as h (h.provider + h.url)}
           <div class="cell">
             <Poster provider={h.provider} url={h.url} name={h.title} poster={h.poster} meta={ago(h.lastWatched)} showProvider />
-            <button class="forget" onclick={() => forget(h.provider, h.url)} aria-label="Remove {h.title} from history"><Icon name="close" size={16} /></button>
+            <button class="forget" onclick={() => forget(h.provider, h.url)} aria-label="Remove {h.title} from history"><X size={16} strokeWidth={1.8} aria-hidden="true" /></button>
           </div>
         {/each}
       </div>
@@ -71,6 +74,10 @@
     margin-bottom: 8px;
   }
   .seg button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 42px;
     padding: 7px 18px;
     border-radius: 999px;
     font-weight: 600;

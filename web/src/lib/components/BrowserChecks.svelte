@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createQuery, useQueryClient } from "@tanstack/svelte-query";
   import { api } from "#lib/api";
-  import Icon from "#lib/components/Icon.svelte";
+  import { TriangleAlert, X } from "@lucide/svelte";
   import { toasts } from "#lib/toast.svelte";
   import type { BrowserCheck } from "#lib/types";
 
@@ -30,7 +30,7 @@
   <div class="checks">
     {#each browser.data.checks as c (c.id)}
       <div class="check" role="status">
-        <span class="icon"><Icon name="alert" size={18} /></span>
+        <span class="icon"><TriangleAlert size={18} strokeWidth={1.8} aria-hidden="true" /></span>
         <div class="text">
           <b>{c.host}</b>
           <small>
@@ -46,7 +46,7 @@
         {:else}
           <button class="btn primary" onclick={() => act(() => api.solveCheck(c.id))}>Solve</button>
         {/if}
-        <button class="dismiss" onclick={() => act(() => api.dismissCheck(c.id))} aria-label="Dismiss"><Icon name="close" size={18} /></button>
+        <button class="dismiss" onclick={() => act(() => api.dismissCheck(c.id))} aria-label="Dismiss"><X size={18} strokeWidth={1.8} aria-hidden="true" /></button>
       </div>
     {/each}
   </div>

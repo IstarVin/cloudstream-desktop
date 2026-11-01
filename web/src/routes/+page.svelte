@@ -1,7 +1,9 @@
 <script lang="ts">
   import { createQuery } from "@tanstack/svelte-query";
   import { api, titleHref } from "#lib/api";
+  import { Layers, Search, Settings2 } from "@lucide/svelte";
   import HomeRow from "#lib/components/HomeRow.svelte";
+  import LoadingSkeleton from "#lib/components/LoadingSkeleton.svelte";
   import Poster from "#lib/components/Poster.svelte";
 
   const providers = createQuery(() => ({ queryKey: ["providers"], queryFn: api.providers, staleTime: 30_000 }));
@@ -38,21 +40,27 @@
 
 <div class="page">
   <div class="top">
-    <h1 class="page-title">Home</h1>
+    <div class="page-heading">
+      <h1 class="page-title">Home</h1>
+      <p>Your next watch starts here.</p>
+    </div>
+    <a class="btn browse-search" href="/search"><Search size={18} strokeWidth={1.8} aria-hidden="true" /> Search titles</a>
     {#if status.data?.building}<span class="building"><span class="spinner"></span> Building plugins…</span>{/if}
   </div>
 
   {#if providers.isPending}
-    <div class="empty"><div class="spinner" style="margin: 0 auto"></div></div>
+    <LoadingSkeleton variant="home" />
   {:else if !withHome.length}
     <div class="empty">
+      <Layers size={32} strokeWidth={1.8} aria-hidden="true" />
       <p>No providers loaded yet.</p>
-      <p class="muted">Plugins build in the background on first start. Check Settings → Plugins for errors.</p>
+      <p class="muted">Plugins build in the background on first start. Check the plugin settings for errors.</p>
+      <a class="btn" href="/settings"><Settings2 size={17} strokeWidth={1.8} aria-hidden="true" /> Open settings</a>
     </div>
   {:else}
-    <div class="scroll-x pickers" role="tablist" aria-label="Provider">
+    <div class="scroll-x pickers" role="group" aria-label="Provider">
       {#each withHome as p (p.name)}
-        <button class="chip" class:on={p.name === current?.name} role="tab" aria-selected={p.name === current?.name} onclick={() => choose(p.name)}>
+        <button class="chip" class:on={p.name === current?.name} aria-pressed={p.name === current?.name} onclick={() => choose(p.name)}>
           {#if p.iconUrl}<img src={p.iconUrl} alt="" width="16" height="16" referrerpolicy="no-referrer" />{/if}
           {p.name}
         </button>
@@ -85,6 +93,8 @@
           {/each}
         {:else if sections.isError}
           <p class="muted">{sections.error?.message}</p>
+        {:else}
+          <LoadingSkeleton variant="home" showProviders={false} />
         {/if}
       {/key}
     {/if}
@@ -94,10 +104,14 @@
 <style>
   .top {
     display: flex;
-    align-items: baseline;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
     justify-content: space-between;
     gap: 12px;
   }
+  .page-heading { margin-bottom: 0; }
+  .browse-search { margin-left: auto; }
   .building {
     display: inline-flex;
     gap: 8px;
@@ -110,8 +124,8 @@
     height: 14px;
   }
   .pickers {
-    margin: 0 -16px;
-    padding: 0 16px 4px;
+    gap: 8px;
+    padding-bottom: 8px;
   }
   .pickers img {
     border-radius: 4px;

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { player } from "../player.svelte";
   import { sources } from "../sources.svelte";
-  import Icon from "./Icon.svelte";
+  import { Check, Subtitles, TriangleAlert, X } from "@lucide/svelte";
 
   const t = $derived(sources.target);
   const playingThis = $derived(!!t && player.state.provider === t.provider && player.state.data === t.data);
@@ -25,7 +25,7 @@
         <h2>Sources</h2>
         <div class="muted ellipsis">{t.title}{t.label ? ` · ${t.label}` : ""}</div>
       </div>
-      <button class="close" onclick={() => sources.hide()} aria-label="Close"><Icon name="close" /></button>
+      <button class="close" onclick={() => sources.hide()} aria-label="Close"><X size={22} strokeWidth={1.8} aria-hidden="true" /></button>
     </header>
 
     <div class="status">
@@ -33,7 +33,7 @@
         <div class="spinner"></div>
         <span>Finding links… {sources.links.length} so far</span>
       {:else if sources.error && !sources.links.length}
-        <Icon name="alert" size={18} /><span class="err">{sources.error}</span>
+        <TriangleAlert size={18} strokeWidth={1.8} aria-hidden="true" /><span class="err">{sources.error}</span>
       {:else}
         <span>{sources.links.length} links from {sources.groups.length} sources</span>
       {/if}
@@ -59,7 +59,7 @@
                 <span class="host">{l.host}{l.proxied ? " · proxied" : ""}{l.drm ? " · DRM (unsupported)" : ""}</span>
               </span>
               <span class="type">{l.type}</span>
-              {#if l.id === currentLink}<Icon name="check" size={18} />{/if}
+              {#if l.id === currentLink}<Check size={18} strokeWidth={1.8} aria-hidden="true" />{/if}
             </button>
           {/each}
         </div>
@@ -69,7 +69,7 @@
     {#if sources.subtitles.length}
       <div class="subs">
         <button class="subs-head" onclick={() => (subsOpen = !subsOpen)}>
-          <Icon name="subtitles" size={18} />
+          <Subtitles size={18} strokeWidth={1.8} aria-hidden="true" />
           <span>Subtitles ({sources.subtitles.length})</span>
           <span class="muted">{sources.chosenSubs.length ? `${sources.chosenSubs.length} chosen` : "English added automatically"}</span>
         </button>
@@ -91,6 +91,7 @@
     inset: 0;
     background: rgb(0 0 0 / 0.55);
     z-index: 60;
+    animation: scrim-in 200ms ease-out both;
   }
   .sheet {
     position: fixed;
@@ -105,7 +106,10 @@
     display: flex;
     flex-direction: column;
     padding-bottom: var(--safe-b);
-    animation: up 0.2s ease-out;
+    animation: up 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes scrim-in {
+    from { opacity: 0; }
   }
   @keyframes up {
     from {
@@ -139,10 +143,12 @@
     display: grid;
     place-items: center;
     border-radius: 50%;
+    transition: background-color 150ms ease, transform 150ms ease;
   }
   .close:hover {
     background: var(--surface-2);
   }
+  .close:active { transform: scale(0.92); }
   .ellipsis {
     white-space: nowrap;
     overflow: hidden;
@@ -185,6 +191,7 @@
     border-radius: var(--radius-sm);
     text-align: left;
     min-height: 52px;
+    transition: background-color 150ms ease, color 150ms ease;
   }
   .link:hover:not(:disabled) {
     background: var(--surface-2);
@@ -198,6 +205,7 @@
     cursor: default;
   }
   .q {
+    flex-shrink: 0;
     min-width: 52px;
     text-align: center;
     font-size: 12.5px;
@@ -220,10 +228,15 @@
   .host {
     font-size: 12px;
     color: var(--faint);
+    overflow-wrap: anywhere;
   }
   .type {
+    flex-shrink: 0;
     font-size: 11.5px;
     color: var(--faint);
+  }
+  .link :global(svg) {
+    flex-shrink: 0;
   }
   .subs {
     border-top: 1px solid var(--line);
@@ -259,9 +272,13 @@
       max-height: none;
       border-radius: 18px;
       border: 1px solid var(--line);
+      animation-name: side-in;
     }
     .grab {
       display: none;
     }
+  }
+  @keyframes side-in {
+    from { opacity: 0; transform: translateX(30px); }
   }
 </style>

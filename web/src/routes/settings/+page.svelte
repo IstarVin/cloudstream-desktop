@@ -2,7 +2,7 @@
   import { createQuery, useQueryClient } from "@tanstack/svelte-query";
   import QRCode from "qrcode";
   import { api } from "#lib/api";
-  import Icon from "#lib/components/Icon.svelte";
+  import { ChevronDown, RefreshCw, Smartphone, Square } from "@lucide/svelte";
   import PluginSettings from "#lib/components/PluginSettings.svelte";
   import { toasts } from "#lib/toast.svelte";
   import type { BrowserMode, BrowserStatus, PluginInfo, PluginSource, PluginSourceMode, Settings } from "#lib/types";
@@ -170,7 +170,7 @@
           </div>
         </div>
       {:else}
-        <button class="btn start" onclick={showPairing}><Icon name="phone" size={18} /> Show pairing code</button>
+        <button class="btn start" onclick={showPairing}><Smartphone size={18} strokeWidth={1.8} aria-hidden="true" /> Show pairing code</button>
       {/if}
     </section>
   {/if}
@@ -216,7 +216,7 @@
     <section>
       <div class="row-head">
         <h2>Browser</h2>
-        {#if b.running}<button class="btn" onclick={() => browserAction(api.stopBrowser)}><Icon name="stop" size={16} /> Stop</button>{/if}
+        {#if b.running}<button class="btn" onclick={() => browserAction(api.stopBrowser)}><Square size={16} strokeWidth={1.8} aria-hidden="true" /> Stop</button>{/if}
       </div>
       <p class="muted small">
         Chromium passes Cloudflare checks and loads pages that need a real browser. {browserState(b)}.
@@ -248,11 +248,11 @@
       <h2>Plugins</h2>
       {#if repo}
         <button class="btn" onclick={() => repoAction("check", api.checkUpdates)} disabled={working !== null || status.data?.building}>
-          {#if working === "check" || (working === null && status.data?.building)}<span class="spinner"></span> Checking…{:else}<Icon name="refresh" size={18} /> Check for updates{/if}
+          {#if working === "check" || (working === null && status.data?.building)}<span class="spinner"></span> Checking…{:else}<RefreshCw size={18} strokeWidth={1.8} aria-hidden="true" /> Check for updates{/if}
         </button>
       {:else if src}
         <button class="btn" onclick={rebuild} disabled={status.data?.building || !src.devAvailable}>
-          {#if status.data?.building}<span class="spinner"></span> Building…{:else}<Icon name="refresh" size={18} /> Rebuild{/if}
+          {#if status.data?.building}<span class="spinner"></span> Building…{:else}<RefreshCw size={18} strokeWidth={1.8} aria-hidden="true" /> Rebuild{/if}
         </button>
       {/if}
     </div>
@@ -279,7 +279,7 @@
         </p>
         {#if src.updates.length}
           <button class="btn start primary" onclick={() => repoAction("all", () => api.updatePlugins())} disabled={working !== null}>
-            {#if working === "all"}<span class="spinner"></span> Updating…{:else}<Icon name="down" size={18} /> Update {src.updates.length} plugin{src.updates.length > 1 ? "s" : ""}{/if}
+            {#if working === "all"}<span class="spinner"></span> Updating…{:else}<ChevronDown size={18} strokeWidth={1.8} aria-hidden="true" /> Update {src.updates.length} plugin{src.updates.length > 1 ? "s" : ""}{/if}
           </button>
         {/if}
       {:else}

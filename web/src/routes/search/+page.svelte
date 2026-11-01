@@ -3,7 +3,7 @@
   import { goto } from "$app/navigation";
   import { untrack } from "svelte";
   import { streamSearch } from "#lib/api";
-  import Icon from "#lib/components/Icon.svelte";
+  import { Search } from "@lucide/svelte";
   import Poster from "#lib/components/Poster.svelte";
   import type { SearchItem } from "#lib/types";
 
@@ -54,8 +54,12 @@
 </script>
 
 <div class="page">
+  <div class="page-heading">
+    <h1 class="page-title">Search</h1>
+    <p>Find a title across your providers.</p>
+  </div>
   <form class="box" onsubmit={submit} role="search">
-    <Icon name="search" size={20} />
+    <Search size={20} strokeWidth={1.8} aria-hidden="true" />
     <!-- svelte-ignore a11y_autofocus -->
     <input type="search" placeholder="Search every provider" bind:value={query} autofocus enterkeyhint="search" aria-label="Search" />
     {#if searching}<div class="spinner"></div>{/if}
@@ -77,6 +81,14 @@
     </div>
   {/each}
 
+  {#if !searching && !page.url.searchParams.get("q")}
+    <div class="empty search-empty">
+      <Search size={36} strokeWidth={1.8} aria-hidden="true" />
+      <h2>What are you in the mood for?</h2>
+      <p>Search for a movie, series, or anime to get started.</p>
+    </div>
+  {/if}
+
   {#if !searching && page.url.searchParams.get("q") && !visible.length}
     <div class="empty">Nothing found{type ? ` in ${type}` : ""}.</div>
   {/if}
@@ -96,13 +108,16 @@
     gap: 10px;
     background: var(--surface-2);
     border: 1px solid var(--line);
-    border-radius: 999px;
+    border-radius: var(--radius);
     padding: 0 16px;
     color: var(--muted);
   }
   .box:focus-within {
     border-color: var(--accent);
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
   }
+  .box input:focus-visible { outline: none; }
   .box input {
     flex: 1;
     border: 0;
@@ -112,9 +127,11 @@
     font-size: 16px;
   }
   .filters {
-    margin: 12px -16px 0;
-    padding: 0 16px;
+    margin-top: 16px;
+    gap: 8px;
   }
+  .search-empty h2 { color: var(--text); font-size: 20px; margin-top: 18px; }
+  .search-empty p { font-size: 14px; }
   .count {
     color: var(--faint);
     font-weight: 500;

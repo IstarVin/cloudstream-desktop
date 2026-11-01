@@ -3,6 +3,7 @@
   import { api } from "../api";
   import type { HomeSection } from "../types";
   import Poster from "./Poster.svelte";
+  import LoadingSkeleton from "./LoadingSkeleton.svelte";
 
   let { provider, section }: { provider: string; section: HomeSection } = $props();
 
@@ -49,34 +50,8 @@
     {#if row.isError}
       <p class="muted">Couldn't load this row: {row.error?.message}</p>
     {:else}
-      <div class="scroll-x skeleton">
-        {#each Array(8) as _, i (i)}<div class="ph" class:horizontal={section.horizontal}></div>{/each}
-      </div>
+      <LoadingSkeleton horizontal={section.horizontal} />
     {/if}
   {/if}
 </section>
 
-<style>
-  .skeleton .ph {
-    width: 132px;
-    aspect-ratio: 2 / 3;
-    border-radius: var(--radius);
-    background: var(--surface);
-    flex-shrink: 0;
-    animation: pulse 1.4s ease-in-out infinite;
-  }
-  .skeleton .ph.horizontal {
-    width: 220px;
-    aspect-ratio: 16 / 9;
-  }
-  @keyframes pulse {
-    50% {
-      opacity: 0.5;
-    }
-  }
-  @media (min-width: 900px) {
-    .skeleton .ph {
-      width: 156px;
-    }
-  }
-</style>

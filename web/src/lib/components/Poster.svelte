@@ -1,5 +1,6 @@
 <script lang="ts">
   import { titleHref } from "../api";
+  import { Play } from "@lucide/svelte";
 
   let {
     provider,
@@ -41,6 +42,7 @@
     {:else}
       <span class="initials">{initials}</span>
     {/if}
+    <span class="play-hint"><Play size={24} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /></span>
     {#if progress != null}
       <div class="progress"><div style="width: {Math.min(100, progress * 100)}%"></div></div>
     {/if}
@@ -66,7 +68,7 @@
     aspect-ratio: 2 / 3;
     border-radius: var(--radius);
     overflow: hidden;
-    background: linear-gradient(160deg, var(--surface-2), var(--surface));
+    background: var(--surface-2);
     border: 1px solid var(--line);
     display: grid;
     place-items: center;
@@ -83,6 +85,9 @@
   .card:hover img {
     transform: scale(1.04);
   }
+  .play-hint { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(0 0 0 / 0.35); color: #fff; opacity: 0; transition: opacity 180ms; }
+  .card:hover .play-hint, .card:focus-visible .play-hint { opacity: 1; }
+  .card:hover .name, .card:focus-visible .name { color: var(--accent); }
   .initials {
     font-size: 28px;
     font-weight: 750;
@@ -119,10 +124,10 @@
   }
   @media (min-width: 900px) {
     .card {
-      --card-w: 156px;
+      width: var(--card-w, 164px);
     }
     .card.horizontal {
-      --card-w-h: 260px;
+      width: var(--card-w-h, 272px);
     }
   }
 </style>
