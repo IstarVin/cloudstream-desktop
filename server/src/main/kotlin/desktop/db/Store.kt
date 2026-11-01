@@ -57,8 +57,8 @@ class Store(private val db: Database) {
     }
 
     fun progress(provider: String, episodeData: String): Progress? =
-        db.query("SELECT position, duration, watched FROM progress WHERE provider = ? AND episode_data = ?", provider, episodeData) {
-            Progress(it.getDouble(1), it.getDouble(2), it.getInt(3) == 1)
+        db.query("SELECT position, duration, watched, updated FROM progress WHERE provider = ? AND episode_data = ?", provider, episodeData) {
+            Progress(it.getDouble(1), it.getDouble(2), it.getInt(3) == 1, it.getLong(4))
         }.firstOrNull()
 
     /** Where to resume [episodeData]: past the first 30 s and before 90%, unless it's marked watched. */
@@ -67,8 +67,8 @@ class Store(private val db: Database) {
             ?.takeIf { !it.watched && it.position > 30 && (it.duration <= 0 || it.position < it.duration * 0.9) }?.position
 
     fun progressFor(provider: String): Map<String, Progress> =
-        db.query("SELECT episode_data, position, duration, watched FROM progress WHERE provider = ?", provider) {
-            it.getString(1) to Progress(it.getDouble(2), it.getDouble(3), it.getInt(4) == 1)
+        db.query("SELECT episode_data, position, duration, watched, updated FROM progress WHERE provider = ?", provider) {
+            it.getString(1) to Progress(it.getDouble(2), it.getDouble(3), it.getInt(4) == 1, it.getLong(5))
         }.toMap()
 
     /** Most recent unfinished item per title, newest first. */

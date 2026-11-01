@@ -123,7 +123,7 @@ data class Episode(
 )
 
 @Serializable
-data class Progress(val position: Double, val duration: Double, val watched: Boolean)
+data class Progress(val position: Double, val duration: Double, val watched: Boolean, val updated: Long)
 
 @Serializable
 data class Details(

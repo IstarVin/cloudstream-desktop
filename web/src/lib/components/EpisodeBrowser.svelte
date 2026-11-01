@@ -43,10 +43,18 @@
   const seasonNumbers = $derived(
     [...new Set(episodes.map((e) => e.season ?? 0))].sort((a, b) => a - b),
   );
+  const lastPlayed = $derived(
+    episodes.reduce<Episode | undefined>((latest, episode) => {
+      if (!episode.progress || episode.progress.position <= 0) return latest;
+      return !latest || episode.progress.updated > (latest.progress?.updated ?? 0) ? episode : latest;
+    }, undefined),
+  );
   const activeSeason = $derived(
     selectedSeason != null && seasonNumbers.includes(selectedSeason)
       ? selectedSeason
-      : (nextEpisode?.season ?? seasonNumbers[0] ?? 0),
+      : lastPlayed
+        ? (lastPlayed.season ?? 0)
+        : (nextEpisode?.season ?? seasonNumbers[0] ?? 0),
   );
   // Carry the original index through filters so unnumbered episodes keep their labels.
   const inSeason = $derived(
@@ -64,8 +72,8 @@
   );
   const watched = $derived(inSeason.filter(({ episode }) => episode.progress?.watched).length);
   const pageCount = $derived(Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)));
-  const nextIndex = $derived(
-    filtered.findIndex(({ episode }) => episode.data === nextEpisode?.data),
+  const lastPlayedIndex = $derived(
+    filtered.findIndex(({ episode }) => episode.data === lastPlayed?.data),
   );
   const scope = $derived(JSON.stringify([activeSeason, query]));
   const currentPage = $derived(
@@ -73,8 +81,8 @@
       pageCount,
       navigation?.scope === scope
         ? navigation.page
-        : !query && nextIndex >= 0
-          ? Math.floor(nextIndex / PAGE_SIZE) + 1
+        : !query && lastPlayedIndex >= 0
+          ? Math.floor(lastPlayedIndex / PAGE_SIZE) + 1
           : 1,
     ),
   );

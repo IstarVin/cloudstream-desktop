@@ -93,6 +93,7 @@ export interface Progress {
   position: number;
   duration: number;
   watched: boolean;
+  updated: number;
 }
 
 export interface Episode {
