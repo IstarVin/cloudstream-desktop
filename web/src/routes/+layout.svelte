@@ -1,15 +1,24 @@
 <script lang="ts">
-  import "../app.css";
-  import { page } from "$app/state";
-  import { QueryClient, QueryClientProvider } from "@tanstack/svelte-query";
   import { api } from "#lib/api";
   import BrowserChecks from "#lib/components/BrowserChecks.svelte";
-  import { CircleCheck, CircleAlert, House, Library, Play, Search, Settings2, X } from "@lucide/svelte";
   import NowPlaying from "#lib/components/NowPlaying.svelte";
   import Pairing from "#lib/components/Pairing.svelte";
   import SourcesSheet from "#lib/components/SourcesSheet.svelte";
   import { player } from "#lib/player.svelte";
   import { toasts } from "#lib/toast.svelte";
+  import { page } from "$app/state";
+  import {
+    CircleAlert,
+    CircleCheck,
+    House,
+    Library,
+    Play,
+    Search,
+    Settings2,
+    X,
+  } from "@lucide/svelte";
+  import { QueryClient, QueryClientProvider } from "@tanstack/svelte-query";
+  import "../app.css";
   import type { LayoutProps } from "./$types";
 
   let { children }: LayoutProps = $props();
@@ -83,7 +92,11 @@
         {#if t.error}<CircleAlert size={20} />{:else}<CircleCheck size={20} />{/if}
       </span>
       <p>{t.text}</p>
-      <button class="toast-dismiss" aria-label="Dismiss notification" onclick={() => toasts.dismiss(t.id)}>
+      <button
+        class="toast-dismiss"
+        aria-label="Dismiss notification"
+        onclick={() => toasts.dismiss(t.id)}
+      >
         <X size={18} aria-hidden="true" />
       </button>
     </div>
@@ -189,7 +202,7 @@
     color: var(--accent);
   }
   .toast.error .toast-icon {
-    color: #ff7d89;
+    color: var(--danger);
   }
   .toast p {
     flex: 1;
@@ -206,8 +219,8 @@
     display: grid;
     flex: none;
     place-items: center;
-    width: 32px;
-    height: 32px;
+    width: 44px;
+    height: 44px;
     margin: -3px -3px -3px 0;
     padding: 0;
     border: 0;
@@ -225,11 +238,19 @@
     outline-offset: 2px;
   }
   @keyframes toast-in {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
   @media (prefers-reduced-motion: reduce) {
-    .toast { animation: none; }
+    .toast {
+      animation: none;
+    }
   }
   @media (min-width: 900px) {
     .shell,

@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    Captions,
     ChevronDown,
     FastForward,
     Layers,
@@ -11,11 +12,11 @@
     SkipBack,
     SkipForward,
     Square,
-    Subtitles,
     Volume1,
     Volume2,
   } from "@lucide/svelte";
   import { formatTime, titleHref } from "../api";
+  import { modal } from "../dialog";
   import { player } from "../player.svelte";
   import { sources } from "../sources.svelte";
   import { toasts } from "../toast.svelte";
@@ -128,7 +129,12 @@
 {/if}
 
 {#if player.expanded}
-  <div class="remote" role="dialog" aria-label="Remote">
+  <dialog
+    class="remote"
+    aria-label="Remote"
+    {@attach modal}
+    oncancel={() => (player.expanded = false)}
+  >
     <header>
       <button class="icon-btn" onclick={() => (player.expanded = false)} aria-label="Close remote"
         ><ChevronDown size={22} strokeWidth={1.8} aria-hidden="true" /></button
@@ -268,7 +274,7 @@
           </label>
           <label>
             <span class="track-heading"
-              ><Subtitles size={17} strokeWidth={1.8} aria-hidden="true" /> Subtitles</span
+              ><Captions size={17} strokeWidth={1.8} aria-hidden="true" /> Subtitles</span
             >
             <select onchange={(e) => cmd("track", { type: "sub", id: e.currentTarget.value })}>
               <option value="no" selected={!s.subTracks.some((t) => t.selected)}
@@ -304,7 +310,7 @@
         </div>
       </div>
     </div>
-  </div>
+  </dialog>
 {/if}
 
 <style>
@@ -407,6 +413,14 @@
   .remote {
     position: fixed;
     inset: 0;
+    width: 100%;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    color: var(--text);
     z-index: 50;
     background: radial-gradient(ellipse at 28% 20%, #25232a 0%, #15171d 40%, var(--bg) 75%);
     display: flex;
@@ -740,6 +754,16 @@
   @media (max-width: 899px) {
     .hide-sm {
       display: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bar,
+    .remote,
+    .skip-btn {
+      animation: none;
+    }
+    .icon-btn:active:not(:disabled) {
+      transform: none;
     }
   }
 </style>

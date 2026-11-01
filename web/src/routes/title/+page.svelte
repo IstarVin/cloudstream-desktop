@@ -43,18 +43,12 @@
 
   const d = $derived(details.data);
   const dubs = $derived([
-    ...new Set(
-      (d?.episodes ?? []).map((e) => e.dub).filter((x): x is string => !!x),
-    ),
+    ...new Set((d?.episodes ?? []).map((e) => e.dub).filter((x): x is string => !!x)),
   ]);
   const activeDub = $derived(
-    dub && dubs.includes(dub)
-      ? dub
-      : (dubs.find((x) => x === "Subbed") ?? dubs[0] ?? null),
+    dub && dubs.includes(dub) ? dub : (dubs.find((x) => x === "Subbed") ?? dubs[0] ?? null),
   );
-  const byDub = $derived(
-    (d?.episodes ?? []).filter((e) => !activeDub || e.dub === activeDub),
-  );
+  const byDub = $derived((d?.episodes ?? []).filter((e) => !activeDub || e.dub === activeDub));
   const resumeEp = $derived(nextUp(byDub));
   /** The episode to resume: the last one in progress, else the first unwatched after the last watched one. */
   function nextUp(eps: Episode[]): Episode | undefined {
@@ -97,9 +91,7 @@
 
   async function toggleWatched(e: Episode) {
     if (!d) return;
-    await api
-      .setWatched(d.provider, d.url, e.data, !e.progress?.watched)
-      .catch(toasts.error);
+    await api.setWatched(d.provider, d.url, e.data, !e.progress?.watched).catch(toasts.error);
     client.invalidateQueries({ queryKey: ["details", provider, url] });
   }
 
@@ -110,9 +102,7 @@
       .body.textContent?.trim() ?? "";
 
   let expandedPlotTitle = $state<string | null>(null);
-  const plot = $derived(
-    d?.plot ? plainText(d.plot).replace(/\n{3,}/g, "\n\n") : "",
-  );
+  const plot = $derived(d?.plot ? plainText(d.plot).replace(/\n{3,}/g, "\n\n") : "");
   const plotPreview = $derived.by(() => {
     const lines = plot.split("\n").slice(0, 3).join("\n");
     if (lines.length <= 280 && lines.length === plot.length) return plot;
@@ -146,9 +136,7 @@
 {:else if d}
   <div
     class="hero"
-    style:--hero={d.background || d.poster
-      ? `url("${d.background || d.poster}")`
-      : "none"}
+    style:--hero={d.background || d.poster ? `url("${d.background || d.poster}")` : "none"}
   ></div>
   <div class="page detail">
     <button class="back" onclick={() => history.back()} aria-label="Go back"
@@ -156,32 +144,21 @@
     >
     <div class="head">
       <div class="poster">
-        {#if d.poster}<img
-            src={d.poster}
-            alt=""
-            referrerpolicy="no-referrer"
-          />{:else}<Film size={36} strokeWidth={1.8} aria-hidden="true" />{/if}
+        {#if d.poster}<img src={d.poster} alt="" referrerpolicy="no-referrer" />{:else}<Film
+            size={36}
+            strokeWidth={1.8}
+            aria-hidden="true"
+          />{/if}
       </div>
       <div class="info">
+        <h1 class:sr-only={!!d.logo}>{d.name}</h1>
         {#if d.logo}
-          <img
-            class="logo"
-            src={d.logo}
-            alt={d.name}
-            referrerpolicy="no-referrer"
-          />
-        {:else}
-          <h1>{d.name}</h1>
+          <img class="logo" src={d.logo} alt="" referrerpolicy="no-referrer" />
         {/if}
         <div class="facts">
           {#if d.year}<span>{d.year}</span>{/if}
           {#if d.score}<span class="score"
-              ><Star
-                size={14}
-                fill="currentColor"
-                strokeWidth={1.8}
-                aria-hidden="true"
-              />
+              ><Star size={14} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />
               {d.score.toFixed(1)}</span
             >{/if}
           {#if d.contentRating}<span class="badge">{d.contentRating}</span>{/if}
@@ -196,16 +173,8 @@
         <div class="actions">
           {#if d.movieData}
             {@const p = d.movieProgress}
-            <button
-              class="btn primary"
-              onclick={() => play(d, d.movieData!, null)}
-            >
-              <Play
-                size={18}
-                fill="currentColor"
-                strokeWidth={1.8}
-                aria-hidden="true"
-              />
+            <button class="btn primary" onclick={() => play(d, d.movieData!, null)}>
+              <Play size={18} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />
               {p && !p.watched && p.position > 30
                 ? `Resume ${formatTime(p.position)}`
                 : d.kind === "live"
@@ -218,15 +187,8 @@
               class="btn primary"
               onclick={() => play(d, resumeEp.data, episodeLabel(resumeEp, i))}
             >
-              <Play
-                size={18}
-                fill="currentColor"
-                strokeWidth={1.8}
-                aria-hidden="true"
-              />
-              {resumeEp.progress &&
-              !resumeEp.progress.watched &&
-              resumeEp.progress.position > 30
+              <Play size={18} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />
+              {resumeEp.progress && !resumeEp.progress.watched && resumeEp.progress.position > 30
                 ? "Resume"
                 : "Play"}
               {episodeLabel({ ...resumeEp, name: null }, i)}
@@ -248,21 +210,13 @@
               onchange={(e) => bookmark(e.currentTarget.value || null)}
               aria-label="Library list"
             >
-              <option value=""
-                >{d.bookmarked
-                  ? "Remove from library"
-                  : "Add to library"}</option
-              >
+              <option value="">{d.bookmarked ? "Remove from library" : "Add to library"}</option>
               {#each BOOKMARK_LISTS as l (l)}<option value={l}
                   >{l[0].toUpperCase() + l.slice(1)}</option
                 >{/each}
             </select>
             <span class="bm-chevron"
-              ><ChevronDown
-                size={16}
-                strokeWidth={1.8}
-                aria-hidden="true"
-              /></span
+              ><ChevronDown size={16} strokeWidth={1.8} aria-hidden="true" /></span
             >
           </label>
         </div>
@@ -291,8 +245,7 @@
           episodes={byDub}
           seasons={d.seasons}
           nextEpisode={resumeEp}
-          onplay={(episode, index) =>
-            play(d, episode.data, episodeLabel(episode, index))}
+          onplay={(episode, index) => play(d, episode.data, episodeLabel(episode, index))}
           onwatched={toggleWatched}
           isPlaying={playing}
         >
@@ -309,16 +262,8 @@
                     }}
                   >
                     {#if x === "Dubbed"}
-                      <Volume2
-                        size={15}
-                        strokeWidth={1.8}
-                        aria-hidden="true"
-                      />{:else}
-                      <Captions
-                        size={15}
-                        strokeWidth={1.8}
-                        aria-hidden="true"
-                      />{/if}
+                      <Volume2 size={15} strokeWidth={1.8} aria-hidden="true" />{:else}
+                      <Captions size={15} strokeWidth={1.8} aria-hidden="true" />{/if}
                     {x === "Dubbed" ? "Dub" : x === "Subbed" ? "Sub" : x}
                   </button>
                 {/each}
@@ -371,8 +316,7 @@
     position: absolute;
     inset: 0 0 auto 0;
     height: 480px;
-    background-image: linear-gradient(180deg, rgb(14 15 19 / 0.2), var(--bg)),
-      var(--hero);
+    background-image: linear-gradient(180deg, rgb(14 15 19 / 0.2), var(--bg)), var(--hero);
     background-size: cover;
     background-position: center 20%;
     z-index: 0;
@@ -384,8 +328,8 @@
     position: relative;
   }
   .back {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     display: grid;
     place-items: center;
     border-radius: 50%;
@@ -503,6 +447,7 @@
     font-size: 14px;
     font-weight: 600;
     margin-top: 6px;
+    min-height: 44px;
   }
   .plot-toggle:hover {
     text-decoration: underline;
@@ -514,12 +459,14 @@
     background: var(--surface-2);
     border-radius: 999px;
     padding: 3px;
+    flex-wrap: wrap;
+    max-width: 100%;
   }
   .seg button {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    min-height: 38px;
+    min-height: 44px;
     padding: 6px 14px;
     border-radius: 999px;
     font-weight: 600;

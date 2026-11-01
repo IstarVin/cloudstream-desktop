@@ -46,7 +46,9 @@
   const lastPlayed = $derived(
     episodes.reduce<Episode | undefined>((latest, episode) => {
       if (!episode.progress || episode.progress.position <= 0) return latest;
-      return !latest || episode.progress.updated > (latest.progress?.updated ?? 0) ? episode : latest;
+      return !latest || episode.progress.updated > (latest.progress?.updated ?? 0)
+        ? episode
+        : latest;
     }, undefined),
   );
   const activeSeason = $derived(
@@ -62,6 +64,7 @@
       .map((episode, index) => ({ episode, index }))
       .filter(({ episode }) => (episode.season ?? 0) === activeSeason),
   );
+  const hasArtwork = $derived(inSeason.some(({ episode }) => !!episode.poster));
   const query = $derived(search.trim().toLocaleLowerCase());
   const filtered = $derived(
     inSeason.filter(
@@ -110,7 +113,7 @@
     }
   }
 
-  function findNext() {
+  async function findNext() {
     if (!nextEpisode) return;
     selectedSeason = nextEpisode.season ?? 0;
     search = "";
@@ -121,6 +124,10 @@
       scope: JSON.stringify([selectedSeason, ""]),
       page: Math.floor(Math.max(0, index) / PAGE_SIZE) + 1,
     };
+    await tick();
+    const target = section.querySelector<HTMLButtonElement>("[data-next-episode]");
+    target?.scrollIntoView({ block: "center" });
+    target?.focus({ preventScroll: true });
   }
 
   function resetFilters() {
@@ -203,14 +210,17 @@
       <Search size={17} strokeWidth={1.8} aria-hidden="true" />
       <input
         type="search"
-        aria-label="Find an episode"
-        placeholder="Find by name or number"
+        aria-label={seasonNumbers.length > 1
+          ? `Find an episode in ${seasonName(activeSeason)}`
+          : "Find an episode"}
+        placeholder={seasonNumbers.length > 1 ? "Search this season" : "Find by name or number"}
+        enterkeyhint="search"
         bind:value={search}
       />
     </div>
     {#if nextEpisode}
       <button class="find-next" onclick={findNext}
-        ><ArrowRight size={16} strokeWidth={1.8} aria-hidden="true" /> Find next episode</button
+        ><ArrowRight size={16} strokeWidth={1.8} aria-hidden="true" /> Jump to next episode</button
       >
     {/if}
   </div>
@@ -229,39 +239,52 @@
       {#each visible as { episode: e, index } (e.data)}
         {@const p = e.progress}
         {@const playing = isPlaying(e.data)}
-        <li class:watched={p?.watched} class:now={playing}>
+        {@const next = e.data === nextEpisode?.data}
+        <li class={[{ watched: p?.watched, now: playing, next: next && !playing }]}>
           <button
             class="episode"
             onclick={() => onplay(e, index)}
-            aria-label="Play {e.name ?? `Episode ${e.episode ?? index + 1}`}"
+            aria-label="Play episode {e.episode ?? index + 1}{e.name ? `: ${e.name}` : ''}"
             aria-current={playing ? "true" : undefined}
+            data-next-episode={next ? "" : undefined}
           >
-            {#if e.poster}
-              <span class="thumb">
-                <img src={e.poster} alt="" loading="lazy" referrerpolicy="no-referrer" />
-                <span class="number">{e.episode ?? index + 1}</span>
-                <span class="play-icon"
-                  ><Play size={22} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /></span
-                >
-                {#if p && !p.watched && p.duration > 0}<span class="progress"
-                    ><span
-                      style:width={`${Math.min(100, Math.max(0, (p.position / p.duration) * 100))}%`}
-                    ></span></span
-                  >{/if}
-              </span>
-            {/if}
+            <span class={["thumb", { compact: !hasArtwork }]} aria-hidden="true">
+              {#if e.poster}<img
+                  src={e.poster}
+                  alt=""
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                  onerror={(event) => event.currentTarget.setAttribute("hidden", "")}
+                  onload={(event) => event.currentTarget.removeAttribute("hidden")}
+                />{/if}
+              <span class="number">{e.episode ?? index + 1}</span>
+              <span class="play-icon"
+                ><Play size={22} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /></span
+              >
+              {#if p && !p.watched && p.duration > 0}<span class="progress"
+                  ><span
+                    style:width={`${Math.min(100, Math.max(0, (p.position / p.duration) * 100))}%`}
+                  ></span></span
+                >{/if}
+            </span>
             <span class="episode-text">
               <span class="episode-name">{e.name ?? `Episode ${e.episode ?? index + 1}`}</span>
               <span class="episode-meta">
                 {#if playing}<span class="playing"
                     ><Volume1 size={13} strokeWidth={1.8} aria-hidden="true" /> Playing</span
                   >
-                {:else if p?.watched}<span class="watched-label"
+                {:else if next}<span class="up-next">Up next</span>{/if}
+                {#if p?.watched}<span class="watched-label"
                     ><CircleCheck size={13} strokeWidth={1.8} aria-hidden="true" /> Watched</span
                   >
-                {:else if p && p.position > 30}<span>{formatTime(p.position)} watched</span>{/if}
+                {:else if p && p.position > 30}<span
+                    >{p.duration > p.position
+                      ? `${formatTime(p.duration - p.position)} left`
+                      : `${formatTime(p.position)} watched`}</span
+                  >{/if}
                 {#if e.runtime}<span
-                    ><Clock3 size={13} strokeWidth={1.8} aria-hidden="true" /> {e.runtime} min</span
+                    ><Clock3 size={13} strokeWidth={1.8} aria-hidden="true" />
+                    {e.runtime} min</span
                   >{/if}
                 {#if e.date}<span>{new Date(e.date).toLocaleDateString()}</span>{/if}
               </span>
@@ -413,8 +436,8 @@
   .page-button {
     display: grid;
     place-items: center;
-    width: 36px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border: 1px solid var(--line);
     border-radius: var(--radius-sm);
   }
@@ -427,7 +450,7 @@
     cursor: default;
   }
   .range-picker select {
-    height: 40px;
+    min-height: 44px;
     padding: 6px 8px;
     font-size: 13px;
     font-variant-numeric: tabular-nums;
@@ -449,7 +472,6 @@
     gap: 8px;
     padding: 12px;
     border-bottom: 1px solid var(--line);
-    border-radius: var(--radius-sm);
     transition: background 150ms;
   }
   li:hover {
@@ -458,6 +480,9 @@
   li.now {
     background: var(--accent-soft);
   }
+  li.next {
+    background: var(--surface);
+  }
   .episode {
     flex: 1;
     min-width: 0;
@@ -465,6 +490,9 @@
     align-items: center;
     gap: 18px;
     text-align: left;
+    min-height: 52px;
+    border-radius: var(--radius-sm);
+    scroll-margin-block: 24px;
   }
   .thumb {
     position: relative;
@@ -483,6 +511,11 @@
     height: 100%;
     object-fit: cover;
   }
+  .thumb.compact {
+    width: 48px;
+    aspect-ratio: 1;
+    background: transparent;
+  }
   .number {
     position: relative;
     font-size: 23px;
@@ -490,7 +523,7 @@
     color: var(--muted);
     font-variant-numeric: tabular-nums;
   }
-  .thumb img + .number {
+  .thumb:has(img:not([hidden])) .number {
     position: absolute;
     bottom: 6px;
     left: 7px;
@@ -498,7 +531,7 @@
     border-radius: 4px;
     background: rgb(0 0 0 / 0.75);
     font-size: 12px;
-    color: #fff;
+    color: var(--on-image);
   }
   .play-icon {
     position: absolute;
@@ -506,7 +539,7 @@
     display: grid;
     place-items: center;
     background: rgb(0 0 0 / 0.4);
-    color: #fff;
+    color: var(--on-image);
     opacity: 0;
     transition: opacity 150ms;
   }
@@ -532,6 +565,7 @@
     display: flex;
     flex-direction: column;
     gap: 5px;
+    padding-block: 4px;
   }
   .episode-name {
     font-size: 14px;
@@ -552,6 +586,14 @@
     gap: 4px;
   }
   .playing {
+    color: var(--accent);
+  }
+  .up-next {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .next .number,
+  .now .number {
     color: var(--accent);
   }
   .watched-label {
@@ -598,6 +640,7 @@
     padding: 40px 16px;
     color: var(--muted);
     border-block: 1px solid var(--line);
+    overflow-wrap: anywhere;
   }
   .empty-results :global(svg) {
     margin: 0 auto;
@@ -625,11 +668,14 @@
       min-width: 120px;
       max-width: none;
     }
+    .episode-search input {
+      font-size: 16px;
+    }
     .find-next {
       margin-left: 0;
     }
     .episode {
-      gap: 12px;
+      gap: 10px;
     }
     .thumb {
       width: 96px;
@@ -645,7 +691,13 @@
       gap: 0;
     }
     .mark {
-      width: 40px;
+      width: 44px;
+    }
+    .thumb.compact {
+      width: 32px;
+    }
+    .thumb.compact .number {
+      font-size: 18px;
     }
     .list-heading {
       flex-wrap: wrap;
@@ -653,12 +705,6 @@
     }
     .list-footer {
       flex-wrap: wrap;
-    }
-  }
-  @media (pointer: coarse) {
-    .page-button {
-      width: 44px;
-      height: 44px;
     }
   }
 </style>

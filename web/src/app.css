@@ -12,6 +12,8 @@
   --accent-soft: rgb(255 138 76 / 0.14);
   --good: #53d3a3;
   --danger: #ff6170;
+  --overlay: rgb(0 0 0 / 0.7);
+  --on-image: #fff;
   --radius: 12px;
   --radius-sm: 8px;
   --nav-h: 64px;
@@ -107,6 +109,8 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
   border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 :focus-visible {
@@ -160,7 +164,7 @@ h3 {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 34px;
+  min-height: 44px;
   padding: 0 14px;
   border-radius: 999px;
   background: var(--surface-2);
@@ -270,8 +274,18 @@ h3 {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+  .spinner {
+    animation: none;
+    border-color: var(--muted);
+    border-top-color: var(--accent);
+  }
+  .card:hover img {
+    transform: none;
   }
 }

@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { Captions, Check, TriangleAlert, X } from "@lucide/svelte";
+  import { modal } from "../dialog";
   import { player } from "../player.svelte";
   import { AUTO_QUALITY, sourceRecord } from "../ranking";
   import { sources } from "../sources.svelte";
-  import { Check, Subtitles, TriangleAlert, X } from "@lucide/svelte";
 
   const t = $derived(sources.target);
   const playingThis = $derived(
@@ -23,13 +24,30 @@
 </script>
 
 {#if sources.open && t}
-  <div class="scrim" onclick={() => sources.hide()} role="presentation"></div>
-  <div class="sheet" role="dialog" aria-label="Sources">
+  <dialog
+    class="sheet"
+    aria-label="Sources"
+    {@attach modal}
+    oncancel={() => sources.hide()}
+    onclick={(event) => {
+      if (event.target !== event.currentTarget) return;
+      const bounds = event.currentTarget.getBoundingClientRect();
+      if (
+        event.clientX < bounds.left ||
+        event.clientX > bounds.right ||
+        event.clientY < bounds.top ||
+        event.clientY > bounds.bottom
+      )
+        sources.hide();
+    }}
+  >
     <div class="grab"></div>
     <header>
       <div class="head-text">
         <h2>Sources</h2>
-        <div class="muted ellipsis">{t.title}{t.label ? ` · ${t.label}` : ""}</div>
+        <div class="muted ellipsis">
+          {t.title}{t.label ? ` · ${t.label}` : ""}
+        </div>
       </div>
       <button class="close" onclick={() => sources.hide()} aria-label="Close"
         ><X size={22} strokeWidth={1.8} aria-hidden="true" /></button
@@ -66,7 +84,10 @@
             <button
               class={[
                 "link",
-                { current: l.id === currentLink, failed: failed.has(l.id) && l.id !== currentLink },
+                {
+                  current: l.id === currentLink,
+                  failed: failed.has(l.id) && l.id !== currentLink,
+                },
               ]}
               disabled={!l.playable}
               onclick={() => sources.pick(l, playingThis)}
@@ -109,7 +130,7 @@
     {#if sources.subtitles.length}
       <div class="subs">
         <button class="subs-head" onclick={() => (subsOpen = !subsOpen)}>
-          <Subtitles size={18} strokeWidth={1.8} aria-hidden="true" />
+          <Captions size={18} strokeWidth={1.8} aria-hidden="true" />
           <span>Subtitles ({sources.subtitles.length})</span>
           <span class="muted"
             >{sources.chosenSubs.length
@@ -129,15 +150,12 @@
         {/if}
       </div>
     {/if}
-  </div>
+  </dialog>
 {/if}
 
 <style>
-  .scrim {
-    position: fixed;
-    inset: 0;
-    background: rgb(0 0 0 / 0.55);
-    z-index: 60;
+  .sheet::backdrop {
+    background: var(--overlay);
     animation: scrim-in 200ms ease-out both;
   }
   .sheet {
@@ -145,9 +163,16 @@
     left: 0;
     right: 0;
     bottom: 0;
-    max-height: 86vh;
+    top: auto;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    color: var(--text);
+    max-height: 86dvh;
     z-index: 61;
     background: var(--surface);
+    border: 0;
     border-top: 1px solid var(--line);
     border-radius: 18px 18px 0 0;
     display: flex;
@@ -187,8 +212,9 @@
     font-size: 19px;
   }
   .close {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
     display: grid;
     place-items: center;
     border-radius: 50%;
@@ -387,6 +413,7 @@
       bottom: 16px;
       top: 16px;
       width: 440px;
+      height: calc(100dvh - 32px);
       max-height: none;
       border-radius: 18px;
       border: 1px solid var(--line);
@@ -400,6 +427,15 @@
     from {
       opacity: 0;
       transform: translateX(30px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sheet,
+    .sheet::backdrop {
+      animation: none;
+    }
+    .close:active {
+      transform: none;
     }
   }
 </style>

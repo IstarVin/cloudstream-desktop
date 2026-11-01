@@ -1,17 +1,25 @@
 <script lang="ts">
-  import { createQuery, useQueryClient } from "@tanstack/svelte-query";
   import { api } from "#lib/api";
-  import { Bookmark, History, Trash2, X } from "@lucide/svelte";
+  import LoadingSkeleton from "#lib/components/LoadingSkeleton.svelte";
   import Poster from "#lib/components/Poster.svelte";
   import { toasts } from "#lib/toast.svelte";
   import { BOOKMARK_LISTS } from "#lib/types";
+  import { Bookmark, CircleAlert, History, RefreshCw, Search, Trash2, X } from "@lucide/svelte";
+  import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 
   let tab = $state<"history" | "bookmarks">("history");
   let clearing = $state(false);
   let clearDialog: HTMLDialogElement;
   const client = useQueryClient();
-  const history = createQuery(() => ({ queryKey: ["history"], queryFn: api.history }));
-  const bookmarks = createQuery(() => ({ queryKey: ["bookmarks"], queryFn: api.bookmarks }));
+  const history = createQuery(() => ({
+    queryKey: ["history"],
+    queryFn: api.history,
+  }));
+  const bookmarks = createQuery(() => ({
+    queryKey: ["bookmarks"],
+    queryFn: api.bookmarks,
+  }));
+  const activeQuery = $derived(tab === "history" ? history : bookmarks);
 
   async function forget(provider: string, url: string) {
     await api.deleteHistory(provider, url).catch(toasts.error);
@@ -63,7 +71,18 @@
     >
   </div>
 
-  {#if tab === "history"}
+  {#if activeQuery.isPending}
+    <div class="library-loading"><LoadingSkeleton /></div>
+  {:else if activeQuery.isError}
+    <div class="empty library-empty" role="status">
+      <CircleAlert size={32} strokeWidth={1.8} aria-hidden="true" />
+      <h2>Couldn’t load your {tab}</h2>
+      <p>{activeQuery.error.message}</p>
+      <button class="btn" onclick={() => activeQuery.refetch()}
+        ><RefreshCw size={17} aria-hidden="true" /> Try again</button
+      >
+    </div>
+  {:else if tab === "history"}
     {#if history.data?.length}
       <div class="history-actions">
         <div class="history-label">
@@ -95,14 +114,20 @@
         {/each}
       </div>
     {:else if history.isSuccess}
-      <div class="empty">Nothing watched yet.</div>
+      <div class="empty library-empty">
+        <History size={32} strokeWidth={1.8} aria-hidden="true" />
+        <h2>Your story starts here</h2>
+        <p>Titles you watch will appear here, so you can pick up where you left off.</p>
+        <a class="btn" href="/"><Search size={17} aria-hidden="true" /> Find something to watch</a>
+      </div>
     {/if}
   {:else if bookmarks.data?.length}
     {#each BOOKMARK_LISTS as list (list)}
       {@const items = bookmarks.data.filter((b) => b.list === list)}
       {#if items.length}
         <h2 class="section-title">
-          {list[0].toUpperCase() + list.slice(1)} <span class="muted">{items.length}</span>
+          {list[0].toUpperCase() + list.slice(1)}
+          <span class="muted">{items.length}</span>
         </h2>
         <div class="grid">
           {#each items as b (b.provider + b.url)}
@@ -118,7 +143,12 @@
       {/if}
     {/each}
   {:else if bookmarks.isSuccess}
-    <div class="empty">No bookmarks. Use “Add to library” on a title.</div>
+    <div class="empty library-empty">
+      <Bookmark size={32} strokeWidth={1.8} aria-hidden="true" />
+      <h2>Keep your next watch close</h2>
+      <p>Choose “Add to library” on a title to save it here.</p>
+      <a class="btn" href="/">Browse titles</a>
+    </div>
   {/if}
 </div>
 
@@ -131,7 +161,9 @@
     if (clearing) event.preventDefault();
   }}
 >
-  <div class="dialog-icon"><Trash2 size={21} strokeWidth={1.8} aria-hidden="true" /></div>
+  <div class="dialog-icon">
+    <Trash2 size={21} strokeWidth={1.8} aria-hidden="true" />
+  </div>
   <h2 id="clear-title">Clear watch history?</h2>
   <p id="clear-description">
     This removes all titles from your history and deletes their saved watch progress. Your bookmarks
@@ -157,7 +189,7 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    min-height: 42px;
+    min-height: 44px;
     padding: 7px 18px;
     border-radius: 999px;
     font-weight: 600;
@@ -173,6 +205,23 @@
     gap: 16px 12px;
     margin-top: 12px;
     --card-w: 100%;
+  }
+  .library-loading {
+    margin-top: 28px;
+  }
+  .library-empty {
+    max-width: 440px;
+    margin: 24px auto 0;
+  }
+  .library-empty h2 {
+    margin-top: 16px;
+    color: var(--text);
+    font-size: 22px;
+  }
+  .library-empty p {
+    margin: 10px 0 20px;
+    font-size: 14px;
+    overflow-wrap: anywhere;
   }
   .history-actions {
     display: flex;
@@ -260,8 +309,8 @@
     position: absolute;
     top: 6px;
     right: 6px;
-    width: 30px;
-    height: 30px;
+    width: 44px;
+    height: 44px;
     display: grid;
     place-items: center;
     border-radius: 50%;
