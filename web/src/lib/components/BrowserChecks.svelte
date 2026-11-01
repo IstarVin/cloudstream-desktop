@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { createQuery, useQueryClient } from "@tanstack/svelte-query";
   import { api } from "#lib/api";
-  import { TriangleAlert, X } from "@lucide/svelte";
   import { toasts } from "#lib/toast.svelte";
   import type { BrowserCheck } from "#lib/types";
+  import { TriangleAlert, X } from "@lucide/svelte";
+  import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 
   // Checks the background browser couldn't pass (usually Turnstile). Solving opens a Chromium window on the
   // desktop; the request that hit the check waits for it, and later ones reuse the cookies.
@@ -23,7 +23,9 @@
   }
 
   const what = (c: BrowserCheck) =>
-    c.kind === "cloudflare" ? "Cloudflare is asking for a human check" : "This page didn't finish loading in the background browser";
+    c.kind === "cloudflare"
+      ? "Cloudflare is asking for a human check"
+      : "This page didn't finish loading in the background browser";
 </script>
 
 {#if browser.data?.checks.length}
@@ -35,7 +37,9 @@
           <b>{c.host}</b>
           <small>
             {#if c.solving}
-              Pass the check in the Chromium window on the desktop{c.kind === "page" ? ", then close the tab" : ""}.
+              Pass the check in the Chromium window on the desktop{c.kind === "page"
+                ? ", then close the tab"
+                : ""}.
             {:else}
               {what(c)}. Solving opens it in a window on the desktop.
             {/if}
@@ -46,7 +50,11 @@
         {:else}
           <button class="btn primary" onclick={() => act(() => api.solveCheck(c.id))}>Solve</button>
         {/if}
-        <button class="dismiss" onclick={() => act(() => api.dismissCheck(c.id))} aria-label="Dismiss"><X size={18} strokeWidth={1.8} aria-hidden="true" /></button>
+        <button
+          class="dismiss"
+          onclick={() => act(() => api.dismissCheck(c.id))}
+          aria-label="Dismiss"><X size={18} strokeWidth={1.8} aria-hidden="true" /></button
+        >
       </div>
     {/each}
   </div>

@@ -4,13 +4,17 @@
 
 <main class="pair">
   <div class="card">
-    <div class="icon"><Smartphone size={32} strokeWidth={1.8} aria-hidden="true" /></div>
+    <div class="icon">
+      <Smartphone size={32} strokeWidth={1.8} aria-hidden="true" />
+    </div>
     <h1>Pair this device</h1>
     <p>
-      On your desktop, open Cloudstream and go to <b>Settings → Pair a phone</b>, then scan the code with this device's
-      camera.
+      On your desktop, open Cloudstream and go to <b>Settings → Pair a phone</b>, then scan the code
+      with this device's camera.
     </p>
-    <p class="muted">The code signs this browser in for a year. You can sign every device out from the desktop.</p>
+    <p class="muted">
+      The code signs this browser in for a year. You can sign every device out from the desktop.
+    </p>
   </div>
 </main>
 

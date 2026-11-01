@@ -8,8 +8,16 @@
   import ProviderPicker from "#lib/components/ProviderPicker.svelte";
   import { matchesContentType } from "#lib/content-types";
 
-  const providers = createQuery(() => ({ queryKey: ["providers"], queryFn: api.providers, staleTime: 30_000 }));
-  const status = createQuery(() => ({ queryKey: ["status"], queryFn: api.status, refetchInterval: 4000 }));
+  const providers = createQuery(() => ({
+    queryKey: ["providers"],
+    queryFn: api.providers,
+    staleTime: 30_000,
+  }));
+  const status = createQuery(() => ({
+    queryKey: ["status"],
+    queryFn: api.status,
+    refetchInterval: 4000,
+  }));
   const continueQ = createQuery(() => ({ queryKey: ["continue"], queryFn: api.continueWatching }));
 
   const withHome = $derived((providers.data ?? []).filter((p) => p.hasMainPage));
@@ -37,8 +45,9 @@
   function filter(type: string) {
     contentType = type;
     // Keep the selected source when it supports the filter; otherwise switch to a compatible one.
-    const next = withHome.find((p) => p.name === chosen && matchesContentType(p.types, type))
-      ?? withHome.find((p) => matchesContentType(p.types, type));
+    const next =
+      withHome.find((p) => p.name === chosen && matchesContentType(p.types, type)) ??
+      withHome.find((p) => matchesContentType(p.types, type));
     if (next) choose(next.name);
   }
 
@@ -56,8 +65,16 @@
       <h1 class="page-title">Home</h1>
       <p>Your next watch starts here.</p>
     </div>
-    <a class="btn browse-search" href="/search"><Search size={18} strokeWidth={1.8} aria-hidden="true" /> Search titles</a>
-    {#if status.data?.building}<span class="building"><span class="spinner"></span> Building plugins…</span>{/if}
+    {#if current}
+      <a
+        class="btn browse-search"
+        href={`/search?${new URLSearchParams({ provider: current.name })}`}
+        ><Search size={18} strokeWidth={1.8} aria-hidden="true" /> Search {current.name}</a
+      >
+    {/if}
+    {#if status.data?.building}<span class="building"
+        ><span class="spinner"></span> Building plugins…</span
+      >{/if}
   </div>
 
   {#if providers.isPending}
@@ -71,11 +88,21 @@
     <div class="empty">
       <Layers size={32} strokeWidth={1.8} aria-hidden="true" />
       <p>No providers loaded yet.</p>
-      <p class="muted">Plugins build in the background on first start. Check the plugin settings for errors.</p>
-      <a class="btn" href="/settings"><Settings2 size={17} strokeWidth={1.8} aria-hidden="true" /> Open settings</a>
+      <p class="muted">
+        Plugins build in the background on first start. Check the plugin settings for errors.
+      </p>
+      <a class="btn" href="/settings"
+        ><Settings2 size={17} strokeWidth={1.8} aria-hidden="true" /> Open settings</a
+      >
     </div>
   {:else}
-    <ProviderPicker providers={withHome} {current} {contentType} onchoose={choose} onfilter={filter} />
+    <ProviderPicker
+      providers={withHome}
+      {current}
+      {contentType}
+      onchoose={choose}
+      onfilter={filter}
+    />
     {#if !current}
       <div class="empty">
         <p>No sources available for this content type.</p>
@@ -126,8 +153,12 @@
     justify-content: space-between;
     gap: 12px;
   }
-  .page-heading { margin-bottom: 0; }
-  .browse-search { margin-left: auto; }
+  .page-heading {
+    margin-bottom: 0;
+  }
+  .browse-search {
+    margin-left: auto;
+  }
   .building {
     display: inline-flex;
     gap: 8px;

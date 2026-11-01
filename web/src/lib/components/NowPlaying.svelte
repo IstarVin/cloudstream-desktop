@@ -1,9 +1,24 @@
 <script lang="ts">
+  import {
+    ChevronDown,
+    FastForward,
+    Layers,
+    MonitorPlay,
+    Pause,
+    Play,
+    RotateCcw,
+    RotateCw,
+    SkipBack,
+    SkipForward,
+    Square,
+    Subtitles,
+    Volume1,
+    Volume2,
+  } from "@lucide/svelte";
   import { formatTime, titleHref } from "../api";
   import { player } from "../player.svelte";
   import { sources } from "../sources.svelte";
   import { toasts } from "../toast.svelte";
-  import { ChevronDown, FastForward, Layers, MonitorPlay, Pause, Play, RotateCcw, RotateCw, SkipBack, SkipForward, Square, Subtitles, Volume1, Volume2 } from "@lucide/svelte";
 
   const s = $derived(player.state);
   const pct = $derived(s.duration > 0 ? (s.position / s.duration) * 100 : 0);
@@ -21,7 +36,13 @@
 
   function openSources() {
     if (!s.provider || !s.url || !s.data) return;
-    sources.show({ provider: s.provider, url: s.url, data: s.data, title: s.title ?? "", label: s.episodeLabel ?? null });
+    sources.show({
+      provider: s.provider,
+      url: s.url,
+      data: s.data,
+      title: s.title ?? "",
+      label: s.episodeLabel ?? null,
+    });
   }
 
   const nextText = $derived.by(() => {
@@ -41,9 +62,16 @@
     }
   });
 
-  const skipLabel = $derived(s.skip ? `Skip ${{ op: "opening", ed: "ending", recap: "recap" }[s.skip.type]}` : null);
+  const skipLabel = $derived(
+    s.skip ? `Skip ${{ op: "opening", ed: "ending", recap: "recap" }[s.skip.type]}` : null,
+  );
 
-  function trackLabel(t: { id: number; title: string | null; lang: string | null; external: boolean }) {
+  function trackLabel(t: {
+    id: number;
+    title: string | null;
+    lang: string | null;
+    external: boolean;
+  }) {
     return [t.lang?.toUpperCase(), t.title].filter(Boolean).join(" · ") || `Track ${t.id}`;
   }
 </script>
@@ -59,20 +87,42 @@
           {#if busy || s.status === "error"}
             <span class={{ err: s.status === "error" }}>{s.message ?? "Loading…"}</span>
           {:else}
-            {s.episodeLabel ?? ""}{s.episodeLabel ? " · " : ""}{formatTime(s.position)} / {formatTime(s.duration)}
+            {s.episodeLabel ?? ""}{s.episodeLabel ? " · " : ""}{formatTime(s.position)} / {formatTime(
+              s.duration,
+            )}
           {/if}
         </div>
       </div>
     </button>
     {#if busy}<div class="spinner"></div>{/if}
     {#if skipLabel}
-      <button class="skip-btn" onclick={() => cmd("skip")}><FastForward size={16} strokeWidth={1.8} aria-hidden="true" /> {skipLabel}</button>
+      <button class="skip-btn" onclick={() => cmd("skip")}
+        ><FastForward size={16} strokeWidth={1.8} aria-hidden="true" />
+        {skipLabel}</button
+      >
     {/if}
-    <button class="icon-btn" onclick={() => cmd("toggle")} aria-label={s.paused ? "Play" : "Pause"} disabled={busy}>
-      {#if s.paused}<Play size={22} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />{:else}<Pause size={22} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />{/if}
+    <button
+      class="icon-btn"
+      onclick={() => cmd("toggle")}
+      aria-label={s.paused ? "Play" : "Pause"}
+      disabled={busy}
+    >
+      {#if s.paused}<Play
+          size={22}
+          fill="currentColor"
+          strokeWidth={1.8}
+          aria-hidden="true"
+        />{:else}<Pause size={22} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />{/if}
     </button>
     {#if s.hasNext}
-      <button class="icon-btn hide-sm" class:primed={s.next?.status === "ready"} onclick={() => cmd("next")} aria-label="Next episode" title={nextText ?? "Next episode"}><SkipForward size={22} strokeWidth={1.8} aria-hidden="true" /></button>
+      <button
+        class="icon-btn hide-sm"
+        class:primed={s.next?.status === "ready"}
+        onclick={() => cmd("next")}
+        aria-label="Next episode"
+        title={nextText ?? "Next episode"}
+        ><SkipForward size={22} strokeWidth={1.8} aria-hidden="true" /></button
+      >
     {/if}
   </div>
 {/if}
@@ -80,87 +130,178 @@
 {#if player.expanded}
   <div class="remote" role="dialog" aria-label="Remote">
     <header>
-      <button class="icon-btn" onclick={() => (player.expanded = false)} aria-label="Close remote"><ChevronDown size={22} strokeWidth={1.8} aria-hidden="true" /></button>
-      <span class="player-status"><span class={["status-dot", { online: s.mpvRunning }]}></span>{s.mpvRunning ? "Playing in mpv" : "mpv is closed"}</span>
-      <button class="icon-btn" onclick={openSources} aria-label="Sources"><Layers size={22} strokeWidth={1.8} aria-hidden="true" /></button>
+      <button class="icon-btn" onclick={() => (player.expanded = false)} aria-label="Close remote"
+        ><ChevronDown size={22} strokeWidth={1.8} aria-hidden="true" /></button
+      >
+      <span class="player-status"
+        ><span class={["status-dot", { online: s.mpvRunning }]}></span>{s.mpvRunning
+          ? "Playing in mpv"
+          : "mpv is closed"}</span
+      >
+      <button class="icon-btn" onclick={openSources} aria-label="Sources"
+        ><Layers size={22} strokeWidth={1.8} aria-hidden="true" /></button
+      >
     </header>
 
     <div class="body">
       <div class="artwork">
-      <div class="cover">
-        {#if s.poster}<img src={s.poster} alt="" referrerpolicy="no-referrer" />{:else}<MonitorPlay size={64} strokeWidth={1.8} aria-hidden="true" />{/if}
-      </div>
+        <div class="cover">
+          {#if s.poster}<img
+              src={s.poster}
+              alt=""
+              referrerpolicy="no-referrer"
+            />{:else}<MonitorPlay size={64} strokeWidth={1.8} aria-hidden="true" />{/if}
+        </div>
       </div>
       <div class="player-panel">
-      <div class="meta">
-        {#if s.provider && s.url}
-          <a class="r-title" href={titleHref(s.provider, s.url)} onclick={() => (player.expanded = false)}>{s.title ?? "Nothing playing"}</a>
-        {:else}
-          <div class="r-title">{s.title ?? "Nothing playing"}</div>
+        <div class="meta">
+          {#if s.provider && s.url}
+            <a
+              class="r-title"
+              href={titleHref(s.provider, s.url)}
+              onclick={() => (player.expanded = false)}>{s.title ?? "Nothing playing"}</a
+            >
+          {:else}
+            <div class="r-title">{s.title ?? "Nothing playing"}</div>
+          {/if}
+          {#if s.episodeLabel}<div class="episode">{s.episodeLabel}</div>{/if}
+          {#if s.link}<div class="faint">
+              {s.link.source} · {s.link.qualityLabel}{s.link.proxied ? " · proxied" : ""}
+            </div>{/if}
+          {#if s.message}<div class={["msg", { err: s.status === "error" }]}>
+              {s.message}
+            </div>{/if}
+          {#if nextText}<div class={["next", s.next?.status]}>
+              {nextText}
+            </div>{/if}
+        </div>
+
+        <div class="seek">
+          <input
+            type="range"
+            min="0"
+            max={Math.max(1, s.duration)}
+            step="1"
+            value={scrub ?? s.position}
+            oninput={(e) => (scrub = +e.currentTarget.value)}
+            onchange={(e) => {
+              cmd("seek", { seconds: +e.currentTarget.value });
+              scrub = null;
+            }}
+            aria-label="Seek"
+            disabled={s.duration <= 0}
+          />
+          <div class="times">
+            <span>{formatTime(scrub ?? s.position)}</span><span
+              >-{formatTime(s.duration - (scrub ?? s.position))}</span
+            >
+          </div>
+        </div>
+
+        {#if skipLabel}
+          <button class="skip-btn big" onclick={() => cmd("skip")}
+            ><FastForward size={18} strokeWidth={1.8} aria-hidden="true" />
+            {skipLabel}</button
+          >
         {/if}
-        {#if s.episodeLabel}<div class="episode">{s.episodeLabel}</div>{/if}
-        {#if s.link}<div class="faint">{s.link.source} · {s.link.qualityLabel}{s.link.proxied ? " · proxied" : ""}</div>{/if}
-        {#if s.message}<div class={["msg", { err: s.status === "error" }]}>{s.message}</div>{/if}
-        {#if nextText}<div class={["next", s.next?.status]}>{nextText}</div>{/if}
-      </div>
 
-      <div class="seek">
-        <input
-          type="range"
-          min="0"
-          max={Math.max(1, s.duration)}
-          step="1"
-          value={scrub ?? s.position}
-          oninput={(e) => (scrub = +e.currentTarget.value)}
-          onchange={(e) => {
-            cmd("seek", { seconds: +e.currentTarget.value });
-            scrub = null;
-          }}
-          aria-label="Seek"
-          disabled={s.duration <= 0}
-        />
-        <div class="times"><span>{formatTime(scrub ?? s.position)}</span><span>-{formatTime(s.duration - (scrub ?? s.position))}</span></div>
-      </div>
+        <div class="controls">
+          <button
+            class="icon-btn lg"
+            onclick={() => cmd("prev")}
+            disabled={!s.hasPrev}
+            aria-label="Previous episode"
+            ><SkipBack size={26} strokeWidth={1.8} aria-hidden="true" /></button
+          >
+          <button
+            class="icon-btn lg"
+            onclick={() => cmd("seek", { seconds: -10, relative: true })}
+            aria-label="Back 10 seconds"
+            ><RotateCcw size={28} strokeWidth={1.8} aria-hidden="true" /></button
+          >
+          <button
+            class="play"
+            onclick={() => cmd("toggle")}
+            aria-label={s.paused ? "Play" : "Pause"}
+          >
+            {#if busy}<div class="spinner big"></div>{:else}{#if s.paused}<Play
+                  size={34}
+                  fill="currentColor"
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />{:else}<Pause
+                  size={34}
+                  fill="currentColor"
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />{/if}{/if}
+          </button>
+          <button
+            class="icon-btn lg"
+            onclick={() => cmd("seek", { seconds: 10, relative: true })}
+            aria-label="Forward 10 seconds"
+            ><RotateCw size={28} strokeWidth={1.8} aria-hidden="true" /></button
+          >
+          <button
+            class="icon-btn lg"
+            onclick={() => cmd("next")}
+            disabled={!s.hasNext}
+            aria-label="Next episode"
+            ><SkipForward size={26} strokeWidth={1.8} aria-hidden="true" /></button
+          >
+        </div>
 
-      {#if skipLabel}
-        <button class="skip-btn big" onclick={() => cmd("skip")}><FastForward size={18} strokeWidth={1.8} aria-hidden="true" /> {skipLabel}</button>
-      {/if}
+        <div class="tracks">
+          <label>
+            <span class="track-heading"
+              ><Volume2 size={17} strokeWidth={1.8} aria-hidden="true" /> Audio</span
+            >
+            <select
+              onchange={(e) => cmd("track", { type: "audio", id: e.currentTarget.value })}
+              disabled={!s.audioTracks.length}
+            >
+              {#each s.audioTracks as t (t.id)}<option value={String(t.id)} selected={t.selected}
+                  >{trackLabel(t)}</option
+                >{/each}
+              {#if !s.audioTracks.length}<option>Audio</option>{/if}
+            </select>
+          </label>
+          <label>
+            <span class="track-heading"
+              ><Subtitles size={17} strokeWidth={1.8} aria-hidden="true" /> Subtitles</span
+            >
+            <select onchange={(e) => cmd("track", { type: "sub", id: e.currentTarget.value })}>
+              <option value="no" selected={!s.subTracks.some((t) => t.selected)}
+                >Subtitles off</option
+              >
+              {#each s.subTracks as t (t.id)}<option value={String(t.id)} selected={t.selected}
+                  >{trackLabel(t)}</option
+                >{/each}
+            </select>
+          </label>
+          <label class="vol">
+            <span class="track-heading"
+              ><Volume1 size={17} strokeWidth={1.8} aria-hidden="true" /> Volume</span
+            >
+            <input
+              type="range"
+              min="0"
+              max="130"
+              value={s.volume}
+              onchange={(e) => cmd("volume", { value: +e.currentTarget.value })}
+              aria-label="Volume"
+            />
+          </label>
+        </div>
 
-      <div class="controls">
-        <button class="icon-btn lg" onclick={() => cmd("prev")} disabled={!s.hasPrev} aria-label="Previous episode"><SkipBack size={26} strokeWidth={1.8} aria-hidden="true" /></button>
-        <button class="icon-btn lg" onclick={() => cmd("seek", { seconds: -10, relative: true })} aria-label="Back 10 seconds"><RotateCcw size={28} strokeWidth={1.8} aria-hidden="true" /></button>
-        <button class="play" onclick={() => cmd("toggle")} aria-label={s.paused ? "Play" : "Pause"}>
-          {#if busy}<div class="spinner big"></div>{:else}{#if s.paused}<Play size={34} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />{:else}<Pause size={34} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />{/if}{/if}
-        </button>
-        <button class="icon-btn lg" onclick={() => cmd("seek", { seconds: 10, relative: true })} aria-label="Forward 10 seconds"><RotateCw size={28} strokeWidth={1.8} aria-hidden="true" /></button>
-        <button class="icon-btn lg" onclick={() => cmd("next")} disabled={!s.hasNext} aria-label="Next episode"><SkipForward size={26} strokeWidth={1.8} aria-hidden="true" /></button>
-      </div>
-
-      <div class="tracks">
-        <label>
-          <span class="track-heading"><Volume2 size={17} strokeWidth={1.8} aria-hidden="true" /> Audio</span>
-          <select onchange={(e) => cmd("track", { type: "audio", id: e.currentTarget.value })} disabled={!s.audioTracks.length}>
-            {#each s.audioTracks as t (t.id)}<option value={String(t.id)} selected={t.selected}>{trackLabel(t)}</option>{/each}
-            {#if !s.audioTracks.length}<option>Audio</option>{/if}
-          </select>
-        </label>
-        <label>
-          <span class="track-heading"><Subtitles size={17} strokeWidth={1.8} aria-hidden="true" /> Subtitles</span>
-          <select onchange={(e) => cmd("track", { type: "sub", id: e.currentTarget.value })}>
-            <option value="no" selected={!s.subTracks.some((t) => t.selected)}>Subtitles off</option>
-            {#each s.subTracks as t (t.id)}<option value={String(t.id)} selected={t.selected}>{trackLabel(t)}</option>{/each}
-          </select>
-        </label>
-        <label class="vol">
-          <span class="track-heading"><Volume1 size={17} strokeWidth={1.8} aria-hidden="true" /> Volume</span>
-          <input type="range" min="0" max="130" value={s.volume} onchange={(e) => cmd("volume", { value: +e.currentTarget.value })} aria-label="Volume" />
-        </label>
-      </div>
-
-      <div class="actions">
-        <button class="btn" onclick={openSources}><Layers size={18} strokeWidth={1.8} aria-hidden="true" /> Sources</button>
-        <button class="btn" onclick={() => cmd("stop")}><Square size={18} strokeWidth={1.8} aria-hidden="true" /> Stop</button>
-      </div>
+        <div class="actions">
+          <button class="btn" onclick={openSources}
+            ><Layers size={18} strokeWidth={1.8} aria-hidden="true" /> Sources</button
+          >
+          <button class="btn" onclick={() => cmd("stop")}
+            ><Square size={18} strokeWidth={1.8} aria-hidden="true" /> Stop</button
+          >
+        </div>
       </div>
     </div>
   </div>
@@ -245,7 +386,9 @@
     place-items: center;
     border-radius: 50%;
     flex-shrink: 0;
-    transition: background-color 150ms ease, transform 150ms ease;
+    transition:
+      background-color 150ms ease,
+      transform 150ms ease;
   }
   .icon-btn:hover:not(:disabled) {
     background: var(--surface-3);
@@ -274,10 +417,16 @@
     animation: remote-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   @keyframes bar-in {
-    from { opacity: 0; transform: translateY(12px); }
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
   }
   @keyframes remote-in {
-    from { opacity: 0; transform: translateY(24px); }
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
   }
   header {
     display: flex;
@@ -286,10 +435,25 @@
     padding: 16px clamp(16px, 3vw, 40px);
     font-size: 13px;
   }
-  header .icon-btn { background: rgb(255 255 255 / 0.05); }
-  .player-status { display: flex; align-items: center; gap: 8px; color: var(--muted); font-weight: 600; }
-  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
-  .status-dot.online { background: var(--good); }
+  header .icon-btn {
+    background: rgb(255 255 255 / 0.05);
+  }
+  .player-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+  .status-dot.online {
+    background: var(--good);
+  }
   .body {
     width: min(100%, 1020px);
     margin: auto;
@@ -310,19 +474,62 @@
     color: var(--faint);
     box-shadow: 0 24px 70px rgb(0 0 0 / 0.45);
   }
-  .cover img { width: 100%; height: 100%; object-fit: cover; }
-  .player-panel { min-width: 0; display: flex; flex-direction: column; }
-  .meta { display: flex; flex-direction: column; gap: 5px; margin-bottom: 34px; }
-  .r-title { font-size: clamp(28px, 3vw, 40px); line-height: 1.15; font-weight: 750; letter-spacing: -0.03em; overflow-wrap: anywhere; }
-  a.r-title:hover { color: var(--accent); }
-  .episode { color: var(--text); font-size: 15px; }
-  .faint { color: var(--muted); font-size: 13px; }
-  .msg { margin-top: 6px; font-size: 14px; color: var(--accent); }
-  .msg.err { color: var(--danger); }
-  .next { margin-top: 4px; font-size: 13px; color: var(--muted); }
-  .next.ready { color: var(--good); }
-  .next.failed { color: var(--danger); }
-  .icon-btn.primed { color: var(--good); }
+  .cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .player-panel {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .meta {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 34px;
+  }
+  .r-title {
+    font-size: clamp(28px, 3vw, 40px);
+    line-height: 1.15;
+    font-weight: 750;
+    letter-spacing: -0.03em;
+    overflow-wrap: anywhere;
+  }
+  a.r-title:hover {
+    color: var(--accent);
+  }
+  .episode {
+    color: var(--text);
+    font-size: 15px;
+  }
+  .faint {
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .msg {
+    margin-top: 6px;
+    font-size: 14px;
+    color: var(--accent);
+  }
+  .msg.err {
+    color: var(--danger);
+  }
+  .next {
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .next.ready {
+    color: var(--good);
+  }
+  .next.failed {
+    color: var(--danger);
+  }
+  .icon-btn.primed {
+    color: var(--good);
+  }
   .skip-btn {
     flex-shrink: 0;
     display: inline-flex;
@@ -336,31 +543,127 @@
     font-size: 13px;
     font-weight: 650;
     white-space: nowrap;
-    transition: background-color 150ms ease, transform 150ms ease;
+    transition:
+      background-color 150ms ease,
+      transform 150ms ease;
     animation: bar-in 200ms ease-out both;
   }
-  .skip-btn:hover { background: var(--accent-soft); color: var(--accent); }
-  .skip-btn:active { transform: scale(0.95); }
-  .skip-btn.big { align-self: flex-end; height: 44px; padding: 0 18px; margin-top: 14px; font-size: 14px; }
-  .seek input, .vol input { width: 100%; padding: 0; accent-color: var(--accent); background: none; border: 0; cursor: pointer; }
-  .seek input:disabled { cursor: default; }
-  .times { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 20px 0 32px; }
-  .play { width: 72px; height: 72px; flex-shrink: 0; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; transition: transform 0.15s, filter 0.15s; }
-  .play:hover { filter: brightness(1.08); transform: scale(1.04); }
-  .play:active { transform: scale(0.92); }
-  .spinner.big { width: 30px; height: 30px; border-color: rgb(0 0 0 / 0.2); border-top-color: var(--accent-ink); }
-  .tracks { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 14px; padding-top: 24px; border-top: 1px solid var(--line); }
-  .tracks label { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-  .track-heading { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 650; }
-  .tracks select { width: 100%; min-height: 44px; font-size: 13px; text-overflow: ellipsis; }
-  .tracks select:disabled { opacity: 0.6; }
-  .vol { grid-column: 1 / -1; }
-  .vol input { margin: 4px 0; }
-  .actions { display: flex; gap: 10px; margin-top: 28px; }
-  .actions .btn { min-width: 112px; }
+  .skip-btn:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .skip-btn:active {
+    transform: scale(0.95);
+  }
+  .skip-btn.big {
+    align-self: flex-end;
+    height: 44px;
+    padding: 0 18px;
+    margin-top: 14px;
+    font-size: 14px;
+  }
+  .seek input,
+  .vol input {
+    width: 100%;
+    padding: 0;
+    accent-color: var(--accent);
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  .seek input:disabled {
+    cursor: default;
+  }
+  .times {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 20px 0 32px;
+  }
+  .play {
+    width: 72px;
+    height: 72px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    display: grid;
+    place-items: center;
+    transition:
+      transform 0.15s,
+      filter 0.15s;
+  }
+  .play:hover {
+    filter: brightness(1.08);
+    transform: scale(1.04);
+  }
+  .play:active {
+    transform: scale(0.92);
+  }
+  .spinner.big {
+    width: 30px;
+    height: 30px;
+    border-color: rgb(0 0 0 / 0.2);
+    border-top-color: var(--accent-ink);
+  }
+  .tracks {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 14px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+  }
+  .tracks label {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+  .track-heading {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 650;
+  }
+  .tracks select {
+    width: 100%;
+    min-height: 44px;
+    font-size: 13px;
+    text-overflow: ellipsis;
+  }
+  .tracks select:disabled {
+    opacity: 0.6;
+  }
+  .vol {
+    grid-column: 1 / -1;
+  }
+  .vol input {
+    margin: 4px 0;
+  }
+  .actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 28px;
+  }
+  .actions .btn {
+    min-width: 112px;
+  }
   @media (max-width: 700px) {
-    header { flex-shrink: 0; padding: max(8px, env(safe-area-inset-top)) 16px 8px; }
+    header {
+      flex-shrink: 0;
+      padding: max(8px, env(safe-area-inset-top)) 16px 8px;
+    }
     .body {
       display: flex;
       flex: 0 0 auto;
@@ -370,22 +673,57 @@
       padding: 4px 24px 16px;
       margin: auto;
     }
-    .artwork { width: min(48vw, 210px, max(110px, 66.667dvh - 346.67px)); flex-shrink: 0; }
-    .player-panel { width: 100%; }
-    .meta { text-align: center; gap: 2px; margin-bottom: 12px; }
-    .r-title { font-size: 24px; }
-    .times { margin-top: 2px; }
-    .controls { margin: 8px 0 14px; }
-    .play { width: 64px; height: 64px; }
-    .tracks { gap: 10px 12px; padding-top: 14px; }
-    .tracks label { gap: 4px; }
-    .tracks select { font-size: 16px; }
-    .vol input { margin: 2px 0; }
-    .actions { justify-content: center; margin-top: 14px; }
+    .artwork {
+      width: min(48vw, 210px, max(110px, 66.667dvh - 346.67px));
+      flex-shrink: 0;
+    }
+    .player-panel {
+      width: 100%;
+    }
+    .meta {
+      text-align: center;
+      gap: 2px;
+      margin-bottom: 12px;
+    }
+    .r-title {
+      font-size: 24px;
+    }
+    .times {
+      margin-top: 2px;
+    }
+    .controls {
+      margin: 8px 0 14px;
+    }
+    .play {
+      width: 64px;
+      height: 64px;
+    }
+    .tracks {
+      gap: 10px 12px;
+      padding-top: 14px;
+    }
+    .tracks label {
+      gap: 4px;
+    }
+    .tracks select {
+      font-size: 16px;
+    }
+    .vol input {
+      margin: 2px 0;
+    }
+    .actions {
+      justify-content: center;
+      margin-top: 14px;
+    }
   }
   @media (max-width: 380px) {
-    .body { padding-inline: 18px; }
-    .icon-btn.lg { width: 44px; height: 48px; }
+    .body {
+      padding-inline: 18px;
+    }
+    .icon-btn.lg {
+      width: 44px;
+      height: 48px;
+    }
   }
   @media (min-width: 900px) {
     .bar {

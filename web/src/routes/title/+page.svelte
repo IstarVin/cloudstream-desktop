@@ -1,15 +1,25 @@
 <script lang="ts">
-  import { page } from "$app/state";
-  import { createQuery, useQueryClient } from "@tanstack/svelte-query";
   import { api, episodeLabel, formatTime } from "#lib/api";
   import EpisodeBrowser from "#lib/components/EpisodeBrowser.svelte";
   import LoadingSkeleton from "#lib/components/LoadingSkeleton.svelte";
-  import { ArrowLeft, Bookmark, ChevronDown, Film, Play, RefreshCw, Star, Subtitles, Volume2 } from "@lucide/svelte";
   import Poster from "#lib/components/Poster.svelte";
   import { player } from "#lib/player.svelte";
   import { sources } from "#lib/sources.svelte";
   import { toasts } from "#lib/toast.svelte";
   import { BOOKMARK_LISTS, type Details, type Episode } from "#lib/types";
+  import { page } from "$app/state";
+  import {
+    ArrowLeft,
+    Bookmark,
+    Captions,
+    ChevronDown,
+    Film,
+    Play,
+    RefreshCw,
+    Star,
+    Volume2,
+  } from "@lucide/svelte";
+  import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 
   const provider = $derived(page.url.searchParams.get("provider") ?? "");
   const url = $derived(page.url.searchParams.get("url") ?? "");
@@ -32,13 +42,25 @@
   const dub = $derived(dubChoice?.title === titleKey ? dubChoice.value : null);
 
   const d = $derived(details.data);
-  const dubs = $derived([...new Set((d?.episodes ?? []).map((e) => e.dub).filter((x): x is string => !!x))]);
-  const activeDub = $derived(dub && dubs.includes(dub) ? dub : (dubs.find((x) => x === "Subbed") ?? dubs[0] ?? null));
-  const byDub = $derived((d?.episodes ?? []).filter((e) => !activeDub || e.dub === activeDub));
+  const dubs = $derived([
+    ...new Set(
+      (d?.episodes ?? []).map((e) => e.dub).filter((x): x is string => !!x),
+    ),
+  ]);
+  const activeDub = $derived(
+    dub && dubs.includes(dub)
+      ? dub
+      : (dubs.find((x) => x === "Subbed") ?? dubs[0] ?? null),
+  );
+  const byDub = $derived(
+    (d?.episodes ?? []).filter((e) => !activeDub || e.dub === activeDub),
+  );
   const resumeEp = $derived(nextUp(byDub));
   /** The episode to resume: the last one in progress, else the first unwatched after the last watched one. */
   function nextUp(eps: Episode[]): Episode | undefined {
-    const inProgress = eps.filter((e) => e.progress && !e.progress.watched && e.progress.position > 30);
+    const inProgress = eps.filter(
+      (e) => e.progress && !e.progress.watched && e.progress.position > 30,
+    );
     if (inProgress.length) return inProgress[inProgress.length - 1];
     let lastWatched = -1;
     eps.forEach((e, i) => e.progress?.watched && (lastWatched = i));
@@ -46,13 +68,26 @@
   }
 
   function play(det: Details, data: string, label: string | null) {
-    sources.play({ provider: det.provider, url: det.url, data, title: det.name, label });
+    sources.play({
+      provider: det.provider,
+      url: det.url,
+      data,
+      title: det.name,
+      label,
+    });
   }
 
   async function bookmark(list: string | null) {
     if (!d) return;
     try {
-      await api.setBookmark({ provider: d.provider, url: d.url, title: d.name, poster: d.poster, type: d.type, list });
+      await api.setBookmark({
+        provider: d.provider,
+        url: d.url,
+        title: d.name,
+        poster: d.poster,
+        type: d.type,
+        list,
+      });
       client.invalidateQueries({ queryKey: ["details", provider, url] });
       toasts.show(list ? `Added to ${list}` : "Removed from library");
     } catch (e) {
@@ -62,15 +97,38 @@
 
   async function toggleWatched(e: Episode) {
     if (!d) return;
-    await api.setWatched(d.provider, d.url, e.data, !e.progress?.watched).catch(toasts.error);
+    await api
+      .setWatched(d.provider, d.url, e.data, !e.progress?.watched)
+      .catch(toasts.error);
     client.invalidateQueries({ queryKey: ["details", provider, url] });
   }
 
   /** Some providers return plots with HTML in them; show them as text with line breaks. */
   const plainText = (html: string) =>
-    new DOMParser().parseFromString(html.replace(/<br\s*\/?>/gi, "\n"), "text/html").body.textContent?.trim() ?? "";
+    new DOMParser()
+      .parseFromString(html.replace(/<br\s*\/?>/gi, "\n"), "text/html")
+      .body.textContent?.trim() ?? "";
 
-  const playing = (data: string) => player.active && player.state.provider === provider && player.state.url === url && player.state.data === data;
+  let expandedPlotTitle = $state<string | null>(null);
+  const plot = $derived(
+    d?.plot ? plainText(d.plot).replace(/\n{3,}/g, "\n\n") : "",
+  );
+  const plotPreview = $derived.by(() => {
+    const lines = plot.split("\n").slice(0, 3).join("\n");
+    if (lines.length <= 280 && lines.length === plot.length) return plot;
+    let preview = lines.slice(0, 280).trimEnd();
+    if (lines.length > 280 && !/\s/.test(lines[280])) {
+      preview = preview.replace(/\s+\S*$/, "");
+    }
+    return preview + "…";
+  });
+  const plotExpanded = $derived(expandedPlotTitle === titleKey);
+
+  const playing = (data: string) =>
+    player.active &&
+    player.state.provider === provider &&
+    player.state.url === url &&
+    player.state.data === data;
 </script>
 
 {#if details.isPending}
@@ -80,63 +138,152 @@
     <div class="empty">
       <p>Couldn't load this title.</p>
       <p class="muted">{details.error.message}</p>
-      <button class="btn" onclick={() => details.refetch()}><RefreshCw size={18} strokeWidth={1.8} aria-hidden="true" /> Retry</button>
+      <button class="btn" onclick={() => details.refetch()}
+        ><RefreshCw size={18} strokeWidth={1.8} aria-hidden="true" /> Retry</button
+      >
     </div>
   </div>
 {:else if d}
-  <div class="hero" style:--hero={d.background || d.poster ? `url("${d.background || d.poster}")` : "none"}></div>
+  <div
+    class="hero"
+    style:--hero={d.background || d.poster
+      ? `url("${d.background || d.poster}")`
+      : "none"}
+  ></div>
   <div class="page detail">
-    <button class="back" onclick={() => history.back()} aria-label="Go back"><ArrowLeft size={18} strokeWidth={1.8} aria-hidden="true" /></button>
+    <button class="back" onclick={() => history.back()} aria-label="Go back"
+      ><ArrowLeft size={18} strokeWidth={1.8} aria-hidden="true" /></button
+    >
     <div class="head">
       <div class="poster">
-        {#if d.poster}<img src={d.poster} alt="" referrerpolicy="no-referrer" />{:else}<Film size={36} strokeWidth={1.8} aria-hidden="true" />{/if}
+        {#if d.poster}<img
+            src={d.poster}
+            alt=""
+            referrerpolicy="no-referrer"
+          />{:else}<Film size={36} strokeWidth={1.8} aria-hidden="true" />{/if}
       </div>
       <div class="info">
         {#if d.logo}
-          <img class="logo" src={d.logo} alt={d.name} referrerpolicy="no-referrer" />
+          <img
+            class="logo"
+            src={d.logo}
+            alt={d.name}
+            referrerpolicy="no-referrer"
+          />
         {:else}
           <h1>{d.name}</h1>
         {/if}
         <div class="facts">
           {#if d.year}<span>{d.year}</span>{/if}
-          {#if d.score}<span class="score"><Star size={14} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /> {d.score.toFixed(1)}</span>{/if}
+          {#if d.score}<span class="score"
+              ><Star
+                size={14}
+                fill="currentColor"
+                strokeWidth={1.8}
+                aria-hidden="true"
+              />
+              {d.score.toFixed(1)}</span
+            >{/if}
           {#if d.contentRating}<span class="badge">{d.contentRating}</span>{/if}
           {#if d.duration}<span>{d.duration} min</span>{/if}
           {#if d.showStatus}<span>{d.showStatus}</span>{/if}
           <span class="muted">{d.provider}</span>
         </div>
-        {#if d.tags.length}<div class="tags">{d.tags.slice(0, 6).join(" · ")}</div>{/if}
+        {#if d.tags.length}<div class="tags">
+            {d.tags.slice(0, 6).join(" · ")}
+          </div>{/if}
 
         <div class="actions">
           {#if d.movieData}
             {@const p = d.movieProgress}
-            <button class="btn primary" onclick={() => play(d, d.movieData!, null)}>
-              <Play size={18} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />
-              {p && !p.watched && p.position > 30 ? `Resume ${formatTime(p.position)}` : d.kind === "live" ? "Watch live" : "Play"}
+            <button
+              class="btn primary"
+              onclick={() => play(d, d.movieData!, null)}
+            >
+              <Play
+                size={18}
+                fill="currentColor"
+                strokeWidth={1.8}
+                aria-hidden="true"
+              />
+              {p && !p.watched && p.position > 30
+                ? `Resume ${formatTime(p.position)}`
+                : d.kind === "live"
+                  ? "Watch live"
+                  : "Play"}
             </button>
           {:else if resumeEp}
             {@const i = byDub.indexOf(resumeEp)}
-            <button class="btn primary" onclick={() => play(d, resumeEp.data, episodeLabel(resumeEp, i))}>
-              <Play size={18} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />
-              {resumeEp.progress && !resumeEp.progress.watched && resumeEp.progress.position > 30 ? "Resume" : "Play"}
+            <button
+              class="btn primary"
+              onclick={() => play(d, resumeEp.data, episodeLabel(resumeEp, i))}
+            >
+              <Play
+                size={18}
+                fill="currentColor"
+                strokeWidth={1.8}
+                aria-hidden="true"
+              />
+              {resumeEp.progress &&
+              !resumeEp.progress.watched &&
+              resumeEp.progress.position > 30
+                ? "Resume"
+                : "Play"}
               {episodeLabel({ ...resumeEp, name: null }, i)}
             </button>
           {:else if d.kind === "torrent"}
             <span class="muted">Torrents aren't supported.</span>
           {/if}
           <label class="bm">
-            <span class="bm-icon"><Bookmark size={18} fill={d.bookmarked ? "currentColor" : "none"} strokeWidth={1.8} aria-hidden="true" /></span>
-            <select value={d.bookmarked ?? ""} onchange={(e) => bookmark(e.currentTarget.value || null)} aria-label="Library list">
-              <option value="">{d.bookmarked ? "Remove from library" : "Add to library"}</option>
-              {#each BOOKMARK_LISTS as l (l)}<option value={l}>{l[0].toUpperCase() + l.slice(1)}</option>{/each}
+            <span class="bm-icon"
+              ><Bookmark
+                size={18}
+                fill={d.bookmarked ? "currentColor" : "none"}
+                strokeWidth={1.8}
+                aria-hidden="true"
+              /></span
+            >
+            <select
+              value={d.bookmarked ?? ""}
+              onchange={(e) => bookmark(e.currentTarget.value || null)}
+              aria-label="Library list"
+            >
+              <option value=""
+                >{d.bookmarked
+                  ? "Remove from library"
+                  : "Add to library"}</option
+              >
+              {#each BOOKMARK_LISTS as l (l)}<option value={l}
+                  >{l[0].toUpperCase() + l.slice(1)}</option
+                >{/each}
             </select>
-            <span class="bm-chevron"><ChevronDown size={16} strokeWidth={1.8} aria-hidden="true" /></span>
+            <span class="bm-chevron"
+              ><ChevronDown
+                size={16}
+                strokeWidth={1.8}
+                aria-hidden="true"
+              /></span
+            >
           </label>
         </div>
       </div>
     </div>
 
-    {#if d.plot}<p class="plot">{plainText(d.plot)}</p>{/if}
+    {#if plot}
+      <div class="plot">
+        <p id="title-plot">{plotExpanded ? plot : plotPreview}</p>
+        {#if plotPreview !== plot}
+          <button
+            class="plot-toggle"
+            aria-expanded={plotExpanded}
+            aria-controls="title-plot"
+            onclick={() => (expandedPlotTitle = plotExpanded ? null : titleKey)}
+          >
+            {plotExpanded ? "Show less" : "Show more"}
+          </button>
+        {/if}
+      </div>
+    {/if}
 
     {#if d.episodes.length}
       {#key titleKey}
@@ -144,7 +291,8 @@
           episodes={byDub}
           seasons={d.seasons}
           nextEpisode={resumeEp}
-          onplay={(episode, index) => play(d, episode.data, episodeLabel(episode, index))}
+          onplay={(episode, index) =>
+            play(d, episode.data, episodeLabel(episode, index))}
           onwatched={toggleWatched}
           isPlaying={playing}
         >
@@ -152,8 +300,25 @@
             {#if dubs.length > 1}
               <div class="seg" role="group" aria-label="Audio version">
                 {#each dubs as x (x)}
-                  <button aria-pressed={x === activeDub} class:on={x === activeDub} onclick={() => { resetFilters(); dubChoice = { title: titleKey, value: x }; }}>
-                    {#if x === "Dubbed"}<Volume2 size={15} strokeWidth={1.8} aria-hidden="true" />{:else}<Subtitles size={15} strokeWidth={1.8} aria-hidden="true" />{/if}
+                  <button
+                    aria-pressed={x === activeDub}
+                    class:on={x === activeDub}
+                    onclick={() => {
+                      resetFilters();
+                      dubChoice = { title: titleKey, value: x };
+                    }}
+                  >
+                    {#if x === "Dubbed"}
+                      <Volume2
+                        size={15}
+                        strokeWidth={1.8}
+                        aria-hidden="true"
+                      />{:else}
+                      <Captions
+                        size={15}
+                        strokeWidth={1.8}
+                        aria-hidden="true"
+                      />{/if}
                     {x === "Dubbed" ? "Dub" : x === "Subbed" ? "Sub" : x}
                   </button>
                 {/each}
@@ -169,7 +334,14 @@
       <div class="scroll-x cast">
         {#each d.actors.slice(0, 20) as a (a.name + a.role)}
           <div class="actor">
-            <div class="face">{#if a.image}<img src={a.image} alt="" loading="lazy" referrerpolicy="no-referrer" />{/if}</div>
+            <div class="face">
+              {#if a.image}<img
+                  src={a.image}
+                  alt=""
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                />{/if}
+            </div>
             <div class="a-name">{a.name}</div>
             {#if a.role}<div class="a-role">{a.role}</div>{/if}
           </div>
@@ -181,7 +353,13 @@
       <h2 class="section-title">More like this</h2>
       <div class="scroll-x">
         {#each d.recommendations as r (r.url)}
-          <Poster provider={r.provider} url={r.url} name={r.name} poster={r.poster} meta={r.year ? String(r.year) : ""} />
+          <Poster
+            provider={r.provider}
+            url={r.url}
+            name={r.name}
+            poster={r.poster}
+            meta={r.year ? String(r.year) : ""}
+          />
         {/each}
       </div>
     {/if}
@@ -193,7 +371,8 @@
     position: absolute;
     inset: 0 0 auto 0;
     height: 480px;
-    background-image: linear-gradient(180deg, rgb(14 15 19 / 0.2), var(--bg)), var(--hero);
+    background-image: linear-gradient(180deg, rgb(14 15 19 / 0.2), var(--bg)),
+      var(--hero);
     background-size: cover;
     background-position: center 20%;
     z-index: 0;
@@ -286,15 +465,20 @@
     max-width: 100%;
     color: var(--muted);
   }
-  .bm-icon, .bm-chevron {
+  .bm-icon,
+  .bm-chevron {
     position: absolute;
     top: 50%;
     display: flex;
     transform: translateY(-50%);
     pointer-events: none;
   }
-  .bm-icon { left: 14px; }
-  .bm-chevron { right: 14px; }
+  .bm-icon {
+    left: 14px;
+  }
+  .bm-chevron {
+    right: 14px;
+  }
   .bm select {
     appearance: none;
     max-width: 100%;
@@ -304,13 +488,25 @@
     cursor: pointer;
     transition: background 0.15s;
   }
-  .bm select:hover { background: var(--surface-3); }
+  .bm select:hover {
+    background: var(--surface-3);
+  }
   .plot {
     margin: 28px 0 0;
     color: var(--muted);
     max-width: 75ch;
     white-space: pre-line;
     line-height: 1.75;
+  }
+  .plot-toggle {
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    margin-top: 6px;
+  }
+  .plot-toggle:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
   .seg {
     display: inline-flex;
@@ -364,8 +560,15 @@
     color: var(--muted);
   }
   @media (max-width: 599px) {
-    .hero { height: 360px; background-position: center top; }
-    .back { width: 44px; height: 44px; margin-bottom: 20px; }
+    .hero {
+      height: 360px;
+      background-position: center top;
+    }
+    .back {
+      width: 44px;
+      height: 44px;
+      margin-bottom: 20px;
+    }
     .head {
       display: grid;
       grid-template-columns: 96px minmax(0, 1fr);
@@ -373,30 +576,110 @@
       align-items: start;
       gap: 0 16px;
     }
-    .poster { width: 100%; grid-row: 1 / 4; }
-    .info { display: contents; }
-    h1, .logo { grid-column: 2; grid-row: 1; }
-    h1 { font-size: clamp(25px, 7vw, 32px); overflow-wrap: anywhere; }
-    .facts { grid-column: 2; grid-row: 2; gap: 5px 10px; font-size: 12px; }
-    .tags { grid-column: 2; grid-row: 3; }
-    .actions { grid-column: 1 / -1; grid-row: 4; display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 20px; }
-    .actions .btn { min-width: 0; min-height: 48px; white-space: normal; text-align: center; padding: 10px; }
-    .bm { display: flex; min-width: 0; }
-    .bm select { width: 100%; min-height: 48px; border-radius: var(--radius-sm); padding-inline: 38px 30px; text-overflow: ellipsis; }
-    .bm-icon { left: 12px; }
-    .bm-chevron { right: 10px; }
-    .plot { margin-top: 24px; font-size: 15px; line-height: 1.65; }
-    .detail .section-title { margin-top: 30px; margin-bottom: 14px; }
-    .detail .scroll-x { margin-right: -20px; padding-right: 20px; overscroll-behavior-inline: contain; }
-    .actor { width: 90px; }
-    .face { width: 76px; height: 76px; margin-bottom: 8px; }
-    .a-name { font-size: 13px; line-height: 1.35; }
-    .a-role { margin-top: 3px; font-size: 12px; line-height: 1.35; }
-    .seg button { padding-inline: 10px; gap: 5px; font-size: 13px; }
+    .poster {
+      width: 100%;
+      grid-row: 1 / 4;
+    }
+    .info {
+      display: contents;
+    }
+    h1,
+    .logo {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    h1 {
+      font-size: clamp(25px, 7vw, 32px);
+      overflow-wrap: anywhere;
+    }
+    .facts {
+      grid-column: 2;
+      grid-row: 2;
+      gap: 5px 10px;
+      font-size: 12px;
+    }
+    .tags {
+      grid-column: 2;
+      grid-row: 3;
+    }
+    .actions {
+      grid-column: 1 / -1;
+      grid-row: 4;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .actions .btn {
+      min-width: 0;
+      min-height: 48px;
+      white-space: normal;
+      text-align: center;
+      padding: 10px;
+    }
+    .bm {
+      display: flex;
+      min-width: 0;
+    }
+    .bm select {
+      width: 100%;
+      min-height: 48px;
+      border-radius: var(--radius-sm);
+      padding-inline: 38px 30px;
+      text-overflow: ellipsis;
+    }
+    .bm-icon {
+      left: 12px;
+    }
+    .bm-chevron {
+      right: 10px;
+    }
+    .plot {
+      margin-top: 24px;
+      font-size: 15px;
+      line-height: 1.65;
+    }
+    .detail .section-title {
+      margin-top: 30px;
+      margin-bottom: 14px;
+    }
+    .detail .scroll-x {
+      margin-right: -20px;
+      padding-right: 20px;
+      overscroll-behavior-inline: contain;
+    }
+    .actor {
+      width: 90px;
+    }
+    .face {
+      width: 76px;
+      height: 76px;
+      margin-bottom: 8px;
+    }
+    .a-name {
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .a-role {
+      margin-top: 3px;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .seg button {
+      padding-inline: 10px;
+      gap: 5px;
+      font-size: 13px;
+    }
   }
   @media (max-width: 359px) {
-    .head { grid-template-columns: 82px minmax(0, 1fr); gap: 0 14px; }
-    .detail .scroll-x { margin-right: -16px; padding-right: 16px; }
+    .head {
+      grid-template-columns: 82px minmax(0, 1fr);
+      gap: 0 14px;
+    }
+    .detail .scroll-x {
+      margin-right: -16px;
+      padding-right: 16px;
+    }
   }
   @media (min-width: 900px) {
     .poster {

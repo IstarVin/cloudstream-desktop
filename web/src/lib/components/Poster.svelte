@@ -38,11 +38,19 @@
 <a class="card" class:horizontal href={href ?? titleHref(provider, url)} title={name}>
   <div class="art">
     {#if poster && !failed}
-      <img src={poster} alt="" loading="lazy" referrerpolicy="no-referrer" onerror={() => (failed = true)} />
+      <img
+        src={poster}
+        alt=""
+        loading="lazy"
+        referrerpolicy="no-referrer"
+        onerror={() => (failed = true)}
+      />
     {:else}
       <span class="initials">{initials}</span>
     {/if}
-    <span class="play-hint"><Play size={24} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /></span>
+    <span class="play-hint"
+      ><Play size={24} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /></span
+    >
     {#if progress != null}
       <div class="progress"><div style="width: {Math.min(100, progress * 100)}%"></div></div>
     {/if}
@@ -85,9 +93,24 @@
   .card:hover img {
     transform: scale(1.04);
   }
-  .play-hint { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(0 0 0 / 0.35); color: #fff; opacity: 0; transition: opacity 180ms; }
-  .card:hover .play-hint, .card:focus-visible .play-hint { opacity: 1; }
-  .card:hover .name, .card:focus-visible .name { color: var(--accent); }
+  .play-hint {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgb(0 0 0 / 0.35);
+    color: #fff;
+    opacity: 0;
+    transition: opacity 180ms;
+  }
+  .card:hover .play-hint,
+  .card:focus-visible .play-hint {
+    opacity: 1;
+  }
+  .card:hover .name,
+  .card:focus-visible .name {
+    color: var(--accent);
+  }
   .initials {
     font-size: 28px;
     font-weight: 750;

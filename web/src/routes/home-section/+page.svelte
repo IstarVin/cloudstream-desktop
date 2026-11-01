@@ -12,7 +12,12 @@
   const section = $derived(Number(sectionParam));
   const rowName = $derived(page.url.searchParams.get("row") ?? "");
   const name = $derived(page.url.searchParams.get("name") || rowName || "Titles");
-  const valid = $derived(!!provider && sectionParam !== null && /^\d+$/.test(sectionParam) && Number.isSafeInteger(section));
+  const valid = $derived(
+    !!provider &&
+      sectionParam !== null &&
+      /^\d+$/.test(sectionParam) &&
+      Number.isSafeInteger(section),
+  );
 
   const titles = createInfiniteQuery(() => ({
     ...homePagesOptions(provider, section),
@@ -24,7 +29,8 @@
   const items = $derived(row?.items ?? []);
 
   function loadMore() {
-    if (titles.hasNextPage && !titles.isFetching) void titles.fetchNextPage({ cancelRefetch: false });
+    if (titles.hasNextPage && !titles.isFetching)
+      void titles.fetchNextPage({ cancelRefetch: false });
   }
 </script>
 
@@ -33,14 +39,18 @@
 </svelte:head>
 
 <div class="page">
-  <a class="back" href="/"><ArrowLeft size={18} strokeWidth={1.8} aria-hidden="true" /> Back to home</a>
+  <a class="back" href="/"
+    ><ArrowLeft size={18} strokeWidth={1.8} aria-hidden="true" /> Back to home</a
+  >
   <div class="page-heading">
     <h1 class="page-title">{name}</h1>
     <p>{provider}</p>
   </div>
 
   {#if !valid}
-    <p class="muted">This section link is incomplete. Return home and choose “View all” from a section.</p>
+    <p class="muted">
+      This section link is incomplete. Return home and choose “View all” from a section.
+    </p>
   {:else if titles.isPending}
     <LoadingSkeleton />
   {:else if titles.isError && !titles.data}
@@ -71,7 +81,10 @@
         {:else if !items.length}
           No titles in this section yet.
         {:else}
-          {items.length} {items.length === 1 ? "title" : "titles"}{titles.hasNextPage ? " loaded" : " · All loaded"}
+          {items.length}
+          {items.length === 1 ? "title" : "titles"}{titles.hasNextPage
+            ? " loaded"
+            : " · All loaded"}
         {/if}
       </p>
       <InfiniteLoader
@@ -93,7 +106,9 @@
     margin-bottom: 16px;
     color: var(--muted);
   }
-  .back:hover { color: var(--text); }
+  .back:hover {
+    color: var(--text);
+  }
   .poster-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 132px), 1fr));
@@ -106,9 +121,15 @@
     margin-top: 32px;
     text-align: center;
   }
-  .pagination p { margin: 0 0 16px; }
+  .pagination p {
+    margin: 0 0 16px;
+  }
   @media (min-width: 900px) {
-    .poster-grid { grid-template-columns: repeat(auto-fill, minmax(164px, 1fr)); }
-    .poster-grid.horizontal { grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); }
+    .poster-grid {
+      grid-template-columns: repeat(auto-fill, minmax(164px, 1fr));
+    }
+    .poster-grid.horizontal {
+      grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+    }
   }
 </style>

@@ -31,8 +31,18 @@
     <p>Your watchlist and the stories you’ve started.</p>
   </div>
   <div class="seg" role="group" aria-label="Library view">
-    <button aria-pressed={tab === "history"} class:on={tab === "history"} onclick={() => (tab = "history")}><History size={17} strokeWidth={1.8} aria-hidden="true" /> History</button>
-    <button aria-pressed={tab === "bookmarks"} class:on={tab === "bookmarks"} onclick={() => (tab = "bookmarks")}><Bookmark size={17} strokeWidth={1.8} aria-hidden="true" /> Bookmarks</button>
+    <button
+      aria-pressed={tab === "history"}
+      class:on={tab === "history"}
+      onclick={() => (tab = "history")}
+      ><History size={17} strokeWidth={1.8} aria-hidden="true" /> History</button
+    >
+    <button
+      aria-pressed={tab === "bookmarks"}
+      class:on={tab === "bookmarks"}
+      onclick={() => (tab = "bookmarks")}
+      ><Bookmark size={17} strokeWidth={1.8} aria-hidden="true" /> Bookmarks</button
+    >
   </div>
 
   {#if tab === "history"}
@@ -40,8 +50,20 @@
       <div class="grid">
         {#each history.data as h (h.provider + h.url)}
           <div class="cell">
-            <Poster provider={h.provider} url={h.url} name={h.title} poster={h.poster} meta={ago(h.lastWatched)} showProvider />
-            <button class="forget" onclick={() => forget(h.provider, h.url)} aria-label="Remove {h.title} from history"><X size={16} strokeWidth={1.8} aria-hidden="true" /></button>
+            <Poster
+              provider={h.provider}
+              url={h.url}
+              name={h.title}
+              poster={h.poster}
+              meta={ago(h.lastWatched)}
+              showProvider
+            />
+            <button
+              class="forget"
+              onclick={() => forget(h.provider, h.url)}
+              aria-label="Remove {h.title} from history"
+              ><X size={16} strokeWidth={1.8} aria-hidden="true" /></button
+            >
           </div>
         {/each}
       </div>
@@ -52,10 +74,18 @@
     {#each BOOKMARK_LISTS as list (list)}
       {@const items = bookmarks.data.filter((b) => b.list === list)}
       {#if items.length}
-        <h2 class="section-title">{list[0].toUpperCase() + list.slice(1)} <span class="muted">{items.length}</span></h2>
+        <h2 class="section-title">
+          {list[0].toUpperCase() + list.slice(1)} <span class="muted">{items.length}</span>
+        </h2>
         <div class="grid">
           {#each items as b (b.provider + b.url)}
-            <Poster provider={b.provider} url={b.url} name={b.title} poster={b.poster} showProvider />
+            <Poster
+              provider={b.provider}
+              url={b.url}
+              name={b.title}
+              poster={b.poster}
+              showProvider
+            />
           {/each}
         </div>
       {/if}

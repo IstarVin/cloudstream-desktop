@@ -1,18 +1,19 @@
 <script lang="ts">
-  import { page } from "$app/state";
-  import { goto } from "$app/navigation";
-  import { untrack } from "svelte";
   import { streamSearch } from "#lib/api";
-  import { Search } from "@lucide/svelte";
   import Poster from "#lib/components/Poster.svelte";
   import type { SearchItem } from "#lib/types";
+  import { goto } from "$app/navigation";
+  import { page } from "$app/state";
+  import { Search } from "@lucide/svelte";
+  import { untrack } from "svelte";
 
-  let query = $state(page.url.searchParams.get("q") ?? "");
+  let query = $derived(page.url.searchParams.get("q") ?? "");
   let results = $state<{ provider: string; items: SearchItem[] }[]>([]);
   let errors = $state<{ provider: string; error: string }[]>([]);
   let searching = $state(false);
   let type = $state<string | null>(null);
   let stop: (() => void) | null = null;
+  const provider = $derived(page.url.searchParams.get("provider") || "");
 
   const TYPE_GROUPS: Record<string, string[]> = {
     Movies: ["Movie", "AnimeMovie"],
@@ -21,34 +22,47 @@
     Live: ["Live"],
   };
   const matches = (i: SearchItem) => !type || TYPE_GROUPS[type].includes(i.type ?? "");
-  const visible = $derived(results.map((r) => ({ ...r, items: r.items.filter(matches) })).filter((r) => r.items.length));
+  const visible = $derived(
+    results.map((r) => ({ ...r, items: r.items.filter(matches) })).filter((r) => r.items.length),
+  );
 
-  function run(q: string) {
+  function run(q: string, source: string) {
     stop?.();
     results = [];
     errors = [];
+    searching = false;
     if (!q.trim()) return;
     searching = true;
-    stop = streamSearch(q.trim(), {
-      results: (provider, items) => {
-        if (items.length) results.push({ provider, items });
+    stop = streamSearch(
+      q.trim(),
+      {
+        results: (provider, items) => {
+          if (items.length) results.push({ provider, items });
+        },
+        error: (provider, error) => errors.push({ provider, error }),
+        done: () => (searching = false),
       },
-      error: (provider, error) => errors.push({ provider, error }),
-      done: () => (searching = false),
-    });
+      source || undefined,
+    );
   }
 
   // The URL holds the query (so back/forward and reloads work); changing it starts the search.
   function submit(e: SubmitEvent) {
     e.preventDefault();
     const q = query.trim();
-    if (page.url.searchParams.get("q") === q) run(q);
-    else goto(`/search?q=${encodeURIComponent(q)}`, { replaceState: true });
+    if (page.url.searchParams.get("q") === q) run(q, provider);
+    else {
+      const params = new URLSearchParams();
+      if (provider) params.set("provider", provider);
+      if (q) params.set("q", q);
+      goto(`/search?${params}`, { replace: true });
+    }
   }
 
   $effect(() => {
-    const q = page.url.searchParams.get("q");
-    if (q) untrack(() => run(q));
+    const q = page.url.searchParams.get("q") ?? "";
+    const source = provider;
+    untrack(() => run(q, source));
     return () => stop?.();
   });
 </script>
@@ -56,27 +70,46 @@
 <div class="page">
   <div class="page-heading">
     <h1 class="page-title">Search</h1>
-    <p>Find a title across your providers.</p>
+    <p>
+      {provider ? `Find a title on ${provider}.` : "Find a title across your providers."}
+    </p>
   </div>
   <form class="box" onsubmit={submit} role="search">
     <Search size={20} strokeWidth={1.8} aria-hidden="true" />
     <!-- svelte-ignore a11y_autofocus -->
-    <input type="search" placeholder="Search every provider" bind:value={query} autofocus enterkeyhint="search" aria-label="Search" />
+    <input
+      type="search"
+      placeholder={provider ? `Search ${provider}` : "Search every provider"}
+      bind:value={query}
+      autofocus
+      enterkeyhint="search"
+      aria-label="Search"
+    />
     {#if searching}<div class="spinner"></div>{/if}
   </form>
 
   <div class="scroll-x filters">
     <button class="chip" class:on={type === null} onclick={() => (type = null)}>All</button>
     {#each Object.keys(TYPE_GROUPS) as t (t)}
-      <button class="chip" class:on={type === t} onclick={() => (type = type === t ? null : t)}>{t}</button>
+      <button class="chip" class:on={type === t} onclick={() => (type = type === t ? null : t)}
+        >{t}</button
+      >
     {/each}
   </div>
 
   {#each visible as r (r.provider)}
-    <h2 class="section-title">{r.provider} <span class="count">{r.items.length}</span></h2>
+    <h2 class="section-title">
+      {r.provider} <span class="count">{r.items.length}</span>
+    </h2>
     <div class="scroll-x">
       {#each r.items as item (item.url)}
-        <Poster provider={item.provider} url={item.url} name={item.name} poster={item.poster} meta={[item.year, item.type].filter(Boolean).join(" · ")} />
+        <Poster
+          provider={item.provider}
+          url={item.url}
+          name={item.name}
+          poster={item.poster}
+          meta={[item.year, item.type].filter(Boolean).join(" · ")}
+        />
       {/each}
     </div>
   {/each}
@@ -95,8 +128,13 @@
 
   {#if errors.length && !searching}
     <details class="errors">
-      <summary>{errors.length} providers failed</summary>
-      {#each errors as e (e.provider)}<div><b>{e.provider}</b>: {e.error}</div>{/each}
+      <summary
+        >{errors.length}
+        {errors.length === 1 ? "provider" : "providers"} failed</summary
+      >
+      {#each errors as e (e.provider)}<div>
+          <b>{e.provider}</b>: {e.error}
+        </div>{/each}
     </details>
   {/if}
 </div>
@@ -117,7 +155,9 @@
     outline: 2px solid var(--accent);
     outline-offset: 3px;
   }
-  .box input:focus-visible { outline: none; }
+  .box input:focus-visible {
+    outline: none;
+  }
   .box input {
     flex: 1;
     border: 0;
@@ -130,8 +170,14 @@
     margin-top: 16px;
     gap: 8px;
   }
-  .search-empty h2 { color: var(--text); font-size: 20px; margin-top: 18px; }
-  .search-empty p { font-size: 14px; }
+  .search-empty h2 {
+    color: var(--text);
+    font-size: 20px;
+    margin-top: 18px;
+  }
+  .search-empty p {
+    font-size: 14px;
+  }
   .count {
     color: var(--faint);
     font-weight: 500;

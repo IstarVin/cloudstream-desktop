@@ -1,8 +1,19 @@
 <script lang="ts">
+  import {
+    ArrowRight,
+    Check,
+    ChevronLeft,
+    ChevronRight,
+    CircleCheck,
+    Clock3,
+    ListVideo,
+    Play,
+    Search,
+    Volume1,
+  } from "@lucide/svelte";
   import { tick, type Snippet } from "svelte";
   import { formatTime } from "../api";
   import type { Details, Episode } from "../types";
-  import { ArrowRight, Check, ChevronLeft, ChevronRight, CircleCheck, Clock3, ListVideo, Play, Search, Volume1 } from "@lucide/svelte";
 
   let {
     episodes,
@@ -48,17 +59,11 @@
     inSeason.filter(
       ({ episode, index }) =>
         !query ||
-        `${episode.episode ?? index + 1} ${episode.name ?? ""}`
-          .toLocaleLowerCase()
-          .includes(query),
+        `${episode.episode ?? index + 1} ${episode.name ?? ""}`.toLocaleLowerCase().includes(query),
     ),
   );
-  const watched = $derived(
-    inSeason.filter(({ episode }) => episode.progress?.watched).length,
-  );
-  const pageCount = $derived(
-    Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)),
-  );
+  const watched = $derived(inSeason.filter(({ episode }) => episode.progress?.watched).length);
+  const pageCount = $derived(Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)));
   const nextIndex = $derived(
     filtered.findIndex(({ episode }) => episode.data === nextEpisode?.data),
   );
@@ -85,10 +90,7 @@
 
   function seasonName(n: number) {
     const season = seasons.find((s) => s.season === n);
-    return (
-      season?.name ??
-      (n === 0 ? "Episodes" : `Season ${season?.displaySeason ?? n}`)
-    );
+    return season?.name ?? (n === 0 ? "Episodes" : `Season ${season?.displaySeason ?? n}`);
   }
 
   async function goToPage(value: number, fromBottom = false) {
@@ -121,10 +123,7 @@
 </script>
 
 {#snippet pagination(bottom = false)}
-  <nav
-    class="pagination"
-    aria-label={bottom ? "Episode pages, bottom" : "Episode pages"}
-  >
+  <nav class="pagination" aria-label={bottom ? "Episode pages, bottom" : "Episode pages"}>
     <button
       class="page-button"
       aria-label="Previous episode page"
@@ -157,12 +156,7 @@
   </nav>
 {/snippet}
 
-<section
-  class="episode-browser"
-  aria-labelledby="{uid}-heading"
-  bind:this={section}
-  tabindex="-1"
->
+<section class="episode-browser" aria-labelledby="{uid}-heading" bind:this={section} tabindex="-1">
   <div class="episode-heading">
     <div>
       <h2 id="{uid}-heading">
@@ -193,9 +187,7 @@
             };
           }}
         >
-          {#each seasonNumbers as n (n)}<option value={n}
-              >{seasonName(n)}</option
-            >{/each}
+          {#each seasonNumbers as n (n)}<option value={n}>{seasonName(n)}</option>{/each}
         </select>
       </label>
     {/if}
@@ -238,25 +230,20 @@
           >
             {#if e.poster}
               <span class="thumb">
-                <img
-                  src={e.poster}
-                  alt=""
-                  loading="lazy"
-                  referrerpolicy="no-referrer"
-                />
-              <span class="number">{e.episode ?? index + 1}</span>
-              <span class="play-icon"><Play size={22} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /></span>
-              {#if p && !p.watched && p.duration > 0}<span class="progress"
-                  ><span
-                    style:width={`${Math.min(100, Math.max(0, (p.position / p.duration) * 100))}%`}
-                  ></span></span
-                >{/if}
+                <img src={e.poster} alt="" loading="lazy" referrerpolicy="no-referrer" />
+                <span class="number">{e.episode ?? index + 1}</span>
+                <span class="play-icon"
+                  ><Play size={22} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /></span
+                >
+                {#if p && !p.watched && p.duration > 0}<span class="progress"
+                    ><span
+                      style:width={`${Math.min(100, Math.max(0, (p.position / p.duration) * 100))}%`}
+                    ></span></span
+                  >{/if}
               </span>
             {/if}
             <span class="episode-text">
-              <span class="episode-name"
-                >{e.name ?? `Episode ${e.episode ?? index + 1}`}</span
-              >
+              <span class="episode-name">{e.name ?? `Episode ${e.episode ?? index + 1}`}</span>
               <span class="episode-meta">
                 {#if playing}<span class="playing"
                     ><Volume1 size={13} strokeWidth={1.8} aria-hidden="true" /> Playing</span
@@ -264,31 +251,28 @@
                 {:else if p?.watched}<span class="watched-label"
                     ><CircleCheck size={13} strokeWidth={1.8} aria-hidden="true" /> Watched</span
                   >
-                {:else if p && p.position > 30}<span
-                    >{formatTime(p.position)} watched</span
-                  >{/if}
+                {:else if p && p.position > 30}<span>{formatTime(p.position)} watched</span>{/if}
                 {#if e.runtime}<span
                     ><Clock3 size={13} strokeWidth={1.8} aria-hidden="true" /> {e.runtime} min</span
                   >{/if}
-                {#if e.date}<span>{new Date(e.date).toLocaleDateString()}</span
-                  >{/if}
+                {#if e.date}<span>{new Date(e.date).toLocaleDateString()}</span>{/if}
               </span>
-              {#if e.description}<span class="episode-description"
-                  >{e.description}</span
-                >{/if}
+              {#if e.description}<span class="episode-description">{e.description}</span>{/if}
             </span>
           </button>
           <button
             class="mark"
             onclick={() => onwatched(e)}
-            aria-label="{p?.watched
-              ? 'Mark unwatched'
-              : 'Mark watched'}: {e.name ??
+            aria-label="{p?.watched ? 'Mark unwatched' : 'Mark watched'}: {e.name ??
               `Episode ${e.episode ?? index + 1}`}"
             title={p?.watched ? "Mark unwatched" : "Mark watched"}
             aria-pressed={!!p?.watched}
           >
-            {#if p?.watched}<CircleCheck size={19} strokeWidth={1.8} aria-hidden="true" />{:else}<Check size={19} strokeWidth={1.8} aria-hidden="true" />{/if}
+            {#if p?.watched}<CircleCheck
+                size={19}
+                strokeWidth={1.8}
+                aria-hidden="true"
+              />{:else}<Check size={19} strokeWidth={1.8} aria-hidden="true" />{/if}
           </button>
         </li>
       {/each}

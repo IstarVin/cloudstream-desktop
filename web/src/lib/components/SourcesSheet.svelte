@@ -5,7 +5,9 @@
   import { Check, Subtitles, TriangleAlert, X } from "@lucide/svelte";
 
   const t = $derived(sources.target);
-  const playingThis = $derived(!!t && player.state.provider === t.provider && player.state.data === t.data);
+  const playingThis = $derived(
+    !!t && player.state.provider === t.provider && player.state.data === t.data,
+  );
   const currentLink = $derived(playingThis ? player.state.link?.id : null);
   const failed = $derived(new Set(playingThis ? (player.state.failedLinks ?? []) : []));
   // What auto-play would pick next: the best link that hasn't failed.
@@ -29,7 +31,9 @@
         <h2>Sources</h2>
         <div class="muted ellipsis">{t.title}{t.label ? ` · ${t.label}` : ""}</div>
       </div>
-      <button class="close" onclick={() => sources.hide()} aria-label="Close"><X size={22} strokeWidth={1.8} aria-hidden="true" /></button>
+      <button class="close" onclick={() => sources.hide()} aria-label="Close"
+        ><X size={22} strokeWidth={1.8} aria-hidden="true" /></button
+      >
     </header>
 
     <div class="status">
@@ -37,7 +41,9 @@
         <div class="spinner"></div>
         <span>Finding links… {sources.links.length} so far</span>
       {:else if sources.error && !sources.links.length}
-        <TriangleAlert size={18} strokeWidth={1.8} aria-hidden="true" /><span class="err">{sources.error}</span>
+        <TriangleAlert size={18} strokeWidth={1.8} aria-hidden="true" /><span class="err"
+          >{sources.error}</span
+        >
       {:else}
         <span>{sources.links.length} links from {sources.groups.length} sources</span>
       {/if}
@@ -51,28 +57,49 @@
         <div class="group">
           <div class="group-name">
             <span>{g.source}</span>
-            <span class="record" class:good={g.links[0].score > 0.6} class:poor={g.links[0].score < 0.4}>{sourceRecord(g.links[0])}</span>
+            <span class={["record", { good: g.links[0].score > 0.6, poor: g.links[0].score < 0.4 }]}
+              >{sourceRecord(g.links[0])}</span
+            >
           </div>
           {#each g.links as l (l.id)}
+            {@const detailAt = l.name.indexOf(" · ")}
             <button
-              class="link"
-              class:current={l.id === currentLink}
-              class:failed={failed.has(l.id) && l.id !== currentLink}
+              class={[
+                "link",
+                { current: l.id === currentLink, failed: failed.has(l.id) && l.id !== currentLink },
+              ]}
               disabled={!l.playable}
               onclick={() => sources.pick(l, playingThis)}
             >
-              <span class="q" class:hd={l.quality >= 720 && l.quality !== AUTO_QUALITY}>{l.qualityLabel}</span>
               <span class="lname">
-                <span class="ellipsis">{l.name}</span>
-                <span class="host">{l.host}{l.proxied ? " · proxied" : ""}{l.drm ? (l.playable ? " · ClearKey" : " · DRM (unsupported)") : ""}</span>
+                <span class="row-top">
+                  <span class={["q", { hd: l.quality >= 720 && l.quality !== AUTO_QUALITY }]}
+                    >{l.qualityLabel}</span
+                  >
+                  <span class="type">{l.type}</span>
+                  {#if failed.has(l.id) && l.id !== currentLink}
+                    <span class="tag bad">Failed</span>
+                  {:else if l.id === currentLink}
+                    <span class="tag selected"
+                      ><Check size={14} strokeWidth={2} aria-hidden="true" /> Playing</span
+                    >
+                  {:else if l.id === best}
+                    <span class="tag">Best</span>
+                  {/if}
+                </span>
+                <span class="link-name">{detailAt === -1 ? l.name : l.name.slice(0, detailAt)}</span
+                >
+                {#if detailAt !== -1}
+                  <span class="details">{l.name.slice(detailAt + 3)}</span>
+                {/if}
+                <span class="host"
+                  >{l.host}{l.proxied ? " · proxied" : ""}{l.drm
+                    ? l.playable
+                      ? " · ClearKey"
+                      : " · DRM (unsupported)"
+                    : ""}</span
+                >
               </span>
-              {#if failed.has(l.id) && l.id !== currentLink}
-                <span class="tag bad">Failed</span>
-              {:else if l.id === best && l.id !== currentLink}
-                <span class="tag">Best</span>
-              {/if}
-              <span class="type">{l.type}</span>
-              {#if l.id === currentLink}<Check size={18} strokeWidth={1.8} aria-hidden="true" />{/if}
             </button>
           {/each}
         </div>
@@ -84,12 +111,19 @@
         <button class="subs-head" onclick={() => (subsOpen = !subsOpen)}>
           <Subtitles size={18} strokeWidth={1.8} aria-hidden="true" />
           <span>Subtitles ({sources.subtitles.length})</span>
-          <span class="muted">{sources.chosenSubs.length ? `${sources.chosenSubs.length} chosen` : "English added automatically"}</span>
+          <span class="muted"
+            >{sources.chosenSubs.length
+              ? `${sources.chosenSubs.length} chosen`
+              : "English added automatically"}</span
+          >
         </button>
         {#if subsOpen}
           <div class="sub-list">
             {#each sources.subtitles as s (s.id)}
-              <button class="chip" class:on={sources.chosenSubs.includes(s.id)} onclick={() => toggleSub(s.id)}>{s.lang}</button>
+              <button
+                class={["chip", { on: sources.chosenSubs.includes(s.id) }]}
+                onclick={() => toggleSub(s.id)}>{s.lang}</button
+              >
             {/each}
           </div>
         {/if}
@@ -122,7 +156,9 @@
     animation: up 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   @keyframes scrim-in {
-    from { opacity: 0; }
+    from {
+      opacity: 0;
+    }
   }
   @keyframes up {
     from {
@@ -156,12 +192,16 @@
     display: grid;
     place-items: center;
     border-radius: 50%;
-    transition: background-color 150ms ease, transform 150ms ease;
+    transition:
+      background-color 150ms ease,
+      transform 150ms ease;
   }
   .close:hover {
     background: var(--surface-2);
   }
-  .close:active { transform: scale(0.92); }
+  .close:active {
+    transform: scale(0.92);
+  }
   .ellipsis {
     white-space: nowrap;
     overflow: hidden;
@@ -197,7 +237,7 @@
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--faint);
-    padding: 12px 8px 4px;
+    padding: 20px 8px 8px;
   }
   .record {
     font-weight: 500;
@@ -212,6 +252,9 @@
     color: var(--danger);
   }
   .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     flex-shrink: 0;
     font-size: 11px;
     font-weight: 700;
@@ -219,6 +262,9 @@
     border-radius: 999px;
     background: var(--accent-soft);
     color: var(--accent);
+  }
+  .tag.selected {
+    margin-left: auto;
   }
   .tag.bad {
     background: transparent;
@@ -230,21 +276,23 @@
   }
   .link {
     width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 8px;
+    display: block;
+    padding: 12px;
+    margin-bottom: 4px;
     border-radius: var(--radius-sm);
     text-align: left;
     min-height: 52px;
-    transition: background-color 150ms ease, color 150ms ease;
+    background: var(--surface-2);
+    transition:
+      background-color 150ms ease,
+      color 150ms ease;
   }
   .link:hover:not(:disabled) {
-    background: var(--surface-2);
+    background: var(--surface-3);
   }
   .link.current {
     background: var(--accent-soft);
-    color: var(--accent);
+    color: var(--text);
   }
   .link:disabled {
     opacity: 0.4;
@@ -252,7 +300,7 @@
   }
   .q {
     flex-shrink: 0;
-    min-width: 52px;
+    min-width: 46px;
     text-align: center;
     font-size: 12.5px;
     font-weight: 700;
@@ -270,6 +318,28 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
+    gap: 3px;
+  }
+  .row-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .row-top .tag:last-child {
+    margin-left: auto;
+  }
+  .link-name {
+    font-weight: 600;
+    line-height: 1.35;
+  }
+  .link-name,
+  .details {
+    overflow-wrap: anywhere;
+  }
+  .details {
+    font-size: 12.5px;
+    color: var(--muted);
   }
   .host {
     font-size: 12px;
@@ -280,6 +350,8 @@
     flex-shrink: 0;
     font-size: 11.5px;
     color: var(--faint);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
   .link :global(svg) {
     flex-shrink: 0;
@@ -325,6 +397,9 @@
     }
   }
   @keyframes side-in {
-    from { opacity: 0; transform: translateX(30px); }
+    from {
+      opacity: 0;
+      transform: translateX(30px);
+    }
   }
 </style>

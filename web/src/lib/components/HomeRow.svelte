@@ -1,23 +1,26 @@
 <script lang="ts">
-  import { createInfiniteQuery } from "@tanstack/svelte-query";
   import { ChevronRight } from "@lucide/svelte";
+  import { createInfiniteQuery } from "@tanstack/svelte-query";
   import { homePagesOptions, mergeHomeRows } from "../home";
   import type { HomeSection } from "../types";
-  import Poster from "./Poster.svelte";
-  import LoadingSkeleton from "./LoadingSkeleton.svelte";
   import InfiniteLoader from "./InfiniteLoader.svelte";
+  import LoadingSkeleton from "./LoadingSkeleton.svelte";
+  import Poster from "./Poster.svelte";
 
   let { provider, section }: { provider: string; section: HomeSection } = $props();
 
   // Fetch the first page only when the section approaches the viewport.
   let visible = $state(false);
   function observeRow(element: HTMLElement) {
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        visible = true;
-        io.disconnect();
-      }
-    }, { rootMargin: "400px" });
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          visible = true;
+          io.disconnect();
+        }
+      },
+      { rootMargin: "400px" },
+    );
     io.observe(element);
     return () => io.disconnect();
   }
@@ -43,7 +46,8 @@
             class="view-all"
             href={`/home-section?${new URLSearchParams({ provider, section: String(section.index), row: r.name, name: r.name || section.name })}`}
             aria-label={`View all ${r.name || section.name}`}
-          >View all <ChevronRight size={16} strokeWidth={1.8} aria-hidden="true" /></a>
+            >View all <ChevronRight size={16} strokeWidth={1.8} aria-hidden="true" /></a
+          >
         </div>
         <div class="scroll-x">
           {#each r.items as item (JSON.stringify([item.provider, item.url]))}
@@ -102,4 +106,3 @@
     text-underline-offset: 4px;
   }
 </style>
-

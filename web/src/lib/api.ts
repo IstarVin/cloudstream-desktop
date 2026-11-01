@@ -125,8 +125,11 @@ export function streamSearch(
     error: (provider: string, error: string) => void;
     done: () => void;
   },
+  provider?: string,
 ): () => void {
-  const es = new EventSource(`/api/search?${q({ q: query })}`);
+  const es = new EventSource(
+    `/api/search?${q(provider ? { q: query, providers: provider } : { q: query })}`,
+  );
   es.addEventListener("results", (e) => {
     const d = JSON.parse((e as MessageEvent).data);
     handlers.results(d.provider, d.items);

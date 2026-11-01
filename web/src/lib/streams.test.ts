@@ -31,6 +31,11 @@ beforeEach(() => vi.stubGlobal("EventSource", FakeEventSource));
 afterEach(() => vi.unstubAllGlobals());
 
 describe("streamSearch", () => {
+  it("limits a scoped search to the selected provider", () => {
+    streamSearch("dune", { results: vi.fn(), error: vi.fn(), done: vi.fn() }, "Source & More");
+    expect(FakeEventSource.last.url).toBe("/api/search?q=dune&providers=Source+%26+More");
+  });
+
   it("delivers results and per-provider errors until done", () => {
     const results = vi.fn();
     const errors = vi.fn();

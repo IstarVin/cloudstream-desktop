@@ -33,7 +33,8 @@
     { href: "/library", label: "Library", icon: Library },
     { href: "/settings", label: "Settings", icon: Settings2 },
   ];
-  const isActive = (href: string) => (href === "/" ? page.url.pathname === "/" : page.url.pathname.startsWith(href));
+  const isActive = (href: string) =>
+    href === "/" ? page.url.pathname === "/" : page.url.pathname.startsWith(href);
 </script>
 
 {#if authed === false}
@@ -44,11 +45,18 @@
     <div class="shell" class:with-bar={player.active}>
       <nav aria-label="Main">
         <div class="brand">
-          <span class="brand-icon"><Play size={20} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /></span>
+          <span class="brand-icon"
+            ><Play size={20} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /></span
+          >
           <span class="brand-name">Cloudstream<span>Desktop</span></span>
         </div>
         {#each nav as n (n.href)}
-          <a class="nav-link" href={n.href} class:active={isActive(n.href)} aria-current={isActive(n.href) ? "page" : undefined}>
+          <a
+            class="nav-link"
+            href={n.href}
+            class:active={isActive(n.href)}
+            aria-current={isActive(n.href) ? "page" : undefined}
+          >
             <n.icon size={22} strokeWidth={1.8} aria-hidden="true" />
             <span>{n.label}</span>
           </a>
@@ -63,7 +71,10 @@
     <SourcesSheet />
   </QueryClientProvider>
 {:else}
-  <div class="app-loading" role="status"><div class="spinner"></div><span>Opening Cloudstream…</span></div>
+  <div class="app-loading" role="status">
+    <div class="spinner"></div>
+    <span>Opening Cloudstream…</span>
+  </div>
 {/if}
 
 <div class="toasts" aria-live="polite">
@@ -73,11 +84,34 @@
 </div>
 
 <style>
-  .skip-link { position: fixed; top: 12px; left: 12px; z-index: 200; padding: 12px 18px; border-radius: var(--radius-sm); background: var(--accent); color: var(--accent-ink); transform: translateY(-180%); }
-  .skip-link:focus { transform: translateY(0); }
-  .app-loading { min-height: 100dvh; display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--muted); }
-  main { min-width: 0; }
-  main:focus { outline: none; }
+  .skip-link {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 200;
+    padding: 12px 18px;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--accent-ink);
+    transform: translateY(-180%);
+  }
+  .skip-link:focus {
+    transform: translateY(0);
+  }
+  .app-loading {
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--muted);
+  }
+  main {
+    min-width: 0;
+  }
+  main:focus {
+    outline: none;
+  }
   .shell {
     min-height: 100dvh;
     padding-bottom: calc(var(--nav-h) + var(--safe-b) + 16px);
@@ -165,14 +199,38 @@
       border-radius: var(--radius-sm);
       font-size: 14px;
     }
-    .nav-link.active { background: var(--accent-soft); }
+    .nav-link.active {
+      background: var(--accent-soft);
+    }
     .nav-link:hover {
       background: var(--surface);
     }
-    .brand { display: flex; align-items: center; gap: 11px; padding: 12px 24px 32px; }
-    .brand-icon { display: grid; place-items: center; width: 36px; height: 40px; color: var(--accent); }
-    .brand-name { font-size: 17px; font-weight: 750; letter-spacing: -0.025em; line-height: 1.4; }
-    .brand-name > span { display: block; color: var(--muted); font-size: 11px; font-weight: 500; letter-spacing: 0.04em; }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 12px 24px 32px;
+    }
+    .brand-icon {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 40px;
+      color: var(--accent);
+    }
+    .brand-name {
+      font-size: 17px;
+      font-weight: 750;
+      letter-spacing: -0.025em;
+      line-height: 1.4;
+    }
+    .brand-name > span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+    }
     .toasts {
       bottom: calc(var(--bar-h) + 32px);
     }

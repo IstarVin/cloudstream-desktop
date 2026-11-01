@@ -11,7 +11,8 @@
   let saving = $state(false);
   let revealed = $state<string[]>([]);
 
-  const prefType = (f: SettingField) => (f.type === "boolean" ? "boolean" : f.type === "int" ? "int" : "string");
+  const prefType = (f: SettingField) =>
+    f.type === "boolean" ? "boolean" : f.type === "int" ? "int" : "string";
   const fieldId = (f: SettingField) => `${f.file}/${f.key}`;
 
   /** Every schema field gets an entry to bind to, even before the plugin has read or saved it. */
@@ -19,13 +20,17 @@
     for (const f of schema) {
       const file = f.file ?? Object.keys(loaded)[0] ?? name;
       loaded[file] ??= [];
-      if (!loaded[file].some((e) => e.key === f.key)) loaded[file].push({ key: f.key, type: prefType(f), value: null, default: f.default });
+      if (!loaded[file].some((e) => e.key === f.key))
+        loaded[file].push({ key: f.key, type: prefType(f), value: null, default: f.default });
     }
     return loaded;
   }
 
   $effect(() => {
-    api.pluginSettings(name).then((r) => (files = withSchema(r.files))).catch(toasts.error);
+    api
+      .pluginSettings(name)
+      .then((r) => (files = withSchema(r.files)))
+      .catch(toasts.error);
   });
 
   function entry(f: SettingField) {
@@ -48,7 +53,10 @@
     saving = true;
     try {
       const clean = Object.fromEntries(
-        Object.entries(files).map(([f, entries]) => [f, entries.filter((e) => e.key.trim() && e.value !== null && e.value !== "")]),
+        Object.entries(files).map(([f, entries]) => [
+          f,
+          entries.filter((e) => e.key.trim() && e.value !== null && e.value !== ""),
+        ]),
       );
       files = withSchema((await api.savePluginSettings(name, clean)).files);
       toasts.show(`Saved ${name} settings`);
@@ -67,7 +75,9 @@
       <div class="field">
         {#if f.type === "boolean"}
           <label class="toggle">
-            <span><b>{f.label}</b>{#if f.help}<small>{f.help}</small>{/if}</span>
+            <span
+              ><b>{f.label}</b>{#if f.help}<small>{f.help}</small>{/if}</span
+            >
             <input
               type="checkbox"
               checked={value === "" ? f.default === "true" : value === "true"}
@@ -79,15 +89,22 @@
             <b>{f.label}</b>
             {#if f.help}<small>{f.help}</small>{/if}
             {#if f.type === "choice"}
-              <select value={value || f.default || ""} onchange={(e) => setValue(f, e.currentTarget.value)}>
+              <select
+                value={value || f.default || ""}
+                onchange={(e) => setValue(f, e.currentTarget.value)}
+              >
                 {#if !f.default}<option value="">Not set</option>{/if}
                 {#each f.options as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
               </select>
             {:else}
               <span class="secret">
                 <input
-                  type={f.type === "int" ? "number" : f.type === "secret" && !revealed.includes(fieldId(f)) ? "password" : "text"}
-                  value={value}
+                  type={f.type === "int"
+                    ? "number"
+                    : f.type === "secret" && !revealed.includes(fieldId(f))
+                      ? "password"
+                      : "text"}
+                  {value}
                   placeholder={f.default ? `Default: ${f.default}` : "Not set"}
                   oninput={(e) => setValue(f, e.currentTarget.value)}
                   autocomplete="off"
@@ -96,8 +113,12 @@
                   <button
                     class="link-btn"
                     type="button"
-                    onclick={() => (revealed = revealed.includes(fieldId(f)) ? revealed.filter((id) => id !== fieldId(f)) : [...revealed, fieldId(f)])}
-                  >{revealed.includes(fieldId(f)) ? "Hide" : "Show"}</button>
+                    onclick={() =>
+                      (revealed = revealed.includes(fieldId(f))
+                        ? revealed.filter((id) => id !== fieldId(f))
+                        : [...revealed, fieldId(f)])}
+                    >{revealed.includes(fieldId(f)) ? "Hide" : "Show"}</button
+                  >
                 {/if}
               </span>
             {/if}
@@ -110,27 +131,35 @@
       {#if Object.keys(files).length > 1}<div class="file">{file}</div>{/if}
       {#each entries as e, i (i)}
         {#if !declared.has(`${file}/${e.key}`)}
-        <div class="row">
-          <input class="key" bind:value={e.key} placeholder="key" aria-label="Key" readonly={e.default != null} />
-          {#if e.type === "boolean"}
-            <select bind:value={e.value} aria-label="Value">
-              <option value="">default</option>
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-          {:else}
+          <div class="row">
             <input
-              class="val"
-              bind:value={e.value}
-              placeholder={e.default ? `default: ${e.default}` : "unset"}
-              type={/key|token|secret|password/i.test(e.key) ? "password" : "text"}
-              aria-label="Value of {e.key}"
+              class="key"
+              bind:value={e.key}
+              placeholder="key"
+              aria-label="Key"
+              readonly={e.default != null}
             />
-          {/if}
-        </div>
+            {#if e.type === "boolean"}
+              <select bind:value={e.value} aria-label="Value">
+                <option value="">default</option>
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            {:else}
+              <input
+                class="val"
+                bind:value={e.value}
+                placeholder={e.default ? `default: ${e.default}` : "unset"}
+                type={/key|token|secret|password/i.test(e.key) ? "password" : "text"}
+                aria-label="Value of {e.key}"
+              />
+            {/if}
+          </div>
         {/if}
       {/each}
-      {#if !entries.length}<p class="muted small">This plugin hasn't read any settings yet. Use it once, or add a key by hand.</p>{/if}
+      {#if !entries.length}<p class="muted small">
+          This plugin hasn't read any settings yet. Use it once, or add a key by hand.
+        </p>{/if}
       <button class="link-btn" onclick={() => add(file)}>+ Add key</button>
     {/each}
     <div><button class="btn primary" onclick={save} disabled={saving}>Save</button></div>
