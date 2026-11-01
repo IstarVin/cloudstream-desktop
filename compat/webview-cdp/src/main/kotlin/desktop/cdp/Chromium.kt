@@ -18,6 +18,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
@@ -33,6 +34,9 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.InetAddress
+import java.net.ServerSocket
 import java.net.URI
 import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
@@ -47,7 +51,7 @@ class ChromiumUnavailableException(message: String) : IOException(message)
  * One shared, long-lived Chromium with a persistent profile, driven over CDP. It starts on the first request that
  * needs a browser and stops after it has been idle for a while. Every resolve or solve gets its own tab.
  *
- * When a check can't be passed in the background (Turnstile usually refuses headless browsers), it is listed in
+ * When a check can't be passed in the background (an interactive Turnstile, or a stricter site), it is listed in
  * [challenges]; [solveManually] opens it in a visible window, and whatever cookies that earns are reused.
  */
 object Chromium {
@@ -262,14 +266,16 @@ object Chromium {
         )
         val profile = File(o.dataDir, "chromium-profile").apply { mkdirs() }
         killOrphan(profile)
-        val portFile = File(profile, "DevToolsActivePort").apply { delete() }
         val ua = userAgent(exe)
+        // A fixed port, not 0: Turnstile (GoPlay) never passes when Chromium picks its own debugging port.
+        val port = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
 
         var xvfb: Process? = null
         val env = mutableMapOf<String, String>()
         val args = mutableListOf(
             exe,
-            "--remote-debugging-port=0",
+            "--remote-debugging-address=127.0.0.1",
+            "--remote-debugging-port=$port",
             "--user-data-dir=${profile.absolutePath}",
             "--no-first-run",
             "--no-default-browser-check",
@@ -281,7 +287,9 @@ object Chromium {
             "--window-size=1100,850",
         )
         when (mode) {
-            Mode.HEADLESS -> args += "--headless"
+            // The full browser drawing to no display. Turnstile stalls on its checkbox under `--headless` (the
+            // separate headless shell), and passes on its own here.
+            Mode.HEADLESS -> args += "--ozone-platform=headless"
             Mode.XVFB -> {
                 val (process, display) = startXvfb()
                 xvfb = process
@@ -301,13 +309,13 @@ object Chromium {
         val process = pb.start()
         try {
             val deadline = System.currentTimeMillis() + 20_000
-            while (portFile.readLinesOrEmpty().size < 2) {
+            var endpoint: String? = null
+            while (endpoint == null) {
                 if (!process.isAlive) throw ChromiumUnavailableException("Chromium exited at startup: ${logTail()}")
                 if (System.currentTimeMillis() > deadline) throw ChromiumUnavailableException("Chromium didn't open its debugging port: ${logTail()}")
-                delay(100)
+                endpoint = debuggerUrl(port) ?: run { delay(100); null }
             }
-            val (port, path) = portFile.readLinesOrEmpty()
-            val conn = CdpConnection.connect("ws://127.0.0.1:$port$path")
+            val conn = CdpConnection.connect(endpoint)
             val b = Browser(process, xvfb, conn, mode)
             conn.onEvent { route(b, it) }
             Clearances.userAgent = ua
@@ -341,14 +349,21 @@ object Chromium {
         val lock = File(profile, "SingletonLock").toPath()
         val target = runCatching { Files.readSymbolicLink(lock).toString() }.getOrNull() ?: return
         val pid = target.substringAfterLast('-').toLongOrNull() ?: return
-        ProcessHandle.of(pid).filter { h -> h.isAlive && h.info().commandLine().orElse("").contains(profile.absolutePath) }
+        ProcessHandle.of(pid).filter { h -> h.isAlive && commandLine(h).contains(profile.absolutePath) }
             .ifPresent { h ->
                 log.info("Stopping a leftover Chromium (pid $pid) that holds the profile")
-                h.descendants().forEach { it.destroy() }
+                val children = h.descendants().toList()
+                children.forEach { it.destroy() }
                 h.destroy()
-                h.onExit().get(5, TimeUnit.SECONDS)
+                runCatching { h.onExit().get(5, TimeUnit.SECONDS) }.onFailure { h.destroyForcibly().also { h.onExit().get(5, TimeUnit.SECONDS) } }
+                children.filter { it.isAlive }.forEach { it.destroyForcibly() }
             }
     }
+
+    /** Chromium rewrites its process title, which leaves Java's `ProcessHandle.info()` without its arguments. */
+    private fun commandLine(h: ProcessHandle): String =
+        runCatching { File("/proc/${h.pid()}/cmdline").readText().replace('\u0000', ' ') }.getOrNull()
+            ?: h.info().commandLine().orElse("")
 
     private suspend fun startXvfb(): Pair<Process, String> {
         val exe = which("Xvfb") ?: throw ChromiumUnavailableException("Xvfb isn't installed: install it or pick another browser mode")
@@ -384,7 +399,14 @@ object Chromium {
 
     private fun logTail() = runCatching { File(options.dataDir, "chromium.log").readLines().takeLast(3).joinToString(" | ") }.getOrDefault("")
 
-    private fun File.readLinesOrEmpty() = runCatching { readLines().filter { it.isNotBlank() } }.getOrDefault(emptyList())
+    /** The browser's WebSocket once its debugging [port] answers (with a fixed port it writes no DevToolsActivePort). */
+    private fun debuggerUrl(port: Int): String? = runCatching {
+        val c = URI("http://127.0.0.1:$port/json/version").toURL().openConnection() as HttpURLConnection
+        c.connectTimeout = 500
+        c.readTimeout = 2000
+        val body = c.inputStream.use { it.bufferedReader().readText() }
+        Json.parseToJsonElement(body).jsonObject["webSocketDebuggerUrl"]?.jsonPrimitive?.contentOrNull
+    }.getOrNull()
 
     private fun which(name: String): String? = System.getenv("PATH").orEmpty().split(File.pathSeparator)
         .map { File(it, name) }.firstOrNull { it.canExecute() }?.absolutePath

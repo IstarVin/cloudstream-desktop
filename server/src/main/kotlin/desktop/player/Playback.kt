@@ -1,6 +1,7 @@
 package desktop.player
 
 import com.lagradost.cloudstream3.USER_AGENT
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import desktop.api.Catalog
 import desktop.api.Details
 import desktop.api.Episode
@@ -264,13 +265,19 @@ class Playback(
         val ua = headers.keys.firstOrNull { it.equals("User-Agent", true) }?.let(headers::remove) ?: USER_AGENT
         val referer = l.referer.takeIf { it.isNotBlank() } ?: headers.keys.firstOrNull { it.equals("Referer", true) }?.let(headers::remove)
         headers.keys.filter { it.equals("Referer", true) }.forEach(headers::remove)
-        // mpv splits header lists on commas; anything it can't express goes through the proxy.
-        val needsProxy = link.proxied || headers.values.any { ',' in it } || settings.bool(Settings.PROXY_ALL)
+        // mpv splits header lists on commas, and ffmpeg cuts URLs at 4096 bytes; anything it can't express goes
+        // through the proxy.
+        val needsProxy = link.proxied || headers.values.any { ',' in it } || l.url.length > 4000 || settings.bool(Settings.PROXY_ALL)
+        var sampleAesKey: String? = null
         val url = if (l.source in debugFailSources) {
             "http://127.0.0.1:9/debug-failed-source"
         } else if (needsProxy) {
             val all = l.headers + listOfNotNull(referer?.let { "Referer" to it }, "User-Agent" to ua)
-            "http://127.0.0.1:$port" + proxy.register(l.url, all, link.interceptor)
+            val path = proxy.register(l.url, all, link.interceptor)
+            if (l.type == ExtractorLinkType.M3U8) {
+                sampleAesKey = runCatching { proxy.sampleAesKey(path) }.onFailure { log.info("Couldn't read {}'s playlists ahead: {}", l.source, it.toString()) }.getOrNull()
+            }
+            "http://127.0.0.1:$port$path"
         } else l.url
         val title = listOfNotNull(s.item.details.name, s.item.label).joinToString(" · ")
         val opts = buildMap {
@@ -282,6 +289,7 @@ class Playback(
             }
             if (startAt != null && startAt > 0) put("start", "%.1f".format(java.util.Locale.ROOT, startAt))
             link.clearKey?.let { put("demuxer-lavf-o", "cenc_decryption_key=$it") }
+            sampleAesKey?.let { put("demuxer-lavf-o", "seg_format_options=decryption_key=$it") }
         }
         log.info("Playing {} [{}] {} via {}", l.source, Mapper.qualityLabel(l.quality), if (needsProxy) "proxy" else "direct", l.url)
         _state.update { it.copy(status = "resolving", message = "Loading ${l.source} ${Mapper.qualityLabel(l.quality)}…", link = links.dto(link), position = startAt ?: 0.0, duration = 0.0, skip = null) }

@@ -9,6 +9,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
+import kotlinx.coroutines.runBlocking
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.test.Test
@@ -58,6 +59,110 @@ class StreamProxyTest {
         assertEquals("", out[3], "blank lines stay blank")
         assertEquals("https://other.example/720p/index.m3u8?sig=x", decode(out[5]))
         assertEquals("https://host.example/v/init.mp4", decode(Regex("""URI="([^"]+)"""").find(out[6])!!.groupValues[1]))
+    }
+
+    /** ffmpeg won't open a `data:` key itself (GoPlay's SAMPLE-AES keys), so the proxy answers it. */
+    @Test
+    fun servesInlineKeys() {
+        val data = "data:application/octet-stream;base64,NqW2zqmvjXE0rSEbcmEEFg=="
+        LocalServer { ex ->
+            ex.respond(200, "#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"$data\",KEYFORMAT=\"identity\"\n#EXTINF:4.0,\nseg-1.mp4\n#EXT-X-ENDLIST\n", "application/x-mpegURL")
+        }.use { upstream ->
+            val proxy = StreamProxy()
+            testApplication {
+                routing { get("/proxy/{token}/{encoded}/{name?}") { proxy.serve(call, call.parameters["token"]!!, call.parameters["encoded"]!!) } }
+                val playlist = client.get(proxy.register("${upstream.url}/v/index.m3u8", emptyMap(), null)).bodyAsText().lines()
+                val key = Regex("""URI="([^"]+)"""").find(playlist[1])!!.groupValues[1]
+                assertTrue(key.startsWith("/proxy/"), key)
+                assertContentEquals(Base64.getDecoder().decode("NqW2zqmvjXE0rSEbcmEEFg=="), client.get(key).readRawBytes())
+                assertTrue(playlist[1].endsWith(",KEYFORMAT=\"identity\""), playlist[1])
+            }
+        }
+    }
+
+    /** GoPlay's playlist URLs work once, and mpv asks for a master twice; live playlists must still reload. */
+    @Test
+    fun fetchesStaticPlaylistsFromTheUpstreamOnce() {
+        val hits = ConcurrentHashMap<String, Int>()
+        LocalServer { ex ->
+            val path = ex.requestURI.path
+            if (hits.merge(path, 1, Int::plus)!! > 1 && path != "/live.m3u8") return@LocalServer ex.respond(403, "")
+            when (path) {
+                "/master.m3u8" -> ex.respond(200, "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nvod.m3u8\n", "application/x-mpegURL")
+                "/vod.m3u8" -> ex.respond(200, "#EXTM3U\n#EXTINF:4.0,\nseg.ts\n#EXT-X-ENDLIST\n", "application/x-mpegURL")
+                "/live.m3u8" -> ex.respond(200, "#EXTM3U\n#EXTINF:4.0,\nseg${hits[path]}.ts\n", "application/x-mpegURL")
+                else -> ex.respond(404, "")
+            }
+        }.use { upstream ->
+            val proxy = StreamProxy()
+            testApplication {
+                routing { get("/proxy/{token}/{encoded}/{name?}") { proxy.serve(call, call.parameters["token"]!!, call.parameters["encoded"]!!) } }
+                val master = proxy.register("${upstream.url}/master.m3u8", emptyMap(), null)
+                val first = client.get(master).bodyAsText()
+                assertEquals(first, client.get(master).bodyAsText())
+                val vod = first.lines()[2]
+                assertEquals(client.get(vod).bodyAsText(), client.get(vod).bodyAsText())
+
+                val live = proxy.register("${upstream.url}/live.m3u8", emptyMap(), null)
+                assertTrue(client.get(live).bodyAsText() != client.get(live).bodyAsText(), "live playlists reach the upstream every time")
+            }
+            assertEquals(1, hits["/master.m3u8"])
+            assertEquals(1, hits["/vod.m3u8"])
+        }
+    }
+
+    /** GoPlay: SAMPLE-AES fMP4 with an inline key, behind playlists that work once. mpv needs the key up front. */
+    @Test
+    fun readsASampleAesKeyAheadWithoutSpendingThePlaylists() {
+        val hits = ConcurrentHashMap<String, Int>()
+        val media = "#EXTM3U\n#EXT-X-MAP:URI=\"init.mp4\"\n" +
+            "#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"data:application/octet-stream;base64,NqW2zqmvjXE0rSEbcmEEFg==\",KEYFORMAT=\"identity\"\n" +
+            "#EXTINF:4.0,\nseg.mp4\n#EXT-X-ENDLIST\n"
+        LocalServer { ex ->
+            if (hits.merge(ex.requestURI.path, 1, Int::plus)!! > 1) return@LocalServer ex.respond(403, "")
+            when (ex.requestURI.path) {
+                "/master.m3u8" -> ex.respond(200, "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nvideo.m3u8\n", "application/x-mpegURL")
+                "/video.m3u8" -> ex.respond(200, media, "application/x-mpegURL")
+                "/plain.m3u8" -> ex.respond(200, "#EXTM3U\n#EXTINF:4.0,\nseg.ts\n#EXT-X-ENDLIST\n", "application/x-mpegURL")
+                else -> ex.respond(404, "")
+            }
+        }.use { upstream ->
+            val proxy = StreamProxy()
+            val master = proxy.register("${upstream.url}/master.m3u8", emptyMap(), null)
+            assertEquals("36a5b6cea9af8d7134ad211b72610416", runBlocking { proxy.sampleAesKey(master) })
+            assertEquals(null, runBlocking { proxy.sampleAesKey(proxy.register("${upstream.url}/plain.m3u8", emptyMap(), null)) })
+            testApplication {
+                routing { get("/proxy/{token}/{encoded}/{name?}") { proxy.serve(call, call.parameters["token"]!!, call.parameters["encoded"]!!) } }
+                val variant = client.get(master).bodyAsText().lines()[2]
+                assertTrue(client.get(variant).bodyAsText().contains("#EXT-X-KEY"), "mpv still gets the playlists")
+            }
+        }
+    }
+
+    /** ffmpeg cuts URLs at 4096 bytes; GoPlay's playlist URLs are about 4.5 KB before encoding. */
+    @Test
+    fun keepsLongUrlsUnderFfmpegsLimit() {
+        val seen = ConcurrentHashMap<String, String>()
+        LocalServer { ex ->
+            seen[ex.requestURI.path] = ex.requestURI.rawQuery
+            when (ex.requestURI.path) {
+                "/stream.m3u8" -> ex.respond(200, "#EXTM3U\n#EXTINF:4.0,\nseg.ts?d=${"y".repeat(4500)}\n#EXT-X-ENDLIST\n", "application/x-mpegURL")
+                else -> ex.respond(200, "segment", "video/mp2t")
+            }
+        }.use { upstream ->
+            val proxy = StreamProxy()
+            testApplication {
+                routing { get("/proxy/{token}/{encoded}/{name?}") { proxy.serve(call, call.parameters["token"]!!, call.parameters["encoded"]!!) } }
+                val master = proxy.register("${upstream.url}/stream.m3u8?d=${"x".repeat(4500)}", emptyMap(), null)
+                assertTrue(master.length < 200 && master.endsWith("/stream.m3u8"), master)
+                val segment = client.get(master).bodyAsText().lines()[2]
+                assertTrue(segment.length < 200, segment)
+                assertEquals("segment", client.get(segment).bodyAsText())
+                assertEquals(404, client.get(master.replace("/~", "/~x")).status.value)
+            }
+            assertEquals("d=${"x".repeat(4500)}", seen["/stream.m3u8"])
+            assertEquals("d=${"y".repeat(4500)}", seen["/seg.ts"])
+        }
     }
 
     /** The whole path: link headers reach the upstream, playlists come back rewritten, ranges pass through. */

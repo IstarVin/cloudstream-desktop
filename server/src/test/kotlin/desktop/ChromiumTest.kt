@@ -144,4 +144,38 @@ class ChromiumTest {
             }
         }
     }
+
+    @Test
+    fun aChromiumLeftOverFromACrashedServerIsStopped() {
+        Chromium.stop()
+        val profile = File(dataDir, "chromium-profile")
+        val orphan = ProcessBuilder(Chromium.executable(), "--headless", "--remote-debugging-port=0", "--user-data-dir=${profile.absolutePath}", "about:blank")
+            .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start()
+        try {
+            val lock = File(profile, "SingletonLock").toPath()
+            val deadline = System.currentTimeMillis() + 10_000
+            while (!java.nio.file.Files.isSymbolicLink(lock) && System.currentTimeMillis() < deadline) Thread.sleep(100)
+            assertTrue(orphan.isAlive, "the orphan holds the profile")
+            assertEquals("about:blank", runBlocking { Chromium.withTab { it.evaluate("location.href")?.toString()?.trim('"') } })
+            assertFalse(orphan.isAlive, "the orphan was stopped")
+        } finally {
+            orphan.destroyForcibly()
+        }
+    }
+
+    /** GoPlay's own solve (GoPlaySession) against the live site, from a fresh profile. Opt in with LIVE_GOPLAY=1. */
+    @Test
+    fun goPlayTurnstilePassesInTheBackground() {
+        assumeTrue(System.getenv("LIVE_GOPLAY") == "1", "live test; set LIVE_GOPLAY=1")
+        val origin = "https://goplay.su"
+        val started = System.currentTimeMillis()
+        runBlocking {
+            WebViewResolver(Regex(".^"), additionalUrls = listOf(Regex(".")), userAgent = null, timeout = 60_000)
+                .resolveUsingWebView("$origin/") { "d=" in CookieManager.getInstance().getCookie(origin).orEmpty() }
+        }
+        val cookies = CookieManager.getInstance().getCookie(origin).orEmpty()
+        assertContains(cookies, "d=", message = "GoPlay's session cookie after ${System.currentTimeMillis() - started} ms")
+        val page = runBlocking { app.get("$origin/", headers = mapOf("User-Agent" to WebViewResolver.webViewUserAgent!!), cookies = CloudflareKiller.parseCookieMap(cookies)) }
+        assertFalse("form-ts" in page.text || "Generating Access Token" in page.text, "plain HTTP with the cookies gets past the gate")
+    }
 }

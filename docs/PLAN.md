@@ -78,6 +78,18 @@ video/audio output. Phase 10 (v1.3) is implemented; its StreamCorner check is st
   - GoPlay: headless fails Turnstile. Headed passes on its own, and the session cookies reach GoPlay through the
     `CookieManager` shim. After a restart, headless mode reuses the saved session, and playback through the proxy
     reaches `playing`.
+  - *Update, 1 November 2026:* headless now passes GoPlay's Turnstile on its own, in about 3 s from a fresh profile
+    (Chromium 156). Two launch flags caused the failure, each enough on its own: `--headless` (Turnstile stalls on
+    its checkbox) and `--remote-debugging-port=0`. Headless mode now runs the full browser with
+    `--ozone-platform=headless` on a fixed loopback port. `LIVE_GOPLAY=1` runs the live check in `ChromiumTest`.
+  - *GoPlay playback, 1 November 2026:* it still failed with "All links failed". Three proxy problems caused this,
+    each fixed in `StreamProxy`. (1) GoPlay's master URL is about 4.5 KB; base64 in the proxy path pushed it past
+    ffmpeg's 4096-byte URL limit, so mpv requested a truncated URL and got 403. Long URLs now get a short alias on
+    their token. (2) Its SAMPLE-AES keys are inline `data:` URIs, which crashed the rewrite (NPE, 500) and which
+    ffmpeg won't open anyway. The proxy now serves them. (3) The streams are fMP4 `cbcs`; ffmpeg's HLS demuxer loads
+    the key but never gives it to the fMP4 demuxer, so the picture was gray. Playback now reads the key ahead and
+    passes `seg_format_options=decryption_key=…`. Masters and VOD playlists are kept per token, because mpv fetches
+    a master twice and GoPlay's playlist URLs work only once.
   - mkvbase.site (OmniStream): headless fails Cloudflare. "Solve" passes in a visible window in about 6 s, and after
     a restart the saved clearance works with no new solve.
   - MissAV isn't challenging plain requests at the moment.
@@ -777,7 +789,7 @@ unchanged in both modes, with no upstream change, as the `CookieManager` shim al
 | --- | --- | --- |
 | The `library` JVM artifact drifts from the `pre-release` stub the plugins compile against (`NoSuchMethodError`). | Plugins fail at runtime. | Pin one commit. Add a startup check that loads every plugin and reports linkage errors per plugin. Build the library from source if JitPack is flaky. |
 | The JVM `library` has no `CloudflareKiller`, and its `WebViewResolver.resolveUsingWebView` is `TODO()`. | Tier C sources throw `NoClassDefFoundError` or `NotImplementedError`, which can fail a whole `loadLinks` call. | Done: the CDP classes in `compat/webview-cdp`, ordered before `library-jvm`, with a startup check and an API-parity test. |
-| Turnstile / Cloudflare fails in headless Chromium (v1.1). | Tier C sources fail. | xvfb or headed mode, a persistent profile, and a "solve manually" button in the UI that opens the visible browser. |
+| Turnstile / Cloudflare fails in headless Chromium (v1.1). | Tier C sources fail. | Headless runs the full browser (`--ozone-platform=headless`, fixed debugging port), which passes GoPlay's Turnstile. For stricter checks: xvfb or headed mode, a persistent profile, and a "solve manually" button in the UI that opens the visible browser. |
 | The concurrency limits in the repo's `CLAUDE.md` (OkHttp deadlock at 5+ parallel requests per host with CloudflareKiller). | Hangs during parallel search. | Done: OkHttp `maxRequestsPerHost = 2` on the shared dispatcher, and a `CloudflareKiller` without nested requests. Per-provider timeouts in search and links. |
 | Links that rely on interceptors or cookies won't play directly in mpv. | Playback errors. | The proxy path. Mark each link "direct" or "proxied" from its headers and whether its host needs an interceptor. |
 | Jackson/Rhino version conflicts with Ktor's dependencies. | Odd runtime errors. | Keep the server's own JSON on kotlinx.serialization. Isolate the plugin runtime in its own class loader layer if needed. |
