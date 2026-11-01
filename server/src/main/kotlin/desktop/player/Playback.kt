@@ -92,6 +92,12 @@ class Item(
     fun at(i: Int) = Item(details, episodes, i, episodes[i].data)
 }
 
+/** When auto-play picks a link: once enough have arrived, or a while after the first, or right away on fallback. */
+object AutoPlay {
+    fun ready(fallback: Boolean, done: Boolean, candidates: Int, minLinks: Int, firstLinkAt: Long?, waitMs: Long, now: Long): Boolean =
+        fallback || done || candidates >= minLinks || (firstLinkAt != null && now - firstLinkAt >= waitMs)
+}
+
 private class Session(val item: Item, val set: LinkSet, val generation: Int, var startAt: Double?) {
     val tried = mutableSetOf<String>()
     var link: ResolvedLink? = null
@@ -160,8 +166,7 @@ class Playback(
             saveProgress()
             session?.watchers?.cancel()
             val set = links.resolve(provider.api, item.data)
-            val resume = startAt ?: store.progress(item.provider, item.data)
-                ?.takeIf { !it.watched && it.position > 30 && (it.duration <= 0 || it.position < it.duration * 0.9) }?.position
+            val resume = startAt ?: store.resumePosition(item.provider, item.data)
             Session(item, set, ++generation, resume).also {
                 it.chosenSubs = subtitleIds
                 session = it
@@ -204,9 +209,7 @@ class Playback(
         val waitMs = settings.long(Settings.AUTOPLAY_WAIT_MS)
         while (s.generation == generation) {
             val candidates = links.ranked(s.set).filter { it.id !in s.tried }
-            val first = s.set.firstLinkAt
-            val ready = fallback || s.set.done || candidates.size >= minLinks ||
-                (first != null && System.currentTimeMillis() - first >= waitMs)
+            val ready = AutoPlay.ready(fallback, s.set.done, candidates.size, minLinks, s.set.firstLinkAt, waitMs, System.currentTimeMillis())
             if (ready && candidates.isNotEmpty()) {
                 playLink(s, candidates.first())
                 return

@@ -51,6 +51,11 @@ class Store(private val db: Database) {
             Progress(it.getDouble(1), it.getDouble(2), it.getInt(3) == 1)
         }.firstOrNull()
 
+    /** Where to resume [episodeData]: past the first 30 s and before 90%, unless it's marked watched. */
+    fun resumePosition(provider: String, episodeData: String): Double? =
+        progress(provider, episodeData)
+            ?.takeIf { !it.watched && it.position > 30 && (it.duration <= 0 || it.position < it.duration * 0.9) }?.position
+
     fun progressFor(provider: String): Map<String, Progress> =
         db.query("SELECT episode_data, position, duration, watched FROM progress WHERE provider = ?", provider) {
             it.getString(1) to Progress(it.getDouble(2), it.getDouble(3), it.getInt(4) == 1)

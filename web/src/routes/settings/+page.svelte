@@ -5,7 +5,7 @@
   import Icon from "#lib/components/Icon.svelte";
   import PluginSettings from "#lib/components/PluginSettings.svelte";
   import { toasts } from "#lib/toast.svelte";
-  import type { Settings } from "#lib/types";
+  import type { BrowserMode, BrowserStatus, PluginInfo, Settings } from "#lib/types";
 
   const client = useQueryClient();
   const settings = createQuery(() => ({ queryKey: ["settings"], queryFn: api.settings }));
@@ -15,6 +15,8 @@
     queryFn: api.plugins,
     refetchInterval: () => (status.data?.building ? 2000 : false),
   }));
+
+  const browser = createQuery(() => ({ queryKey: ["browser"], queryFn: api.browser, refetchInterval: 5000 }));
 
   let openPlugin = $state<string | null>(null);
   let log = $state<string | null>(null);
@@ -33,6 +35,36 @@
       toasts.error(e);
     }
   }
+
+  async function browserAction(fn: () => Promise<BrowserStatus>) {
+    try {
+      client.setQueryData(["browser"], await fn());
+    } catch (e) {
+      toasts.error(e);
+    }
+  }
+
+  const modes: { id: BrowserMode; label: string }[] = [
+    { id: "headless", label: "Headless (no window)" },
+    { id: "xvfb", label: "Virtual display (Xvfb)" },
+    { id: "headed", label: "Visible window" },
+  ];
+
+  /** The server stops a running browser so the next request starts it in the new mode. */
+  async function setMode(mode: BrowserMode) {
+    await save({ chromium_mode: mode });
+    client.invalidateQueries({ queryKey: ["browser"] });
+  }
+
+  function browserState(b: BrowserStatus) {
+    if (!b.executable) return "Chromium isn't installed";
+    if (!b.running) return "Not running; it starts when a plugin needs it";
+    return `Running ${b.mode === "headed" ? "in a visible window" : b.mode === "xvfb" ? "on a virtual display" : "headless"}`;
+  }
+
+  /** A loaded plugin that won't fully link against this runtime. */
+  const linkWarning = (p: PluginInfo) =>
+    p.runtimeLinkage ?? (p.linkage.length ? `${p.linkage.length} call${p.linkage.length > 1 ? "s" : ""} into the runtime won't link, e.g. ${p.linkage[0]}` : null);
 
   async function setEnabled(name: string, enabled: boolean) {
     await api.setPluginEnabled(name, enabled).catch(toasts.error);
@@ -124,6 +156,38 @@
     </section>
   {/if}
 
+  {#if settings.data && browser.data}
+    {@const b = browser.data}
+    <section>
+      <div class="row-head">
+        <h2>Browser</h2>
+        {#if b.running}<button class="btn" onclick={() => browserAction(api.stopBrowser)}><Icon name="stop" size={16} /> Stop</button>{/if}
+      </div>
+      <p class="muted small">
+        Chromium passes Cloudflare checks and loads pages that need a real browser. {browserState(b)}.
+      </p>
+      {#if b.error}<div class="p-error flush">{b.error}</div>{/if}
+      <label class="stack">
+        <b>Mode</b>
+        <small class="muted">Cloudflare's Turnstile often refuses headless browsers. A virtual display passes more checks without a window; a visible window lets you click through them yourself. Checks that still fail show a Solve button.</small>
+        <select value={settings.data.chromium_mode} onchange={(e) => setMode(e.currentTarget.value as BrowserMode)}>
+          {#each modes as m (m.id)}<option value={m.id}>{m.label}</option>{/each}
+        </select>
+      </label>
+      {#if b.clearances.length}
+        <div class="stack">
+          <b>Saved Cloudflare clearances</b>
+          <small class="muted">Reused until the site refuses them. Forget one to solve it again.</small>
+          <ul class="hosts">
+            {#each b.clearances as host (host)}
+              <li><span>{host}</span><button class="link-btn" onclick={() => browserAction(() => api.forgetClearance(host))}>Forget</button></li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+    </section>
+  {/if}
+
   <section>
     <div class="row-head">
       <h2>Plugins</h2>
@@ -143,7 +207,7 @@
       {#each plugins.data ?? [] as p (p.name)}
         <li>
           <div class="p-row">
-            <span class="dot {statusColor[p.status]}" title={p.status}></span>
+            <span class="dot {p.status === "loaded" && linkWarning(p) ? "warn" : statusColor[p.status]}" title={p.status}></span>
             <button class="p-name" onclick={() => (openPlugin = openPlugin === p.name ? null : p.name)} aria-expanded={openPlugin === p.name}>
               <b>{p.name}</b>
               <small class="muted">v{p.version ?? "?"} · {p.providers.join(", ") || p.status}{p.nsfw ? " · NSFW" : ""}</small>
@@ -151,9 +215,13 @@
             <input type="checkbox" checked={p.enabled} onchange={(e) => setEnabled(p.name, e.currentTarget.checked)} aria-label="Enable {p.name}" />
           </div>
           {#if p.error}<div class="p-error">{p.error}</div>{/if}
+          {#if p.status === "loaded" && linkWarning(p)}<div class="p-warn">{linkWarning(p)}</div>{/if}
           {#if openPlugin === p.name}
             <div class="p-more">
               {#if p.description}<p class="muted small">{p.description}</p>{/if}
+              {#if p.linkage.length > 1}
+                <pre class="log">{p.linkage.join("\n")}</pre>
+              {/if}
               {#if p.status === "loaded"}<PluginSettings name={p.name} />{/if}
             </div>
           {/if}
@@ -342,5 +410,27 @@
   }
   .p-more {
     margin: 6px 0 4px 21px;
+  }
+  .p-warn {
+    margin: 4px 0 0 21px;
+    font-size: 12.5px;
+    color: #f2c14e;
+    word-break: break-word;
+  }
+  .p-error.flush {
+    margin: 0;
+  }
+  .hosts {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+  }
+  .hosts li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-top: 1px solid var(--line);
+    font-size: 14px;
   }
 </style>

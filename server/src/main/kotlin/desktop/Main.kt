@@ -6,6 +6,7 @@ import desktop.config.Paths
 import desktop.config.Settings
 import desktop.db.Database
 import desktop.plugins.PluginHost
+import desktop.plugins.PluginRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,6 +23,7 @@ fun main(args: Array<String>) {
     val config = Config.load()
     val db = Database(File(Paths.dataDir, "cloudstream.db"))
     val settings = Settings(db, config.settingDefaults)
+    PluginRuntime.configure(config, settings)
     val host = PluginHost(config, settings)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 

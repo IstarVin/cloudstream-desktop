@@ -9,7 +9,9 @@ import com.lagradost.cloudstream3.utils.Qualities
 import desktop.api.LinkDto
 import desktop.api.Mapper
 import desktop.api.SubtitleDto
+import desktop.api.describe
 import desktop.db.Store
+import desktop.plugins.PluginHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,7 +75,7 @@ class LinkSet(val provider: String, val data: String) {
  * Runs `loadLinks` and keeps the results for a few minutes, keyed by (provider, data), so the sources sheet, the mpv
  * source picker and automatic fallback all see the same list. Every link and subtitle gets a short id.
  */
-class LinkService(private val scope: CoroutineScope, private val store: Store) {
+class LinkService(private val scope: CoroutineScope, private val store: Store, private val host: PluginHost) {
     private val log = LoggerFactory.getLogger(LinkService::class.java)
     private val sets = ConcurrentHashMap<Pair<String, String>, LinkSet>()
     private val links = ConcurrentHashMap<String, ResolvedLink>()
@@ -103,7 +105,9 @@ class LinkService(private val scope: CoroutineScope, private val store: Store) {
                     api.loadLinks(data, false, { sub -> addSubtitle(set, sub) }) { link -> addLink(api, set, link) }
                 }
             } catch (e: Throwable) {
-                if (set.links.isEmpty()) set.error = e.message ?: e.javaClass.simpleName
+                if (e is VirtualMachineError) throw e
+                host.noteFailure(api, e)
+                if (set.links.isEmpty()) set.error = describe(e)
                 log.info("loadLinks for {} ended: {}", api.name, e.toString())
             } finally {
                 set.done = true

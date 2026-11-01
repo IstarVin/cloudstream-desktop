@@ -23,6 +23,10 @@ export interface PluginInfo {
   providers: string[];
   lastUsed: number;
   settingsFiles: string[];
+  /** References into the runtime that won't link, found when the plugin loaded. */
+  linkage: string[];
+  /** The first linkage error a call into the plugin hit. */
+  runtimeLinkage?: string | null;
 }
 
 export interface SearchItem {
@@ -189,6 +193,30 @@ export interface Settings {
   show_nsfw: boolean;
   disabled_plugins: string[];
   proxy_all: boolean;
+  chromium_mode: BrowserMode;
+}
+
+export type BrowserMode = "headless" | "xvfb" | "headed";
+
+/** A browser check (Cloudflare or a page) the background browser couldn't pass. */
+export interface BrowserCheck {
+  id: string;
+  kind: "cloudflare" | "page";
+  host: string;
+  url: string;
+  since: number;
+  solving: boolean;
+}
+
+export interface BrowserStatus {
+  running: boolean;
+  mode: BrowserMode | null;
+  configuredMode: BrowserMode;
+  executable: string | null;
+  userAgent: string | null;
+  error: string | null;
+  checks: BrowserCheck[];
+  clearances: string[];
 }
 
 export interface PrefEntry {

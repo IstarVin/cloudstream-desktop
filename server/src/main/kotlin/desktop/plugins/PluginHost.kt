@@ -49,6 +49,10 @@ class PluginHost(private val config: Config, private val settings: Settings) {
         @Volatile var error: String? = null
         @Volatile var loaded: Loaded? = null
         @Volatile var lastUsed = 0L
+        /** References into the host runtime that won't link (see [LinkageCheck]), found when the plugin loaded. */
+        @Volatile var linkage: List<String> = emptyList()
+        /** The first linkage error a call into the plugin actually hit. */
+        @Volatile var runtimeLinkage: String? = null
         val name get() = info.name
     }
 
@@ -92,6 +96,7 @@ class PluginHost(private val config: Config, private val settings: Settings) {
         discover()
         if (config.buildOnStart) rebuild()
         mutex.withLock { syncAll() }
+        logLinkage()
         scope.launch { watch() }
         settings.onChange { key -> if (key == Settings.DISABLED_PLUGINS) scope.launch { mutex.withLock { syncAll() } } }
     }
@@ -157,9 +162,13 @@ class PluginHost(private val config: Config, private val settings: Settings) {
             r.loaded = Loaded(loader, instance, context, mtime, copy.absolutePath)
             r.status = Status.LOADED
             r.error = null
+            r.runtimeLinkage = null
+            r.linkage = runCatching { LinkageCheck.check(copy, loader) }
+                .getOrElse { listOf("Linkage check failed: ${it.message}") }
             val apis = APIHolder.allProviders.count { it.sourcePlugin == copy.absolutePath }
             val extractors = extractorApis.count { it.sourcePlugin == copy.absolutePath }
             log.info("Loaded {} v{} ({} providers, {} extractors)", r.name, r.info.version, apis, extractors)
+            r.linkage.forEach { log.warn("{} won't link: {}", r.name, it) }
         } catch (t: Throwable) {
             removeApis(copy.absolutePath)
             loader.close()
@@ -167,6 +176,30 @@ class PluginHost(private val config: Config, private val settings: Settings) {
             r.error = "${t.javaClass.simpleName}: ${t.message}"
             log.warn("Failed to load {}: {}", r.name, r.error, t)
         }
+    }
+
+    /** One line per plugin with linkage problems (or that all loaded plugins link), after startup. */
+    private fun logLinkage() {
+        val loaded = records.values.filter { it.status == Status.LOADED }
+        val broken = loaded.filter { it.linkage.isNotEmpty() }
+        if (broken.isEmpty()) log.info("Linkage check: all {} loaded plugins link against this runtime", loaded.size)
+        else broken.forEach { log.warn("Linkage check: {} has {} problem(s), first: {}", it.name, it.linkage.size, it.linkage.first()) }
+    }
+
+    /**
+     * Records a failure from a call into [provider]'s plugin. A [LinkageError] (anywhere in the cause chain) means
+     * the plugin and the runtime disagree; the first one is kept and shown on the plugins page.
+     */
+    fun noteFailure(provider: Provider, t: Throwable) {
+        val linkage = generateSequence(t) { it.cause }.take(10).firstOrNull { it is LinkageError } ?: return
+        if (provider.plugin.runtimeLinkage == null) {
+            provider.plugin.runtimeLinkage = "${linkage.javaClass.simpleName}: ${linkage.message}"
+            log.warn("{} hit a linkage error: {}", provider.plugin.name, provider.plugin.runtimeLinkage)
+        }
+    }
+
+    fun noteFailure(api: MainAPI, t: Throwable) {
+        providers().firstOrNull { it.api === api }?.let { noteFailure(it, t) }
     }
 
     private fun unload(r: Record) {

@@ -1,5 +1,6 @@
 import type {
   Bookmark,
+  BrowserStatus,
   ContinueEntry,
   Details,
   HistoryEntry,
@@ -92,6 +93,14 @@ export const api = {
     get<{ files: Record<string, PrefEntry[]> }>(
       `/api/plugins/${encodeURIComponent(name)}/settings`,
     ),
+  browser: () => get<BrowserStatus>("/api/browser"),
+  solveCheck: (id: string) =>
+    post<BrowserStatus>(`/api/browser/checks/${encodeURIComponent(id)}/solve`),
+  dismissCheck: (id: string) =>
+    request<BrowserStatus>("DELETE", `/api/browser/checks/${encodeURIComponent(id)}`),
+  stopBrowser: () => post<BrowserStatus>("/api/browser/stop"),
+  forgetClearance: (host: string) =>
+    request<BrowserStatus>("DELETE", `/api/browser/clearances?${q({ host })}`),
   savePluginSettings: (name: string, files: Record<string, PrefEntry[]>) =>
     put<{ files: Record<string, PrefEntry[]> }>(
       `/api/plugins/${encodeURIComponent(name)}/settings`,

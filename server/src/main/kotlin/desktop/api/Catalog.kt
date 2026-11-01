@@ -5,12 +5,17 @@ import com.lagradost.cloudstream3.MainPageRequest
 import desktop.config.Settings
 import desktop.db.Store
 import desktop.plugins.PluginHost
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeout
 import java.util.concurrent.ConcurrentHashMap
 
 class NotFound(message: String) : Exception(message)
+
+/** A provider call that failed; the message is already user-facing (see [describe]). */
+class PluginFailure(message: String, cause: Throwable) : Exception(message, cause)
 
 /** Home pages, search and details, with NSFW filtering applied here so filtered data never reaches the browser. */
 class Catalog(private val host: PluginHost, private val settings: Settings, private val store: Store) {
@@ -54,8 +59,10 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
         val p = provider(name)
         val api = p.api
         val data = api.mainPage.getOrNull(section) ?: com.lagradost.cloudstream3.MainPageData("", "", false)
-        val res = withTimeout(api.getMainPageTimeoutMs ?: 30_000) {
-            api.getMainPage(page, MainPageRequest(data.name, data.data, data.horizontalImages))
+        val res = guarded(p) {
+            withTimeout(api.getMainPageTimeoutMs ?: 30_000) {
+                api.getMainPage(page, MainPageRequest(data.name, data.data, data.horizontalImages))
+            }
         } ?: return HomePage(emptyList(), false)
         val nsfw = settings.showNsfw
         return HomePage(res.items.map { Mapper.homeRow(api.name, it, nsfw) }, res.hasNext)
@@ -78,7 +85,11 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
                 }
                 result.fold(
                     onSuccess = { list -> emit(api.name, list.filter { nsfw || !Mapper.isNsfw(it) }.map { Mapper.searchItem(api.name, it) }, null) },
-                    onFailure = { e -> emit(api.name, null, e.message ?: e.javaClass.simpleName) },
+                    onFailure = { e ->
+                        if (e is VirtualMachineError) throw e
+                        host.noteFailure(p, e)
+                        emit(api.name, null, describe(e))
+                    },
                 )
             }
         }.forEach { it.await() }
@@ -89,10 +100,25 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
         val p = provider(name)
         val key = name to url
         loadCache[key]?.takeIf { System.currentTimeMillis() - it.at < 10 * 60_000 }?.let { return p to it.response }
-        val r = withTimeout(p.api.loadTimeoutMs ?: 30_000) { p.api.load(url) } ?: throw NotFound("$name returned nothing for $url")
+        val r = guarded(p) { withTimeout(p.api.loadTimeoutMs ?: 30_000) { p.api.load(url) } } ?: throw NotFound("$name returned nothing for $url")
         loadCache[key] = Cached(r, System.currentTimeMillis())
         return p to r
     }
+
+    /** Runs a call into [p]'s plugin, recording linkage errors, and rethrows failures as [PluginFailure]. */
+    private suspend fun <T> guarded(p: PluginHost.Provider, block: suspend () -> T): T =
+        try {
+            block()
+        } catch (e: TimeoutCancellationException) {
+            throw PluginFailure("${p.api.name} took too long", e)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: VirtualMachineError) {
+            throw e
+        } catch (e: Throwable) {
+            host.noteFailure(p, e)
+            throw PluginFailure(describe(e), e)
+        }
 
     suspend fun details(name: String, url: String): Details {
         val (p, r) = loadRaw(name, url)

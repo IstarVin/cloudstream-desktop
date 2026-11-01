@@ -2,10 +2,12 @@ package desktop
 
 import desktop.api.Catalog
 import desktop.api.NotFound
+import desktop.api.PluginFailure
 import desktop.api.Services
 import desktop.api.apiRoutes
 import desktop.api.webRoutes
 import desktop.auth.Auth
+import desktop.cdp.ChromiumUnavailableException
 import desktop.config.Config
 import desktop.config.Settings
 import desktop.db.Database
@@ -37,7 +39,7 @@ fun serve(config: Config, db: Database, settings: Settings, host: PluginHost, sc
     val log = LoggerFactory.getLogger("desktop.Server")
     val store = Store(db)
     val catalog = Catalog(host, settings, store)
-    val links = LinkService(scope, store)
+    val links = LinkService(scope, store, host)
     val proxy = StreamProxy()
     val mpv = MpvManager(config, settings)
     val playback = Playback(scope, host, catalog, links, proxy, mpv, store, settings, config.bindPort)
@@ -60,6 +62,8 @@ fun serve(config: Config, db: Database, settings: Settings, host: PluginHost, sc
             exception<IllegalArgumentException> { call, e -> call.respond(HttpStatusCode.BadRequest, mapOf("error" to e.message)) }
             exception<BadRequestException> { call, e -> call.respond(HttpStatusCode.BadRequest, mapOf("error" to (e.cause?.message ?: e.message))) }
             exception<NoDisplayException> { call, e -> call.respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to e.message)) }
+            exception<ChromiumUnavailableException> { call, e -> call.respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to e.message)) }
+            exception<PluginFailure> { call, e -> call.respond(HttpStatusCode.BadGateway, mapOf("error" to e.message)) }
             exception<TimeoutCancellationException> { call, _ -> call.respond(HttpStatusCode.GatewayTimeout, mapOf("error" to "The provider took too long")) }
             exception<Throwable> { call, e ->
                 log.warn("Request {} failed", call.request.local.uri, e)

@@ -31,6 +31,27 @@ data class PluginDto(
     val lastUsed: Long,
     /** Preference files the plugin opened; the settings form edits these. */
     val settingsFiles: List<String>,
+    /** References into the runtime that won't link, found at load (see LinkageCheck). */
+    val linkage: List<String> = emptyList(),
+    /** The first linkage error a call into the plugin hit. */
+    val runtimeLinkage: String? = null,
+)
+
+@Serializable
+data class BrowserCheckDto(val id: String, val kind: String, val host: String, val url: String, val since: Long, val solving: Boolean)
+
+@Serializable
+data class BrowserStatusDto(
+    val running: Boolean,
+    /** The mode Chromium is running in (a manual check switches it to `headed`). */
+    val mode: String?,
+    val configuredMode: String,
+    val executable: String?,
+    val userAgent: String?,
+    val error: String?,
+    val checks: List<BrowserCheckDto>,
+    /** Hosts with a saved Cloudflare clearance. */
+    val clearances: List<String>,
 )
 
 @Serializable

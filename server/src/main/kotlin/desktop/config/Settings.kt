@@ -23,6 +23,7 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
 
     fun bool(key: String): Boolean = (stored(key) as? JsonPrimitive)?.booleanOrNull ?: defaults[key] as Boolean
     fun long(key: String): Long = (stored(key) as? JsonPrimitive)?.longOrNull ?: (defaults[key] as Number).toLong()
+    fun string(key: String): String = (stored(key) as? JsonPrimitive)?.takeIf { it.isString }?.content ?: defaults[key].toString()
 
     @Suppress("UNCHECKED_CAST")
     fun strings(key: String): List<String> =
@@ -37,7 +38,7 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
             is Boolean -> JsonPrimitive(bool(key))
             is Number -> JsonPrimitive(long(key))
             is List<*> -> JsonArray(strings(key).map(::JsonPrimitive))
-            else -> JsonPrimitive(d.toString())
+            else -> JsonPrimitive(string(key))
         }
     })
 
@@ -49,9 +50,9 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
                 is Boolean -> (v as? JsonPrimitive)?.booleanOrNull != null
                 is Number -> (v as? JsonPrimitive)?.longOrNull != null
                 is List<*> -> v is JsonArray && v.all { it is JsonPrimitive && it.isString }
-                else -> v is JsonPrimitive
+                else -> v is JsonPrimitive && v.isString && choices[key].let { it == null || v.content in it }
             }
-            require(ok) { "Setting $key has the wrong type" }
+            require(ok) { "Setting $key has the wrong type or value" }
             db.update("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, v.toString())
             listeners.forEach { it(key) }
         }
@@ -66,5 +67,9 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
         const val SHOW_NSFW = "show_nsfw"
         const val DISABLED_PLUGINS = "disabled_plugins"
         const val PROXY_ALL = "proxy_all"
+        const val CHROMIUM_MODE = "chromium_mode"
+
+        /** The allowed values of string settings that have a fixed set. */
+        val choices = mapOf(CHROMIUM_MODE to setOf("headless", "xvfb", "headed"))
     }
 }

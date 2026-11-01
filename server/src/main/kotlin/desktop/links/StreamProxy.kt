@@ -54,8 +54,10 @@ class StreamProxy {
             call.request.header(HttpHeaders.Range)?.let { header(HttpHeaders.Range, it) }
         }.build()
 
-        val response = withContext(Dispatchers.IO) { target.client.newCall(request).execute() }
-        response.use { res ->
+        val res = withContext(Dispatchers.IO) { target.client.newCall(request).execute() }
+        // The streaming writer may run after respondOutputStream returns, so it closes the response itself.
+        var handedOff = false
+        try {
             val type = res.header("Content-Type").orEmpty()
             val body = res.body
             val isPlaylist = type.contains("mpegurl", true) || url.substringBefore('?').endsWith(".m3u8")
@@ -70,6 +72,7 @@ class StreamProxy {
             }
             for (h in listOf(HttpHeaders.ContentRange, HttpHeaders.AcceptRanges)) res.header(h)?.let { call.response.header(h, it) }
             val length = body.contentLength().takeIf { it >= 0 }
+            handedOff = true
             call.respondOutputStream(
                 contentType = runCatching { ContentType.parse(type) }.getOrDefault(ContentType.Application.OctetStream),
                 status = HttpStatusCode.fromValue(res.code),
@@ -79,8 +82,12 @@ class StreamProxy {
                 try {
                     withContext(Dispatchers.IO) { body.byteStream().use { it.copyTo(this@respondOutputStream) } }
                 } catch (_: IOException) {
+                } finally {
+                    res.close()
                 }
             }
+        } finally {
+            if (!handedOff) res.close()
         }
     }
 

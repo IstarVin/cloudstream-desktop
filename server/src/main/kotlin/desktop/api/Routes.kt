@@ -1,6 +1,8 @@
 package desktop.api
 
 import desktop.auth.Auth
+import desktop.cdp.Chromium
+import desktop.cdp.Clearances
 import desktop.compat.DesktopContext
 import desktop.compat.PrefsCodec
 import desktop.config.Settings
@@ -31,11 +33,13 @@ import io.ktor.server.routing.route
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.Frame
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -219,6 +223,24 @@ fun Route.apiRoutes(s: Services) {
             call.respond(mapOf("ok" to true))
         }
 
+        get("/browser") { call.respond(browserStatus()) }
+        post("/browser/checks/{id}/solve") {
+            Chromium.solveManually(call.parameters["id"]!!)
+            call.respond(browserStatus())
+        }
+        delete("/browser/checks/{id}") {
+            Chromium.dismiss(call.parameters["id"]!!)
+            call.respond(browserStatus())
+        }
+        post("/browser/stop") {
+            withContext(Dispatchers.IO) { Chromium.stop() }
+            call.respond(browserStatus())
+        }
+        delete("/browser/clearances") {
+            Clearances.hosts.remove(call.param("host"))
+            call.respond(browserStatus())
+        }
+
         get("/settings") { call.respond(s.settings.all()) }
         put("/settings") {
             s.settings.update(call.receive<JsonObject>())
@@ -242,6 +264,8 @@ fun Route.apiRoutes(s: Services) {
                     providers = providers[r.name].orEmpty().map { it.api.name },
                     lastUsed = r.lastUsed,
                     settingsFiles = r.loaded?.context?.openedPrefs?.sorted().orEmpty(),
+                    linkage = r.linkage,
+                    runtimeLinkage = r.runtimeLinkage,
                 )
             })
         }
@@ -274,6 +298,20 @@ fun Route.apiRoutes(s: Services) {
             call.respond(pluginSettings(s, name))
         }
     }
+}
+
+private fun browserStatus(): BrowserStatusDto {
+    val st = Chromium.status()
+    return BrowserStatusDto(
+        running = st.running,
+        mode = st.mode,
+        configuredMode = st.configuredMode,
+        executable = st.executable,
+        userAgent = st.userAgent,
+        error = st.error,
+        checks = st.challenges.map { BrowserCheckDto(it.id, it.kind, it.host, it.url, it.since, it.solving) },
+        clearances = st.clearances,
+    )
 }
 
 private fun prefFiles(s: Services, name: String): Set<String> {

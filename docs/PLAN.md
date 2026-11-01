@@ -11,8 +11,8 @@ _Last updated: 2026-11-01_
 
 ## Status (2026-11-01)
 
-Phases 0–6 are implemented. Each phase's check was run against live providers, with mpv on a null video/audio
-output. Phase 7 (Chromium/CDP) has not started.
+Phases 0–8 are implemented (v1 plus v1.1). Each phase's check was run against live providers, with mpv on a null
+video/audio output. Phase 9 (repo mode and upstream seams) has not started.
 
 **Phase 0 findings**
 
@@ -39,8 +39,54 @@ output. Phase 7 (Chromium/CDP) has not started.
   and their defaults), or they can be added by hand.
 - *Extra setting* `playback.proxy_all` sends every stream through the proxy, for sites that reject mpv's direct
   requests.
-- *Not done yet:* the global per-host `Semaphore(2)` (§9). Per-provider timeouts are in place. A few TonkaCine
-  sources fail with `AEADBadTagException` on the JVM; this hasn't been investigated.
+- *Per-host limit (§9)* is OkHttp's own `maxRequestsPerHost` on the plugins' shared dispatcher
+  (`network.max_requests_per_host`, default 2), not a semaphore: waiting calls queue in OkHttp instead of holding
+  threads. The desktop `CloudflareKiller` never sends a nested request from inside its interceptor, so the
+  deadlock the extensions repo warns about can't occur.
+
+**Phase 7 results (v1 hardening)**
+
+- Per-host limit: `HostLimitTest` makes 8 parallel `app.get` calls (some through derived clients) and sees at most
+  2 at the upstream.
+- WebView failures: the library's `WebViewResolver` is shadowed (Phase 8), so tier C sources fail with ordinary
+  exceptions that plugins already catch per source. Search, home, load and links map failures to a short reason
+  (`describe`): Chromium missing, timeout, `NotImplementedError`, linkage.
+- *TonkaCine `AEADBadTagException`:* not a JVM problem. Vidnest's payloads fail to decrypt in Python too, so the site
+  changed its secret (`VIDNEST_SECRET` in `shared/tonkacinesource/TonkaCineDecoder.kt`). It fails on Android as well;
+  it needs a fix in the extensions repo. Vidrock still works.
+- Linkage report: `LinkageCheck` reads each plugin's constant pool at load and resolves every reference into the
+  host runtime (library, Kotlin, OkHttp, Jackson, jsoup, Rhino…). Problems are logged and shown in amber on the
+  plugins page, together with the first `LinkageError` a call actually hits. All 36 plugins currently link cleanly.
+- Tests: 30 server tests (store, auth over a real LAN socket, the proxy end to end, auto-play rule, linkage, the
+  shadow's API parity, host limit, Chromium) and 12 web tests (SSE streams, player socket, player store).
+- CI: `.github/workflows/ci.yml` runs the web checks and the server tests. It hasn't run yet: the repo has no remote.
+- *Still open:* the real-session check. Chromium ran headed in the Wayland session, but a visible mpv window and
+  QR pairing from a real phone still need checking by hand.
+
+**Phase 8 results (v1.1, Chromium over CDP)**
+
+- `compat/webview-cdp` ships `WebViewResolver` (the library's exact public API, checked by a test), a real
+  `CloudflareKiller` and an `android.webkit.CookieManager` shim, all on one shared Chromium (`desktop.cdp.Chromium`)
+  with a persistent profile, lazily started and stopped after `chromium.idle_minutes`. A startup check fails fast if
+  the library's `WebViewResolver` wins the classpath.
+- Cloudflare solves run once per host in the background and outlive the request that started them (OmniStream
+  cancels slow sources after a few seconds). Clearances and Chromium's user agent are saved in
+  `chromium/clearances.json` and shared by every `CloudflareKiller.savedCookies`.
+- Checks the background browser can't pass are listed (banner on every page, `/api/browser`). "Solve" switches
+  Chromium to a visible window; the clearance is picked up when it appears.
+- Live results:
+  - GoPlay: headless fails Turnstile. Headed passes on its own, and the session cookies reach GoPlay through the
+    `CookieManager` shim. After a restart, headless mode reuses the saved session, and playback through the proxy
+    reaches `playing`.
+  - mkvbase.site (OmniStream): headless fails Cloudflare. "Solve" passes in a visible window in about 6 s, and after
+    a restart the saved clearance works with no new solve.
+  - MissAV isn't challenging plain requests at the moment.
+  - *MkvDrama is broken upstream:* mkvdrama.net now answers with a JSON API that needs a key. Plain curl gets the
+    same 401.
+- *Untested:* `xvfb` mode (Xvfb isn't installed here).
+
+**Next:** Phase 9 (repo mode and upstream seams). The real-session check from Phase 7 is still open. Upstream, the
+Vidnest secret and MkvDrama's new site need plugin fixes.
 
 ## 1. Goals
 
@@ -360,7 +406,10 @@ playback.autoplay_min_links = 3
 playback.autoplay_wait_ms = 6000
 playback.autoplay_next = true
 ui.show_nsfw = false
-# v1.1: chromium.path = "chromium", chromium.mode = "headless" | "xvfb" | "headed"
+chromium.path = "chromium"
+chromium.mode = "headless"       # headless | xvfb | headed; also on the Settings page
+chromium.idle_minutes = 10
+network.max_requests_per_host = 2
 ```
 
 **Auth.** Requests from loopback never need a token. Every other request needs one:
@@ -375,7 +424,8 @@ ui.show_nsfw = false
 
 ## 8. Phases
 
-Each phase ends with a check that can be shown working. **v1 = Phases 0–6.** v1.1 = Phase 7.
+Each phase ends with a check that can be shown working. **v1 = Phases 0–6 (done).** Phase 7 hardens v1 (done).
+**v1.1 = Phase 8 (done)**, **v1.2 = Phase 9 (next)**, and Phase 10 is later work.
 
 **Phase 0: spike (de-risk the core decision)**
 - Pin the `recloudstream` `library` JVM artifact (JitPack) to a commit that matches the `cloudstream3:pre-release`
@@ -436,14 +486,72 @@ Each phase ends with a check that can be shown working. **v1 = Phases 0–6.** v
 - **Done when:** after logging in, the UI is reachable from the desktop and from a paired phone without starting
   anything by hand, and Play opens mpv in the graphical session.
 
-**Phase 7 (v1.1): tier C, Chromium over CDP**
-- Replace the placeholders with real `WebViewResolver` and `CloudflareKiller` implementations: a persistent profile,
-  headless/xvfb/headed modes, and a "solve manually" button.
-- **Done when:** GoPlay (through OmniStream), MkvDrama and one Cloudflare-fronted site such as MissAV resolve links.
+**Phase 7: v1 hardening (done; real-session check open)**
 
-**Later**
-- Repo mode (download plugin jars from the `builds` branch), ranking by success history in the UI, uosc
-  integration, skip intro/outro, StreamCorner (tier D) and a native Fetcharr action.
+This phase settles v1 before Chromium adds more moving parts.
+
+- **Real-session check:** run the installed service after a real login. Play opens a visible mpv window on X11 and on
+  Wayland, the mpv keybindings and OSD work, and a real phone pairs by QR and works as a remote.
+- **Concurrency:** add the global per-host `Semaphore(2)` from §9, wrapped around the plugins' shared `app` client so
+  parallel search and links never exceed it.
+- **Contain WebView failures:** catch `NotImplementedError` (and other `Error`s short of `VirtualMachineError`) in the
+  `search`, `load` and `loadLinks` calls, and report them per source as "needs Chromium (v1.1)". One source then
+  fails, not the whole plugin call.
+- **TonkaCine `AEADBadTagException`:** find the cause (likely a JCE or GCM-tag-length difference from Android's
+  provider) and fix it in the shim or upstream, or record it as an upstream bug.
+- **Startup linkage report:** list every enabled plugin with load status and the first `NoSuchMethodError` or
+  `NoClassDefFoundError` it hit, in the log and on the plugins page. This is the §9 mitigation for library drift.
+- **Tests:**
+  - Server: `Store` (resume, watched threshold, `link_stats` ranking), `Auth` (loopback, cookie, rotation, `/proxy`),
+    the M3U8 rewrite with keys and nested playlists, and the auto-play rule (3 links or 6 s).
+  - Web: the API client's SSE handling and the player-state store.
+- **CI:** add a remote and a workflow that runs `./gradlew :server:test` and `vp check && vp test`. Plugin builds stay
+  local, because they need the extensions repo and the Android SDK.
+- **Done when:** the real-session check passes, a parallel search across every provider makes no more than 2
+  concurrent requests to any host, a WebView-backed OmniStream source fails alone while its other sources return
+  links, and CI is green.
+
+**Phase 8 (v1.1): tier C, Chromium over CDP (done)**
+
+- **Shadow the library classes.** Ship `com.lagradost.cloudstream3.network.WebViewResolver` in `compat/webview-cdp`
+  with the library's exact constructor and method signatures. Put it before `library-jvm` on the host classpath so
+  plugins resolve the desktop class. Add a startup assertion that the loaded class comes from the compat jar.
+- **Chromium manager:**
+  - One long-lived Chromium with a persistent profile in `~/.local/share/cloudstream-desktop/chromium/`, started
+    lazily on the first request that needs it and stopped after it has been idle for a while.
+  - Talk to it over CDP using a small WebSocket client in Ktor, without Playwright.
+  - Settings: `chromium.path` and `chromium.mode` (`headless`, `xvfb` or `headed`), as in §7.
+- **`WebViewResolver`:** open a fresh tab, enable `Network`, navigate, and match requests against `interceptUrl` and
+  `additionalUrls`. Return the first match plus every request seen, honour the timeout, then close the tab.
+  `webViewUserAgent` reports the real Chromium user agent.
+- **`CloudflareKiller`:** on a challenge response, solve the challenge in Chromium, copy `cf_clearance` and the user
+  agent into `savedCookies`, and retry the request. Allow one solve per host at a time, guarded by a `Mutex`.
+  Requests that come back through the proxy carry the same cookies.
+- **"Solve manually":** when a headless or xvfb solve times out, the UI offers a button that opens the page in a
+  visible window. The original request retries once the cookie appears.
+- **Done when:** GoPlay (through OmniStream), MkvDrama and one Cloudflare-fronted site such as MissAV resolve links
+  and play. Cookies survive a server restart, and a forced Turnstile can be solved by hand from the UI.
+
+**Phase 9 (v1.2): repo mode and upstream seams (next)**
+
+- **Repo mode:** read `plugins.json` from the extensions repo's `builds` branch, download the cross-platform jars, and
+  verify and cache them. Dev mode stays available, and the mode is chosen in Settings. First check whether the gradle
+  plugin writes a jar URL for `isCrossPlatform` modules; if it doesn't, add a CI step upstream that publishes them.
+- **Upstream (§6):** set `isCrossPlatform` on the tier A′ modules, move tier B's `Context` use behind a seam, and add
+  the optional settings schema. Once that ships, the init-script override of `isCrossPlatform` is needed only in dev
+  mode.
+- **Plugin updates:** show the installed and available versions, and offer one-click update and rollback.
+- **Done when:** a fresh install with no local extensions repo loads every tier A–C plugin from the `builds` branch,
+  and a plugin version bump upstream reaches the desktop through the UI.
+
+**Phase 10: later**
+
+- **Player:** skip intro/outro (AniSkip chapters plus a "Skip" prompt in the script) and uosc integration.
+- **UI:** show the success-history ranking on the sources sheet, per-plugin settings forms from the schema, and
+  next-episode prefetch status.
+- **Plugins:** StreamCorner (tier D, through a `StreamCornerEngine` seam) and Fetcharr rebuilt as a native web UI
+  action.
+- **Still out of scope:** downloads, DRM, and running the server on a different machine from mpv.
 
 ---
 
@@ -452,9 +560,9 @@ Each phase ends with a check that can be shown working. **v1 = Phases 0–6.** v
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
 | The `library` JVM artifact drifts from the `pre-release` stub the plugins compile against (`NoSuchMethodError`). | Plugins fail at runtime. | Pin one commit. Add a startup check that loads every plugin and reports linkage errors per plugin. Build the library from source if JitPack is flaky. |
-| `WebViewResolver` / `CloudflareKiller` are missing from the JVM `library` target. | Tier C plugins throw `NoClassDefFoundError`, which in OmniStream's case could take down the whole plugin. | Placeholder classes in v1 (Phase 5) and the CDP implementations in v1.1, loaded in the parent class loader before plugins. |
+| The JVM `library` has no `CloudflareKiller`, and its `WebViewResolver.resolveUsingWebView` is `TODO()`. | Tier C sources throw `NoClassDefFoundError` or `NotImplementedError`, which can fail a whole `loadLinks` call. | Done: the CDP classes in `compat/webview-cdp`, ordered before `library-jvm`, with a startup check and an API-parity test. |
 | Turnstile / Cloudflare fails in headless Chromium (v1.1). | Tier C sources fail. | xvfb or headed mode, a persistent profile, and a "solve manually" button in the UI that opens the visible browser. |
-| The concurrency limits in the repo's `CLAUDE.md` (OkHttp deadlock at 5+ parallel requests per host with CloudflareKiller). | Hangs during parallel search. | Global per-host `Semaphore(2)`. Per-provider timeouts in search and links. |
+| The concurrency limits in the repo's `CLAUDE.md` (OkHttp deadlock at 5+ parallel requests per host with CloudflareKiller). | Hangs during parallel search. | Done: OkHttp `maxRequestsPerHost = 2` on the shared dispatcher, and a `CloudflareKiller` without nested requests. Per-provider timeouts in search and links. |
 | Links that rely on interceptors or cookies won't play directly in mpv. | Playback errors. | The proxy path. Mark each link "direct" or "proxied" from its headers and whether its host needs an interceptor. |
 | Jackson/Rhino version conflicts with Ktor's dependencies. | Odd runtime errors. | Keep the server's own JSON on kotlinx.serialization. Isolate the plugin runtime in its own class loader layer if needed. |
 | The server listens on the LAN by default. | Anyone on the network could control playback or use the proxy. | A token is required for every non-loopback request, including `/proxy`. Pairing by QR, with token rotation. |

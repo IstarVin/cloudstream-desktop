@@ -21,4 +21,10 @@ ui.show_nsfw = false             # (UI)
 # Where android.jar comes from (only its class shapes are used). Defaults to the SDK the extensions repo builds with.
 # android.sdk_path = "/home/you/Android/Sdk"
 
-# v1.1: chromium.path = "chromium", chromium.mode = "headless" | "xvfb" | "headed"
+# Chromium, for sites behind Cloudflare or that need a real browser (tier C plugins). It starts on demand.
+chromium.path = "chromium"       # or a full path; google-chrome also works
+chromium.mode = "headless"       # (UI) headless | xvfb (needs Xvfb) | headed (a visible window)
+chromium.idle_minutes = 10       # stop it after this long unused
+
+# At most this many parallel requests to one host from the plugins (OkHttp deadlocks around 5 with Cloudflare).
+network.max_requests_per_host = 2

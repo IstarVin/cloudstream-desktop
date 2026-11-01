@@ -3,6 +3,7 @@
   import { page } from "$app/state";
   import { QueryClient, QueryClientProvider } from "@tanstack/svelte-query";
   import { api } from "#lib/api";
+  import BrowserChecks from "#lib/components/BrowserChecks.svelte";
   import Icon, { type IconName } from "#lib/components/Icon.svelte";
   import NowPlaying from "#lib/components/NowPlaying.svelte";
   import Pairing from "#lib/components/Pairing.svelte";
@@ -50,6 +51,7 @@
         {/each}
       </nav>
       <main>
+        <BrowserChecks />
         {@render children()}
       </main>
     </div>

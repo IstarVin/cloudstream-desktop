@@ -10,6 +10,10 @@ data class Config(
     val buildOnStart: Boolean,
     val mpvPath: String,
     val androidSdk: File?,
+    val chromiumPath: String,
+    val chromiumIdleMinutes: Long,
+    /** OkHttp's per-host limit for the plugins' shared client (the extensions repo's rule is 2). */
+    val maxRequestsPerHost: Int,
     /** Defaults for the UI-editable settings, by [Settings] key. */
     val settingDefaults: Map<String, Any>,
 ) {
@@ -36,6 +40,7 @@ data class Config(
                 Settings.SHOW_NSFW to (bool("ui.show_nsfw") ?: false),
                 Settings.PROXY_ALL to (bool("playback.proxy_all") ?: false),
                 Settings.DISABLED_PLUGINS to ((t["plugins.disabled"] as? List<*>)?.map { it.toString() } ?: listOf("Fetcharr", "StreamCorner")),
+                Settings.CHROMIUM_MODE to (str("chromium.mode")?.takeIf { it in Settings.choices.getValue(Settings.CHROMIUM_MODE) } ?: "headless"),
             )
             return Config(
                 bindHost = host,
@@ -44,6 +49,9 @@ data class Config(
                 buildOnStart = bool("plugins.build_on_start") ?: true,
                 mpvPath = str("mpv.path") ?: "mpv",
                 androidSdk = str("android.sdk_path")?.let(::File),
+                chromiumPath = str("chromium.path") ?: "chromium",
+                chromiumIdleMinutes = long("chromium.idle_minutes") ?: 10L,
+                maxRequestsPerHost = (long("network.max_requests_per_host") ?: 2L).toInt().coerceAtLeast(1),
                 settingDefaults = defaults,
             )
         }
