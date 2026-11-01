@@ -19,7 +19,9 @@ export function matchesContentType(types: string[], filter: string): boolean {
 }
 
 export function contentTypeLabels(types: string[]): string {
-  return CONTENT_TYPES.filter((group) => matchesContentType(types, group.id))
-    .map((group) => group.label)
-    .join(" · ") || "Unspecified content";
+  return (
+    CONTENT_TYPES.filter((group) => matchesContentType(types, group.id))
+      .map((group) => group.label)
+      .join(" · ") || "Unspecified content"
+  );
 }

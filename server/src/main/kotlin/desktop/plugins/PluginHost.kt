@@ -362,8 +362,17 @@ class PluginHost(private val config: Config, private val settings: Settings) {
         private const val REPO_RETRY_MS = 10 * 60_000L
         private val ANNOTATION = "Lcom/lagradost/cloudstream3/plugins/CloudstreamPlugin;".toByteArray()
 
-        /** The class carrying `@CloudstreamPlugin` (found by its descriptor in the class file's constant pool). */
+        private val MANIFEST_CLASS = Regex(""""pluginClassName"\s*:\s*"([^"]+)"""")
+
+        /**
+         * The plugin's entry class: `manifest.json`'s `pluginClassName` when the jar has one (converted `.cs3`s do; dex
+         * drops the build-time annotation), else the class carrying `@CloudstreamPlugin` (found by its descriptor in
+         * the class file's constant pool).
+         */
         fun findEntryClass(jar: File): String? = ZipFile(jar).use { zip ->
+            zip.getEntry("manifest.json")?.let { e ->
+                MANIFEST_CLASS.find(zip.getInputStream(e).use { it.readBytes().decodeToString() })?.groupValues?.get(1)
+            }?.takeIf { zip.getEntry(it.replace('.', '/') + ".class") != null }?.let { return@use it }
             zip.entries().asSequence().filter { it.name.endsWith(".class") }.firstOrNull { e ->
                 val bytes = zip.getInputStream(e).use { it.readBytes() }
                 indexOf(bytes, ANNOTATION) >= 0

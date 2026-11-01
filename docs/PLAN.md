@@ -11,8 +11,8 @@ _Last updated: 2026-11-01_
 
 ## Status (2026-11-01)
 
-Phases 0–8 are implemented (v1 plus v1.1). Each phase's check was run against live providers, with mpv on a null
-video/audio output. Phase 9 (repo mode and upstream seams) has not started.
+Phases 0–9 are implemented (v1, v1.1 and v1.2). Each phase's check was run against live providers, with mpv on a null
+video/audio output. Phase 10 is later work.
 
 **Phase 0 findings**
 
@@ -85,8 +85,42 @@ video/audio output. Phase 9 (repo mode and upstream seams) has not started.
     same 401.
 - *Untested:* `xvfb` mode (Xvfb isn't installed here).
 
-**Next:** Phase 9 (repo mode and upstream seams). The real-session check from Phase 7 is still open. Upstream, the
-Vidnest secret and MkvDrama's new site need plugin fixes.
+**Phase 9 results (v1.2, repo mode)**
+
+- *The gradle plugin already publishes desktop jars:* `plugins.json` carries `jarUrl`, `jarHash` (`sha256-…`) and
+  `jarFileSize` for every `isCrossPlatform` module. That covers 20 of the 38 plugins.
+- *The other 18 are converted from their `.cs3`* (Android dex) with dex2jar (`de.femtopedia.dex2jar:dex-translator`,
+  `Cs3Converter`), so the §6 seams aren't needed for the desktop. They were also losing ground: OmniStream v7
+  (`696169e`, 2026-11-01) turned `isCrossPlatform` off for an Android settings sheet. Conversion findings:
+  - dex2jar "sanitizes" member names by default, which turns Kotlin's `Result.constructor-impl` into
+    `constructor_impl`. `LinkageCheck` caught it; `dontSanitizeNames(true)` fixes it.
+  - The output is class version 50 without stack map frames, so HotSpot verifies it the old way. That loads the
+    superclasses of settings fragments (`BottomSheetDialogFragment` and its chain), so `android-shim` has empty open
+    classes for them. dex2jar's `computeFrames` produces broken code (`java/util/Object`), so it stays off.
+  - D8 drops `@CloudstreamPlugin`. The entry class comes from `manifest.json`'s `pluginClassName`, as in the app.
+  - Converted jars record a converter version and are converted again when it goes up.
+- `RepoSource` reads a `repo.json` (its `pluginLists`) or a `plugins.json` and checks every download against the
+  repo's size and hash. It keeps the last two versions per plugin for rollback, and saves the index and the installs
+  so plugins load offline. Each repo URL gets its own folder. New plugins install on their own; updates wait for the
+  UI (Check for updates, Update, Update all, Roll back). The index is re-read every 6 hours.
+- The source (`plugins.source`: dev or repo, default dev only when `plugins.dev_path` holds a checkout) and
+  `plugins.repo_url` are settings that switch live. Only loopback may change them: a paired phone that could point the
+  server at another repo could run any code on the desktop.
+- Live results on a fresh install (no extensions repo, `ANDROID_HOME` unset, empty `user.home`): all 36 enabled
+  plugins load from the published repo (20 jars, 16 converted), and all of them link cleanly. Converted plugins work
+  end to end:
+  - OmniStream v7 returns 23–33 links and hundreds of subtitles for "Dune".
+  - KissKH and Vegamovies resolve links.
+  - Kayoanime searches, and reads its settings (it asks for its Drive API key).
+  - GoPlay reaches the desktop `WebViewResolver`; headless Turnstile fails it as in Phase 8.
+- Against a local mirror of `plugins.json`, a version bump showed as an update, Update loaded it, and Roll back
+  restored the previous jar, all through the API.
+- Tests: 37 server tests (7 new: repo index, verified install, hash rejection, pruning, offline restart, `.cs3`
+  conversion through the repo, reconversion after a converter bump, and the converter loading a real KissKH `.cs3`)
+  and 12 web tests.
+
+**Next:** Phase 10. The real-session check from Phase 7 is still open. Upstream, the Vidnest secret and MkvDrama's new
+site need plugin fixes.
 
 ## 1. Goals
 
@@ -110,7 +144,7 @@ mpv runs on, downloading plugins from the `builds` branch, and Chromium-backed p
 | --- | --- |
 | Where the UI is used | Desktop browser **and** phone on the LAN as a remote. LAN access requires a token; the layout is mobile-first. |
 | NSFW providers | Loaded, but hidden behind a settings toggle that is **off** by default. It hides providers, search results, home rows and history entries. |
-| Plugin source (v1) | **Local extensions repo only** (dev mode, built with Gradle, hot-reloaded). Repo mode comes after v1. |
+| Plugin source | v1: **local extensions repo only** (dev mode, built with Gradle, hot-reloaded). v1.2 adds **repo mode**: published jars, plus `.cs3` files converted with dex2jar. Chosen on the Settings page, desktop only. |
 | Web UI | **Vite+** (`vp`) toolchain, **Svelte 5** + TypeScript. |
 | v1 plugin scope | Tiers **A + A′ + B** (about 29 plugins). Tier C (Chromium/CDP) is **v1.1**. StreamCorner (D) comes later. Fetcharr is excluded. |
 | mpv lifecycle | Started on the **first play**, then kept open and idle between items. Restarted on the next play if you close it. |
@@ -184,9 +218,9 @@ The mpv script and the server talk over **mpv's JSON IPC**, so the Lua script ne
   - **Dev mode (v1, the only mode):** point at the extensions repo and load `*/build/<Name>.jar`. A "Rebuild plugins"
     action in the UI and server startup run `./gradlew make` for the enabled modules. Watch those files and hot-reload
     a plugin when its jar changes, so `./gradlew :Name:make` in the extensions repo is enough during plugin work.
-  - **Repo mode (after v1):** read `plugins.json` from the repo's `builds` branch and download the cross-platform jars
-    it lists. Check first whether the gradle plugin writes a jar URL field into `plugins.json` for `isCrossPlatform`
-    modules.
+  - **Repo mode (v1.2):** read `plugins.json` (directly or through a `repo.json`) from the repo's `builds` branch.
+    Download the cross-platform jars it lists (`jarUrl`/`jarHash`), and convert every other plugin's `.cs3` with
+    dex2jar. Check each download against its hash, and keep the previous versions for rollback.
 - **Loading:** one `URLClassLoader` per plugin, with the host's runtime as the parent. Find the entry class from the
   `.cs3` `manifest.json` (`pluginClassName`), or scan for `@CloudstreamPlugin`. Instantiate it and call `load()` /
   `load(context)`. `registerMainAPI` / `registerExtractorAPI` fill `APIHolder.allProviders` and `extractorApis`, the
@@ -383,7 +417,9 @@ cloudstream-desktop/
 
 ## 6. Changes needed in the extensions repo
 
-These go through that repo's normal flow, with a version bump per plugin as its `CLAUDE.md` requires:
+Since v1.2 the desktop needs none of these: dev mode forces jars with an init script, and repo mode converts `.cs3`
+files. They remain worthwhile cleanups for the plugins themselves. They go through that repo's normal flow, with a
+version bump per plugin as its `CLAUDE.md` requires:
 
 1. Set `isCrossPlatform = true` on the tier A′ modules after checking that they have no Android imports.
 2. Move the `Context`/`SharedPreferences` use in Kayoanime, JavHdz, Extractors, MissAV, SexTB, JavStream and MkvDrama
@@ -400,8 +436,10 @@ These go through that repo's normal flow, with a version bump per plugin as its 
 
 ```toml
 bind = "0.0.0.0:6969"            # LAN remote is a v1 goal; use 127.0.0.1 to keep it desktop-only
+plugins.source = "repo"          # dev | repo; defaults to dev when dev_path holds a checkout (also on the Settings page)
+plugins.repo_url = "https://raw.githubusercontent.com/NropVox/cloudstream-extensions-nropvox/builds/repo.json"
 plugins.dev_path = "/mnt/AJ/Projects/cloudstream-extensions-istarvin"
-plugins.build_on_start = true    # run ./gradlew make for enabled modules at startup
+plugins.build_on_start = true    # dev mode: run ./gradlew make for enabled modules at startup
 mpv.path = "mpv"
 mpv.extra_args = ["--profile=gpu-hq"]
 playback.autoplay_best = true
@@ -428,7 +466,7 @@ network.max_requests_per_host = 2
 ## 8. Phases
 
 Each phase ends with a check that can be shown working. **v1 = Phases 0–6 (done).** Phase 7 hardens v1 (done).
-**v1.1 = Phase 8 (done)**, **v1.2 = Phase 9 (next)**, and Phase 10 is later work.
+**v1.1 = Phase 8 (done)**, **v1.2 = Phase 9 (done)**, and Phase 10 is later work.
 
 **Phase 0: spike (de-risk the core decision)**
 - Pin the `recloudstream` `library` JVM artifact (JitPack) to a commit that matches the `cloudstream3:pre-release`
@@ -535,14 +573,13 @@ This phase settles v1 before Chromium adds more moving parts.
 - **Done when:** GoPlay (through OmniStream), MkvDrama and one Cloudflare-fronted site such as MissAV resolve links
   and play. Cookies survive a server restart, and a forced Turnstile can be solved by hand from the UI.
 
-**Phase 9 (v1.2): repo mode and upstream seams (next)**
+**Phase 9 (v1.2): repo mode (done)**
 
 - **Repo mode:** read `plugins.json` from the extensions repo's `builds` branch, download the cross-platform jars, and
   verify and cache them. Dev mode stays available, and the mode is chosen in Settings. First check whether the gradle
   plugin writes a jar URL for `isCrossPlatform` modules; if it doesn't, add a CI step upstream that publishes them.
-- **Upstream (§6):** set `isCrossPlatform` on the tier A′ modules, move tier B's `Context` use behind a seam, and add
-  the optional settings schema. Once that ships, the init-script override of `isCrossPlatform` is needed only in dev
-  mode.
+- **Plugins without a published jar:** convert their `.cs3` with dex2jar. This replaced the planned upstream work
+  (§6: `isCrossPlatform` on tier A′, a `Context` seam for tier B), which the desktop no longer needs.
 - **Plugin updates:** show the installed and available versions, and offer one-click update and rollback.
 - **Done when:** a fresh install with no local extensions repo loads every tier A–C plugin from the `builds` branch,
   and a plugin version bump upstream reaches the desktop through the UI.
@@ -570,4 +607,5 @@ This phase settles v1 before Chromium adds more moving parts.
 | Jackson/Rhino version conflicts with Ktor's dependencies. | Odd runtime errors. | Keep the server's own JSON on kotlinx.serialization. Isolate the plugin runtime in its own class loader layer if needed. |
 | The server listens on the LAN by default. | Anyone on the network could control playback or use the proxy. | A token is required for every non-loopback request, including `/proxy`. Pairing by QR, with token rotation. |
 | A systemd user service has no display environment. | mpv fails to open a window. | `PartOf=graphical-session.target` and importing the environment into the unit. The server checks for a display before launching mpv and shows a clear error in the UI. |
+| dex2jar mistranslates a `.cs3` (repo mode, plugins without a published jar). | A converted plugin fails to load or misbehaves. | Any method dex2jar can't translate fails the conversion. `LinkageCheck` and the JVM verifier run on the result. The converter version triggers reconversion after a fix, and dev mode and published jars avoid conversion altogether. |
 | SvelteKit doesn't work under `vp`. | Phase 3 setup takes longer. | Fall back to plain Svelte 5 + Vite+ with a small client-side router. |

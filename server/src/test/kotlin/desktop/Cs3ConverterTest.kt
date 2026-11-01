@@ -24,7 +24,8 @@ class Cs3ConverterTest {
         Cs3Converter.convert(cs3, jar)
         ZipFile(jar).use { zip -> assertNotNull(zip.getEntry("manifest.json"), "the manifest is carried over") }
 
-        val entry = assertNotNull(PluginHost.findEntryClass(jar))
+        assertEquals("com.nropvox.KissKHPlugin", PluginHost.findEntryClass(jar), "from the manifest")
+        val entry = PluginHost.findEntryClass(jar)!!
         URLClassLoader(arrayOf(jar.toURI().toURL()), javaClass.classLoader).use { loader ->
             assertEquals(emptyList(), LinkageCheck.check(jar, loader))
             val plugin = loader.loadClass(entry).getDeclaredConstructor().newInstance() as BasePlugin
