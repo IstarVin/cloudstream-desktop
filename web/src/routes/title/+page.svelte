@@ -364,13 +364,39 @@
     color: var(--muted);
   }
   @media (max-width: 599px) {
-    .head { align-items: flex-start; gap: 16px; }
-    .poster { width: 86px; }
-    .facts { gap: 5px 10px; font-size: 12px; }
-    .actions { margin-top: 16px; }
-    .actions .btn { white-space: normal; text-align: left; padding-block: 10px; }
-    .bm select { border-radius: var(--radius-sm); }
+    .hero { height: 360px; background-position: center top; }
+    .back { width: 44px; height: 44px; margin-bottom: 20px; }
+    .head {
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr);
+      grid-template-rows: auto auto 1fr auto;
+      align-items: start;
+      gap: 0 16px;
+    }
+    .poster { width: 100%; grid-row: 1 / 4; }
+    .info { display: contents; }
+    h1, .logo { grid-column: 2; grid-row: 1; }
+    h1 { font-size: clamp(25px, 7vw, 32px); overflow-wrap: anywhere; }
+    .facts { grid-column: 2; grid-row: 2; gap: 5px 10px; font-size: 12px; }
+    .tags { grid-column: 2; grid-row: 3; }
+    .actions { grid-column: 1 / -1; grid-row: 4; display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 20px; }
+    .actions .btn { min-width: 0; min-height: 48px; white-space: normal; text-align: center; padding: 10px; }
+    .bm { display: flex; min-width: 0; }
+    .bm select { width: 100%; min-height: 48px; border-radius: var(--radius-sm); padding-inline: 38px 30px; text-overflow: ellipsis; }
+    .bm-icon { left: 12px; }
+    .bm-chevron { right: 10px; }
+    .plot { margin-top: 24px; font-size: 15px; line-height: 1.65; }
+    .detail .section-title { margin-top: 30px; margin-bottom: 14px; }
+    .detail .scroll-x { margin-right: -20px; padding-right: 20px; overscroll-behavior-inline: contain; }
+    .actor { width: 90px; }
+    .face { width: 76px; height: 76px; margin-bottom: 8px; }
+    .a-name { font-size: 13px; line-height: 1.35; }
+    .a-role { margin-top: 3px; font-size: 12px; line-height: 1.35; }
     .seg button { padding-inline: 10px; gap: 5px; font-size: 13px; }
+  }
+  @media (max-width: 359px) {
+    .head { grid-template-columns: 82px minmax(0, 1fr); gap: 0 14px; }
+    .detail .scroll-x { margin-right: -16px; padding-right: 16px; }
   }
   @media (min-width: 900px) {
     .poster {

@@ -82,13 +82,6 @@
     <a class="manage" href="/settings">Manage plugins</a>
   </div>
 
-  <div class="filters" role="group" aria-label="Filter sources by content type">
-    <button class={["chip", { on: contentType === "all" }]} aria-pressed={contentType === "all"} onclick={() => onfilter("all")}>All</button>
-    {#each filters as filter (filter.id)}
-      <button class={["chip", { on: contentType === filter.id }]} aria-pressed={contentType === filter.id} onclick={() => onfilter(filter.id)}>{filter.label}</button>
-    {/each}
-  </div>
-
   {#if open}
     <div
       class="source-browser"
@@ -106,6 +99,12 @@
           {@attach (input) => input.focus()}
         />
         <button class="close" aria-label="Close source picker" onclick={close}><X size={18} strokeWidth={1.8} aria-hidden="true" /></button>
+      </div>
+      <div class="filters" role="group" aria-label="Filter sources by content type">
+        <button class={["chip", { on: contentType === "all" }]} aria-pressed={contentType === "all"} onclick={() => onfilter("all")}>All</button>
+        {#each filters as filter (filter.id)}
+          <button class={["chip", { on: contentType === filter.id }]} aria-pressed={contentType === filter.id} onclick={() => onfilter(filter.id)}>{filter.label}</button>
+        {/each}
       </div>
       <div class="list-heading" role="status">{visible.length} {visible.length === 1 ? "source" : "sources"}{contentType !== "all" ? ` for ${CONTENT_TYPES.find((t) => t.id === contentType)?.label ?? contentType}` : " available"}</div>
       {#if visible.length}
@@ -175,7 +174,7 @@
     .toolbar { align-items: stretch; flex-direction: column; gap: 0; }
     .source-trigger { width: 100%; }
     .manage { align-self: flex-end; padding-block: 8px; }
-    .filters { margin-top: 4px; gap: 6px; }
+    .filters { gap: 6px; }
     .filters .chip { padding-inline: 12px; }
     .source-browser { padding: 12px; }
     .source-list { grid-template-columns: minmax(0, 1fr); max-height: 320px; }
