@@ -451,10 +451,10 @@
   }
   .range-picker select {
     min-height: 44px;
-    padding: 6px 8px;
+    padding: 6px 38px 6px 8px;
     font-size: 13px;
     font-variant-numeric: tabular-nums;
-    background: var(--surface);
+    background-color: var(--surface);
   }
   .page-total {
     font-size: 12px;
