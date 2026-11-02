@@ -98,8 +98,6 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
         const val SOURCE_PROFILE = "source_profile"
         const val SOURCE_PROFILES = "source_profiles"
         const val AUTOPLAY_BEST = "autoplay_best"
-        const val AUTOPLAY_MIN_LINKS = "autoplay_min_links"
-        const val AUTOPLAY_WAIT_MS = "autoplay_wait_ms"
         const val AUTOPLAY_NEXT = "autoplay_next"
         const val SHOW_NSFW = "show_nsfw"
         const val DISABLED_PLUGINS = "disabled_plugins"

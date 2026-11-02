@@ -37,8 +37,6 @@ data class Config(
             val defaults = mapOf(
                 Settings.MPV_EXTRA_ARGS to ((t["mpv.extra_args"] as? List<*>)?.map { it.toString() } ?: emptyList<String>()),
                 Settings.AUTOPLAY_BEST to (bool("playback.autoplay_best") ?: true),
-                Settings.AUTOPLAY_MIN_LINKS to (long("playback.autoplay_min_links") ?: 3L),
-                Settings.AUTOPLAY_WAIT_MS to (long("playback.autoplay_wait_ms") ?: 6000L),
                 Settings.AUTOPLAY_NEXT to (bool("playback.autoplay_next") ?: true),
                 Settings.SHOW_NSFW to (bool("ui.show_nsfw") ?: false),
                 Settings.PROXY_ALL to (bool("playback.proxy_all") ?: false),

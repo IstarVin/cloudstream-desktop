@@ -377,8 +377,8 @@
           <label class="toggle">
             <span
               ><b>Auto-play the best link</b><small
-                >Starts once {s.autoplay_min_links} links arrive or {s.autoplay_wait_ms / 1000}s
-                after the first.</small
+                >Starts as soon as a link has priority 10 or more; the rest keep loading in the
+                background.</small
               ></span
             >
             <input
@@ -388,33 +388,6 @@
               onchange={(e) => save({ autoplay_best: e.currentTarget.checked })}
             />
           </label>
-          <fieldset class="pair-inputs" disabled={!s.autoplay_best}>
-            <legend class="sr-only">Auto-play timing</legend>
-            <label
-              >Links to wait for <input
-                type="number"
-                required
-                min="1"
-                max="20"
-                value={s.autoplay_min_links}
-                onchange={(e) =>
-                  e.currentTarget.reportValidity() &&
-                  save({ autoplay_min_links: +e.currentTarget.value })}
-              /></label
-            >
-            <label
-              >Max wait (ms) <input
-                type="number"
-                required
-                min="0"
-                step="500"
-                value={s.autoplay_wait_ms}
-                onchange={(e) =>
-                  e.currentTarget.reportValidity() &&
-                  save({ autoplay_wait_ms: +e.currentTarget.value })}
-              /></label
-            >
-          </fieldset>
           <label class="toggle">
             <span><b>Play the next episode automatically</b></span>
             <input
@@ -1092,30 +1065,6 @@
   input[type="checkbox"]:checked::after {
     transform: translateX(18px);
   }
-  .pair-inputs {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
-    margin: 0;
-    padding: 0 0 24px;
-    border: 0;
-    border-bottom: 1px solid var(--line);
-    min-width: 0;
-  }
-  .pair-inputs:disabled {
-    opacity: 0.5;
-  }
-  .pair-inputs label {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 13px;
-    color: var(--muted);
-  }
-  .pair-inputs input {
-    width: 100%;
-  }
   .pair {
     display: flex;
     gap: 16px;
@@ -1504,9 +1453,6 @@
     .settings-nav {
       margin-inline: -16px;
       padding-inline: 16px;
-    }
-    .pair-inputs {
-      grid-template-columns: 1fr;
     }
     .p-row {
       gap: 8px;

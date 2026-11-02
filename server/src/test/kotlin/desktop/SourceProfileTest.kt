@@ -54,8 +54,8 @@ class SourceProfileTest {
     }
 
     @Test
-    fun priorityTenBypassesTheNormalWait() {
-        fun ready(priority: Int) = AutoPlay.ready(false, false, 1, 3, 1000, 6000, 1001, priority)
+    fun autoPlayStartsAtPriorityTen() {
+        fun ready(priority: Int) = AutoPlay.ready(fallback = false, done = false, bestPriority = priority)
         assertFalse(ready(9))
         assertTrue(ready(10))
         assertTrue(ready(11))

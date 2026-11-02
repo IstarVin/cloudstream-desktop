@@ -15,8 +15,6 @@ mpv.path = "mpv"
 mpv.extra_args = []              # (UI) e.g. ["--profile=gpu-hq"]
 
 playback.autoplay_best = true    # (UI)
-playback.autoplay_min_links = 3  # (UI)
-playback.autoplay_wait_ms = 6000 # (UI)
 playback.autoplay_next = true    # (UI)
 playback.proxy_all = false       # (UI) send every stream through the built-in proxy, not just ones mpv can't fetch
 playback.skip_segments = "prompt" # (UI) anime openings/endings from AniSkip: prompt | auto | off

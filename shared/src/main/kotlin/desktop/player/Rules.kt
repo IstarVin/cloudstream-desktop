@@ -2,10 +2,13 @@ package desktop.player
 
 import kotlinx.serialization.Serializable
 
-/** When auto-play picks a link: once enough have arrived, or a while after the first, or right away on fallback. */
+/**
+ * When auto-play picks a link, as in Cloudstream: as soon as a link reaches [SourceProfile.AUTO_PLAY_PRIORITY], or
+ * right away on fallback. Otherwise it keeps waiting while links resolve, and takes the best one once they're all in.
+ */
 object AutoPlay {
-    fun ready(fallback: Boolean, done: Boolean, candidates: Int, minLinks: Int, firstLinkAt: Long?, waitMs: Long, now: Long, bestPriority: Int = 0): Boolean =
-        fallback || done || bestPriority >= SourceProfile.AUTO_PLAY_PRIORITY || candidates >= minLinks || (firstLinkAt != null && now - firstLinkAt >= waitMs)
+    fun ready(fallback: Boolean, done: Boolean, bestPriority: Int): Boolean =
+        fallback || done || bestPriority >= SourceProfile.AUTO_PLAY_PRIORITY
 }
 
 /** Source labels are supplied by some aggregate providers as a suffix, e.g. "English (Reanime)". */

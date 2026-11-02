@@ -27,7 +27,7 @@ The first start writes `~/.config/cloudstream-desktop/config.toml`; set `plugins
 `plugins.dev_path` there.
 
 Source priority in Settings and the Sources sheet provides seven named profiles for source and quality scores,
-with optional filters for failed or negative-priority links. A combined priority of 10 starts auto-play immediately.
+with optional filters for failed or negative-priority links. Auto-play waits for links to resolve and starts as soon as one reaches a combined priority of 10; the rest keep loading in the background. If none does, it plays the best link once they're all in.
 See [source profiles](docs/SOURCE_PROFILES.md) for behavior and settings API details.
 
 ## Android app

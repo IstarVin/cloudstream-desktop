@@ -250,8 +250,6 @@ export interface Settings {
   source_profiles: SourceProfile[];
   mpv_extra_args: string[];
   autoplay_best: boolean;
-  autoplay_min_links: number;
-  autoplay_wait_ms: number;
   autoplay_next: boolean;
   show_nsfw: boolean;
   disabled_plugins: string[];

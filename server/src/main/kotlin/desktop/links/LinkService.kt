@@ -96,7 +96,6 @@ class LinkSet(val provider: String, val data: String) {
     val subtitles = CopyOnWriteArrayList<ResolvedSubtitle>()
     @Volatile var done = false
     @Volatile var error: String? = null
-    @Volatile var firstLinkAt: Long? = null
     val created = System.currentTimeMillis()
     lateinit var job: Job
 
@@ -159,7 +158,6 @@ class LinkService(private val scope: CoroutineScope, private val store: Store, p
         val r = ResolvedLink(newId("l"), api.name, link, interceptor, set.links.size)
         links[r.id] = r
         set.links.add(r)
-        if (set.firstLinkAt == null) set.firstLinkAt = System.currentTimeMillis()
         set.bump()
     }
 

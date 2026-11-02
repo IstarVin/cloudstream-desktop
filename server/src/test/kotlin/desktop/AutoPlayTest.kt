@@ -6,20 +6,19 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AutoPlayTest {
-    private fun ready(candidates: Int, firstLinkAt: Long?, now: Long, done: Boolean = false, fallback: Boolean = false) =
-        AutoPlay.ready(fallback, done, candidates, minLinks = 3, firstLinkAt = firstLinkAt, waitMs = 6000, now = now)
+    private fun ready(bestPriority: Int, done: Boolean = false, fallback: Boolean = false) =
+        AutoPlay.ready(fallback, done, bestPriority)
 
     @Test
-    fun waitsForThreeLinksOrSixSecondsAfterTheFirst() {
-        assertFalse(ready(0, null, 50_000), "nothing yet")
-        assertFalse(ready(2, 10_000, 15_999))
-        assertTrue(ready(2, 10_000, 16_000), "6 s after the first link")
-        assertTrue(ready(3, 10_000, 10_500), "three links")
+    fun keepsWaitingUntilALinkReachesPriorityTen() {
+        assertFalse(ready(0), "nothing yet")
+        assertFalse(ready(9), "no matter how many low-priority links are in")
+        assertTrue(ready(10))
     }
 
     @Test
-    fun goesAtOnceWhenTheProviderIsDoneOrOnFallback() {
-        assertTrue(ready(1, 10_000, 10_100, done = true))
-        assertTrue(ready(1, 10_000, 10_100, fallback = true))
+    fun takesTheBestOnceEveryLinkIsInOrOnFallback() {
+        assertTrue(ready(3, done = true))
+        assertTrue(ready(3, fallback = true))
     }
 }

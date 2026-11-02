@@ -22,8 +22,6 @@ data class ServerSettings(
     @SerialName("source_profile") val sourceProfile: Int = 1,
     @SerialName("source_profiles") val sourceProfiles: List<SourceProfile> = SourceProfile.defaults(),
     @SerialName("autoplay_best") val autoplayBest: Boolean = true,
-    @SerialName("autoplay_min_links") val autoplayMinLinks: Int = 3,
-    @SerialName("autoplay_wait_ms") val autoplayWaitMs: Long = 6000,
     @SerialName("autoplay_next") val autoplayNext: Boolean = true,
     @SerialName("show_nsfw") val showNsfw: Boolean = false,
     @SerialName("proxy_all") val proxyAll: Boolean = false,

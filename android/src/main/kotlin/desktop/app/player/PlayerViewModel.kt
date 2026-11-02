@@ -110,7 +110,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var prefetchJob: Job? = null
     private var countdownJob: Job? = null
     private val tried = mutableSetOf<String>()
-    private var firstLinkAt: Long? = null
     private var startAt: Double? = null
     private var playStartedAt: Long? = null
     private var recordedSuccess = false
@@ -165,7 +164,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         player.stop()
         player.clearMediaItems()
         tried.clear()
-        firstLinkAt = null
         chosenSubs.clear()
         subtitleFiles.clear()
         skipped.clear()
@@ -180,7 +178,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     when (ev.event) {
                         "link" -> {
                             val l = ev.link()
-                            if (firstLinkAt == null) firstLinkAt = System.currentTimeMillis()
                             _session.update { s -> s.copy(links = (s.links + l).sortedWith(LinkRanking.comparator(profile))) }
                         }
                         "subtitle" -> {
@@ -218,8 +215,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             while (isActive) {
                 val s = _session.value
                 val candidates = ranked(s).filter { it.id !in tried }
-                val ready = AutoPlay.ready(fallback, s.linksDone, candidates.size, settings.autoplayMinLinks, firstLinkAt,
-                    settings.autoplayWaitMs, System.currentTimeMillis(), candidates.firstOrNull()?.let(profile::priority) ?: 0)
+                val ready = AutoPlay.ready(fallback, s.linksDone, candidates.firstOrNull()?.let(profile::priority) ?: 0)
                 if (ready && candidates.isNotEmpty()) {
                     play(candidates.first())
                     return@launch

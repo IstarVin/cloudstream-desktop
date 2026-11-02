@@ -134,9 +134,6 @@ fun SettingsScreen(onUnpair: () -> Unit) {
                         item { SwitchRow("Auto-play the best link", v.autoplayBest) { save("autoplay_best" to JsonPrimitive(it)) } }
                         item { SwitchRow("Play the next episode automatically", v.autoplayNext) { save("autoplay_next" to JsonPrimitive(it)) } }
                         item {
-                            ChoiceRow("Wait for links", listOf(1, 3, 5), v.autoplayMinLinks, { "$it" }) { save("autoplay_min_links" to JsonPrimitive(it)) }
-                        }
-                        item {
                             ChoiceRow("Openings and endings", listOf("prompt", "auto", "off"), v.skipSegments,
                                 { mapOf("prompt" to "Offer to skip", "auto" to "Skip", "off" to "Off").getValue(it) }) { save("skip_segments" to JsonPrimitive(it)) }
                         }

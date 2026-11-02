@@ -217,17 +217,14 @@ class Playback(
     }
 
     /**
-     * Waits for enough links (or the timeout after the first one), then plays the best untried one. In fallback mode
-     * it takes the next one as soon as any is available.
+     * Waits for a link with auto-play priority (links keep resolving meanwhile), or for all of them, then plays the
+     * best untried one. In fallback mode it takes the next one as soon as any is available.
      */
     private suspend fun autoPick(s: Session, fallback: Boolean) {
-        val minLinks = settings.long(Settings.AUTOPLAY_MIN_LINKS).toInt()
-        val waitMs = settings.long(Settings.AUTOPLAY_WAIT_MS)
         while (s.generation == generation) {
             val profile = settings.activeSourceProfile()
             val candidates = ranked(s, profile).filter { it.id !in s.tried }
-            val ready = AutoPlay.ready(fallback, s.set.done, candidates.size, minLinks, s.set.firstLinkAt, waitMs, System.currentTimeMillis(),
-                candidates.firstOrNull()?.let { profile.priority(it.link.source, it.link.quality) } ?: 0)
+            val ready = AutoPlay.ready(fallback, s.set.done, candidates.firstOrNull()?.let { profile.priority(it.link.source, it.link.quality) } ?: 0)
             if (ready && candidates.isNotEmpty()) {
                 playLink(s, candidates.first())
                 return

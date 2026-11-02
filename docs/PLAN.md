@@ -515,8 +515,6 @@ plugins.build_on_start = true    # dev mode: run ./gradlew make for enabled modu
 mpv.path = "mpv"
 mpv.extra_args = ["--profile=gpu-hq"]
 playback.autoplay_best = true
-playback.autoplay_min_links = 3
-playback.autoplay_wait_ms = 6000
 playback.autoplay_next = true
 ui.show_nsfw = false
 chromium.path = "chromium"
