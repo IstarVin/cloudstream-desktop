@@ -223,12 +223,16 @@ class WebPlayer {
 
   // ---- starting --------------------------------------------------------------------------------------------
 
-  /** Opens the player on [data] of a title and starts it. */
+  /**
+   * Opens the player on [data] of a title and starts it. [linkId] is a link known only by id (cast from another
+   * device), played once it streams in.
+   */
   async start(
     target: { provider: string; url: string; data: string; details?: Details },
     at?: number,
     link?: Link,
     subs: string[] = [],
+    linkId?: string,
   ) {
     this.open = true;
     this.minimized = false;
@@ -240,7 +244,7 @@ class WebPlayer {
         api.settings(),
       ]);
       this.settings = settings;
-      this.openItem(itemOf(details, target.data), at ?? null, { link, subs });
+      this.openItem(itemOf(details, target.data), at ?? null, { link, subs, linkId });
     } catch (e) {
       this.status = "error";
       this.message = e instanceof Error ? e.message : String(e);
@@ -250,7 +254,7 @@ class WebPlayer {
   private openItem(
     item: Item,
     at: number | null,
-    opts: { link?: Link; fresh?: boolean; subs?: string[] } = {},
+    opts: { link?: Link; linkId?: string; fresh?: boolean; subs?: string[] } = {},
   ) {
     this.saveProgress(true);
     this.reset();
@@ -285,6 +289,7 @@ class WebPlayer {
     this.tickTimer = setInterval(() => this.tick(), 500);
     this.updateMediaSession();
     if (opts.link) void this.play(opts.link);
+    else if (opts.linkId) this.playWhenListed(opts.linkId);
     else if (this.settings?.autoplay_best ?? true) this.autoPick(false);
     else {
       this.message = "Choose a source";
@@ -344,6 +349,20 @@ class WebPlayer {
       else if (!sources.links.some((l) => l.playable))
         this.message = (!sources.links.length && sources.error) || "No playable links";
       else this.message = "No playable links match this source profile. Pick one yourself.";
+    };
+    this.pickTimer = setInterval(run, 250);
+    run();
+  }
+
+  /** Plays the link with [id] once it's among the episode's links; if it never turns up (expired), picks as usual. */
+  private playWhenListed(id: string) {
+    clearInterval(this.pickTimer);
+    const run = () => {
+      const link = sources.links.find((l) => l.id === id);
+      if (link) {
+        clearInterval(this.pickTimer);
+        void this.play(link);
+      } else if (sources.done) this.autoPick(false);
     };
     this.pickTimer = setInterval(run, 250);
     run();

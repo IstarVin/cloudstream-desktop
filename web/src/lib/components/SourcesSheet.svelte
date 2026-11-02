@@ -1,9 +1,10 @@
 <script lang="ts">
   import { Captions, Check, TriangleAlert, X } from "@lucide/svelte";
+  import { DEVICE_ICONS } from "./device-icons";
   import { createQuery } from "@tanstack/svelte-query";
   import { api } from "../api";
   import { modal } from "../dialog";
-  import { PLAY_TARGETS, playTarget } from "../play-target.svelte";
+  import { playTarget } from "../play-target.svelte";
   import { player } from "../player.svelte";
   import {
     AUTO_QUALITY,
@@ -98,17 +99,18 @@
     </header>
     <div class="play-on" role="radiogroup" aria-label="Play on">
       <span class="muted">Play on</span>
-      {#each PLAY_TARGETS as target (target.id)}
-        {@const unavailable = target.id === "mpv" && !playTarget.mpvAvailable}
+      {#each playTarget.options as target (target.id)}
+        {@const Icon = DEVICE_ICONS[target.kind]}
         <button
           class={["chip", { on: playTarget.effective === target.id }]}
           role="radio"
           aria-checked={playTarget.effective === target.id}
-          disabled={unavailable}
-          title={unavailable
+          disabled={target.disabled}
+          title={target.disabled
             ? "mpv isn't available on the server (headless host or mpv.enabled = false)"
             : undefined}
-          onclick={() => (playTarget.override = target.id)}>{target.label}</button
+          onclick={() => (playTarget.override = target.id)}
+          ><Icon size={15} strokeWidth={1.8} aria-hidden="true" />{target.label}</button
         >
       {/each}
     </div>

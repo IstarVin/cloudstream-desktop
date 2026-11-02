@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api } from "#lib/api";
+  import { cast } from "#lib/cast.svelte";
   import BrowserChecks from "#lib/components/BrowserChecks.svelte";
   import NowPlaying from "#lib/components/NowPlaying.svelte";
   import Pairing from "#lib/components/Pairing.svelte";
@@ -8,6 +9,7 @@
   import { playTarget } from "#lib/play-target.svelte";
   import { player } from "#lib/player.svelte";
   import { toasts } from "#lib/toast.svelte";
+  import { webPlayer } from "#lib/web-player.svelte";
   import { rememberTab, restoreScroll, saveScroll, tabUrl } from "#lib/view-state";
   import { beforeNavigate, afterNavigate } from "$app/navigation";
   import { page } from "$app/state";
@@ -96,6 +98,16 @@
     </div>
     <NowPlaying />
     <WebPlayer />
+    {#if cast.needsTap && webPlayer.open}
+      <button class="cast-tap" onclick={() => cast.tapToPlay()}>
+        <Play size={22} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />
+        <span
+          ><b>Cast from another device</b><small
+            >Tap to start: browsers need a tap before playing sound.</small
+          ></span
+        >
+      </button>
+    {/if}
     <SourcesSheet />
   </QueryClientProvider>
 {:else}
@@ -188,6 +200,26 @@
   }
   .brand {
     display: none;
+  }
+  .cast-tap {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 24px;
+    background: rgb(0 0 0 / 0.55);
+    color: var(--text);
+    text-align: left;
+  }
+  .cast-tap span {
+    display: grid;
+    gap: 2px;
+  }
+  .cast-tap small {
+    color: var(--muted);
   }
   .toasts {
     position: fixed;

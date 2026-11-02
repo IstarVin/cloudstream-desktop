@@ -224,6 +224,43 @@ export interface PlayerState {
   skip?: SkipRange | null;
 }
 
+/** What to play on a device; the server or the receiver picks a link unless linkId is set. */
+export interface PlayRequest {
+  provider: string;
+  url: string;
+  data: string;
+  linkId?: string;
+  subtitleIds?: string[];
+  startAt?: number;
+}
+
+export interface PlayerCommand {
+  seconds?: number;
+  relative?: boolean;
+  type?: string;
+  id?: string;
+  value?: number;
+  linkId?: string;
+}
+
+export type DeviceKind = "web" | "phone" | "tv" | "mpv";
+
+export interface DeviceInfo {
+  id: string;
+  name: string;
+  kind: DeviceKind;
+  /** Accepts casts. */
+  receiver: boolean;
+}
+
+/** A message on the /api/cast socket (server/.../api/Cast.kt). */
+export type CastFrame =
+  | { type: "hello"; id: string; name: string; kind: DeviceKind; receiver: boolean }
+  | { type: "state"; state: PlayerState; device?: string | null }
+  | { type: "devices"; devices: DeviceInfo[] }
+  | { type: "play"; request: PlayRequest; from?: string | null }
+  | { type: "command"; cmd: string; body: PlayerCommand };
+
 export interface SkipRange {
   type: "op" | "ed" | "recap";
   start: number;

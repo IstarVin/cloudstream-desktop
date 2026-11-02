@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { api } from "#lib/api";
+  import { cast } from "#lib/cast.svelte";
   import PluginSettings from "#lib/components/PluginSettings.svelte";
   import SourceProfiles from "#lib/components/SourceProfiles.svelte";
   import { PLAY_TARGETS, playTarget, type PlayTarget } from "#lib/play-target.svelte";
@@ -398,6 +399,32 @@
                 >
               {/each}
             </select>
+          </label>
+          <h3>Casting</h3>
+          <label class="setting-row">
+            <span class="setting-copy"
+              ><b>This device's name</b>
+              <small class="muted">How it shows in other devices' Play on list.</small></span
+            >
+            <input
+              type="text"
+              maxlength="60"
+              value={cast.name}
+              onchange={(e) => cast.rename(e.currentTarget.value)}
+            />
+          </label>
+          <label class="toggle">
+            <span
+              ><b>Allow casting to this browser</b><small
+                >Other paired devices can play here, and control it, while this tab is open.</small
+              ></span
+            >
+            <input
+              type="checkbox"
+              role="switch"
+              checked={cast.receiver}
+              onchange={(e) => cast.setReceiver(e.currentTarget.checked)}
+            />
           </label>
           <details class="advanced">
             <summary>Browser player <ChevronDown size={17} aria-hidden="true" /></summary>

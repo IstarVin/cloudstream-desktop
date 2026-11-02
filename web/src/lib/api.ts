@@ -1,13 +1,16 @@
 import type {
   Bookmark,
   BrowserStatus,
+  CastFrame,
   ContinueEntry,
   Details,
+  DeviceInfo,
   HistoryEntry,
   HomePage,
   HomeSection,
   Link,
-  PlayerState,
+  PlayRequest,
+  PlayerCommand,
   PluginInfo,
   PluginSource,
   PrefEntry,
@@ -60,15 +63,15 @@ export const api = {
     get<HomePage>(`/api/providers/${encodeURIComponent(provider)}/home/${section}?page=${page}`),
   details: (provider: string, url: string) => get<Details>(`/api/load?${q({ provider, url })}`),
 
-  play: (body: {
-    provider: string;
-    url: string;
-    data: string;
-    linkId?: string;
-    subtitleIds?: string[];
-    startAt?: number;
-  }) => post("/api/play", body),
+  play: (body: PlayRequest) => post("/api/play", body),
   player: (cmd: string, body: Record<string, unknown> = {}) => post(`/api/player/${cmd}`, body),
+
+  // Casting: the same play and commands, on any connected device ("mpv" is the server's).
+  castDevices: () => get<DeviceInfo[]>("/api/cast/devices"),
+  castPlay: (device: string, body: PlayRequest, from?: string) =>
+    post(`/api/cast/${encodeURIComponent(device)}/play${from ? `?${q({ from })}` : ""}`, body),
+  castCommand: (device: string, cmd: string, body: PlayerCommand = {}) =>
+    post(`/api/cast/${encodeURIComponent(device)}/${cmd}`, body),
 
   // Playing in the browser: the same endpoints the phone app's player uses.
   stream: (link: string) => get<Stream>(`/api/stream?${q({ link })}`),
@@ -212,28 +215,43 @@ export function streamLinks(
   return () => es.close();
 }
 
-export function playerSocket(
-  onState: (s: PlayerState) => void,
+/**
+ * The casting socket (/api/cast): says hello on every (re)connect, then passes frames both ways. Reconnects after a
+ * drop until stopped.
+ */
+export function castSocket(
+  hello: () => CastFrame,
+  onFrame: (f: CastFrame) => void,
   onOpen: (open: boolean) => void,
-): () => void {
+): { send(f: CastFrame): void; stop(): void } {
   let ws: WebSocket | null = null;
   let stopped = false;
   let retry: ReturnType<typeof setTimeout> | undefined;
   const connect = () => {
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    ws = new WebSocket(`${proto}://${location.host}/api/player/events`);
-    ws.onopen = () => onOpen(true);
-    ws.onmessage = (e) => onState(JSON.parse(e.data));
-    ws.onclose = () => {
+    const sock = new WebSocket(`${proto}://${location.host}/api/cast`);
+    ws = sock;
+    sock.onopen = () => {
+      sock.send(JSON.stringify(hello()));
+      onOpen(true);
+    };
+    sock.onmessage = (e) => onFrame(JSON.parse(e.data));
+    sock.onclose = () => {
+      if (ws !== sock) return;
       onOpen(false);
       if (!stopped) retry = setTimeout(connect, 1500);
     };
   };
   connect();
-  return () => {
-    stopped = true;
-    clearTimeout(retry);
-    ws?.close();
+  return {
+    send(f) {
+      if (ws?.readyState === 1) ws.send(JSON.stringify(f));
+    },
+    stop() {
+      stopped = true;
+      clearTimeout(retry);
+      ws?.close();
+    },
   };
 }
 

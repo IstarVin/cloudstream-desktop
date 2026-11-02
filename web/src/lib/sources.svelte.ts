@@ -1,4 +1,5 @@
 import { api, streamLinks } from "./api";
+import { cast } from "./cast.svelte";
 import { playTarget } from "./play-target.svelte";
 import { player } from "./player.svelte";
 import { toasts } from "./toast.svelte";
@@ -29,17 +30,23 @@ class Sources {
   chosenSubs = $state<string[]>([]);
   private close: (() => void) | null = null;
 
-  /** Starts playback of an episode on this device's player and shows its sources. */
+  /** Starts playback of an episode on this device's player (or the device it casts to) and shows its sources. */
   async play(t: Target, startAt?: number) {
     playTarget.override = null;
     await playTarget.refresh();
-    if (playTarget.effective === "browser") {
+    const target = playTarget.effective;
+    if (target === "browser") {
       void webPlayer.start(t, startAt);
       return;
     }
     this.show(t);
     try {
-      await api.play({ provider: t.provider, url: t.url, data: t.data, startAt });
+      player.follow(target);
+      await api.castPlay(
+        target,
+        { provider: t.provider, url: t.url, data: t.data, startAt },
+        cast.id,
+      );
     } catch (e) {
       toasts.error(e);
     }
@@ -77,17 +84,20 @@ class Sources {
     });
   }
 
-  /** A link picked in the sheet, played on the chosen target. */
+  /**
+   * A link picked in the sheet, played on the chosen target. [currentlyPlaying]: the episode is the one on the
+   * remote's device, so moving it elsewhere stops it there and carries on from the same point.
+   */
   async pick(link: Link, currentlyPlaying: boolean) {
     const t = this.target;
     if (!t) return;
-    if (playTarget.effective === "browser") {
+    const target = playTarget.effective;
+    const remoteAt = player.state.position > 5 ? player.state.position : undefined;
+    if (target === "browser") {
       this.hide();
-      // Moving over from mpv: stop it there and carry on from the same point.
       if (currentlyPlaying) {
-        const at = player.state.position;
-        api.player("stop").catch(() => {});
-        await webPlayer.start(t, at > 5 ? at : undefined, link, [...this.chosenSubs]);
+        player.command("stop").catch(() => {});
+        await webPlayer.start(t, remoteAt, link, [...this.chosenSubs]);
       } else if (webPlayer.playing(t.provider, t.data)) {
         webPlayer.addChosenSubs(this.chosenSubs);
         webPlayer.pick(link);
@@ -95,21 +105,31 @@ class Sources {
       return;
     }
     try {
+      if (currentlyPlaying && player.device === target) {
+        await player.command("source", { linkId: link.id });
+        return;
+      }
       let startAt: number | undefined;
       if (webPlayer.playing(t.provider, t.data)) {
         startAt = webPlayer.position > 5 ? webPlayer.position : undefined;
         webPlayer.close();
+      } else if (currentlyPlaying) {
+        startAt = remoteAt;
+        await player.command("stop").catch(() => {});
       }
-      if (currentlyPlaying) await api.player("source", { linkId: link.id });
-      else
-        await api.play({
+      player.follow(target);
+      await api.castPlay(
+        target,
+        {
           provider: t.provider,
           url: t.url,
           data: t.data,
           linkId: link.id,
           subtitleIds: this.chosenSubs,
           startAt,
-        });
+        },
+        cast.id,
+      );
     } catch (e) {
       toasts.error(e);
     }

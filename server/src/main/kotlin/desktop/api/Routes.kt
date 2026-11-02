@@ -1,6 +1,7 @@
 package desktop.api
 
 import desktop.auth.Auth
+import desktop.cast.DeviceHub
 import desktop.cdp.Chromium
 import desktop.cdp.Clearances
 import desktop.compat.DesktopContext
@@ -37,6 +38,9 @@ import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.Frame
+import io.ktor.websocket.readText
+import io.ktor.websocket.close
+import io.ktor.websocket.CloseReason
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -47,6 +51,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -69,6 +74,7 @@ class Services(
     val devPath: File,
     val clientStreams: ClientStreams,
     val skipTimes: SkipTimes,
+    val cast: DeviceHub,
 )
 
 @Serializable
@@ -78,6 +84,7 @@ data class EnabledRequest(val enabled: Boolean)
 data class RebuildRequest(val modules: List<String>? = null)
 
 private val sseJson = Json { encodeDefaults = true }
+private val castJson = Json { encodeDefaults = true; ignoreUnknownKeys = true; explicitNulls = false }
 
 private fun ApplicationCall.param(name: String): String =
     request.queryParameters[name] ?: throw IllegalArgumentException("Missing parameter $name")
@@ -197,6 +204,41 @@ fun Route.apiRoutes(s: Services) {
             s.playback.state.collect { st ->
                 outgoing.send(Frame.Text(json.encodeToString(st)))
                 delay(250)
+            }
+        }
+
+        // ---- casting: playing on another device ----------------------------------------------------------------------
+        route("/cast") {
+            webSocket {
+                val hello = (incoming.receive() as? Frame.Text)?.let { runCatching { castJson.decodeFromString<CastFrame>(it.readText()) }.getOrNull() }
+                if (hello !is CastFrame.Hello) return@webSocket close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Say hello first"))
+                val session = s.cast.connect(hello)
+                val sender = launch {
+                    for (frame in session.outgoing) outgoing.send(Frame.Text(castJson.encodeToString<CastFrame>(frame)))
+                    close(CloseReason(CloseReason.Codes.NORMAL, "Replaced by a newer connection"))
+                }
+                try {
+                    for (frame in incoming) {
+                        if (frame !is Frame.Text) continue
+                        runCatching { castJson.decodeFromString<CastFrame>(frame.readText()) }.onSuccess { s.cast.receive(session, it) }
+                    }
+                } finally {
+                    sender.cancel()
+                    s.cast.disconnect(session)
+                }
+            }
+            get("/devices") { call.respond(s.cast.devices.value) }
+            get("/{device}/state") { call.respond(s.cast.state(call.parameters["device"]!!)) }
+            post("/{device}/play") {
+                val req = call.receive<PlayRequest>()
+                s.catalog.provider(req.provider) // NSFW/visibility check
+                s.cast.play(call.parameters["device"]!!, req, call.request.queryParameters["from"])
+                call.respond(mapOf("ok" to true))
+            }
+            post("/{device}/{cmd}") {
+                val body = runCatching { call.receive<PlayerCommand>() }.getOrDefault(PlayerCommand())
+                s.cast.command(call.parameters["device"]!!, call.parameters["cmd"]!!, body)
+                call.respond(mapOf("ok" to true))
             }
         }
 

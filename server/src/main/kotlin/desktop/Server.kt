@@ -1,12 +1,15 @@
 package desktop
 
 import desktop.api.Catalog
+import desktop.api.PlayRequest
+import desktop.api.PlayerCommand
 import desktop.api.NotFound
 import desktop.api.PluginFailure
 import desktop.api.Services
 import desktop.api.apiRoutes
 import desktop.api.webRoutes
 import desktop.auth.Auth
+import desktop.cast.DeviceHub
 import desktop.cdp.ChromiumUnavailableException
 import desktop.config.Config
 import desktop.config.Settings
@@ -32,11 +35,15 @@ import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.response.respond
 import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
+import io.ktor.server.websocket.pingPeriod
+import io.ktor.server.websocket.timeout
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
+import java.net.InetAddress
+import kotlin.time.Duration.Companion.seconds
 
 fun serve(config: Config, db: Database, settings: Settings, host: PluginHost, scope: CoroutineScope) {
     val log = LoggerFactory.getLogger("desktop.Server")
@@ -48,8 +55,15 @@ fun serve(config: Config, db: Database, settings: Settings, host: PluginHost, sc
     val skipTimes = SkipTimes(db)
     val playback = Playback(scope, host, catalog, links, proxy, mpv, store, settings, config.bindPort, skipTimes)
     val auth = Auth()
+    val cast = DeviceHub(scope, object : DeviceHub.LocalPlayer {
+        override val name = "mpv on " + (runCatching { InetAddress.getLocalHost().hostName }.getOrNull() ?: "the server")
+        override val available get() = mpv.available
+        override val state get() = playback.state
+        override suspend fun play(req: PlayRequest) = playback.play(req)
+        override suspend fun command(cmd: String, body: PlayerCommand) = playback.command(cmd, body)
+    })
     val services = Services(host, catalog, links, proxy, playback, store, settings, auth, scope, config.bindPort, config.devPath,
-        ClientStreams(links, proxy), skipTimes)
+        ClientStreams(links, proxy), skipTimes, cast)
 
     // Plugins build and load in the background; the UI shows progress through /api/status.
     scope.launch { host.start(scope) }
@@ -60,7 +74,11 @@ fun serve(config: Config, db: Database, settings: Settings, host: PluginHost, sc
         install(ContentNegotiation) {
             json(Json { encodeDefaults = true; ignoreUnknownKeys = true; explicitNulls = false })
         }
-        install(WebSockets)
+        install(WebSockets) {
+            // Notices a cast receiver that dropped off the network without closing its socket.
+            pingPeriod = 15.seconds
+            timeout = 30.seconds
+        }
         install(Auth.plugin(auth))
         install(StatusPages) {
             exception<NotFound> { call, e -> call.respond(HttpStatusCode.NotFound, mapOf("error" to e.message)) }

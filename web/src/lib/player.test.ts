@@ -1,53 +1,85 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { PlayerState } from "./types";
-
-const socket = vi.hoisted(() => ({
-  onState: null as ((s: PlayerState) => void) | null,
-  onOpen: null as ((open: boolean) => void) | null,
-  opened: 0,
-}));
+import type { DeviceInfo, PlayerState } from "./types";
 
 vi.mock("./api", () => ({
-  api: { player: vi.fn(async () => ({ ok: true })) },
-  playerSocket: (onState: (s: PlayerState) => void, onOpen: (open: boolean) => void) => {
-    socket.opened++;
-    socket.onState = onState;
-    socket.onOpen = onOpen;
-    return () => {};
-  },
+  api: { castCommand: vi.fn(async () => ({ ok: true })) },
+  castSocket: () => ({ send() {}, stop() {} }),
 }));
 
+const { api } = await import("./api");
+const { cast } = await import("./cast.svelte");
 const { player } = await import("./player.svelte");
 
-const state = (s: Partial<PlayerState>): PlayerState => ({ ...player.state, ...s });
+const idle: PlayerState = {
+  status: "idle",
+  position: 0,
+  duration: 0,
+  paused: false,
+  volume: 100,
+  audioTracks: [],
+  subTracks: [],
+  hasNext: false,
+  hasPrev: false,
+  mpvRunning: false,
+};
+const state = (s: Partial<PlayerState>): PlayerState => ({ ...idle, ...s });
+const dev = (id: string, kind: DeviceInfo["kind"] = "tv"): DeviceInfo => ({
+  id,
+  name: id.toUpperCase(),
+  kind,
+  receiver: true,
+});
 
-describe("player store", () => {
-  it("opens one socket however often it is started", () => {
-    player.start();
-    player.start();
-    expect(socket.opened).toBe(1);
+describe("player store (the remote)", () => {
+  it("follows whichever other device is playing, mpv first", () => {
+    cast.onFrame({ type: "devices", devices: [dev("mpv", "mpv"), dev("tv"), dev(cast.id, "web")] });
+    expect(player.active).toBe(false);
+    expect(player.device).toBe(null);
+
+    cast.onFrame({
+      type: "state",
+      device: "tv",
+      state: state({ status: "playing", title: "Dune" }),
+    });
+    expect(player.device).toBe("tv");
+    expect(player.state.title).toBe("Dune");
+
+    cast.onFrame({
+      type: "state",
+      device: "mpv",
+      state: state({ status: "resolving", title: "Up" }),
+    });
+    expect(player.device).toBe("mpv");
   });
 
-  it("follows the server's state and connection", () => {
-    player.start();
-    expect(player.active).toBe(false);
+  it("keeps to the device cast to, and sends commands there", async () => {
+    player.follow("tv");
+    expect(player.device).toBe("tv");
+    await player.command("seek", { seconds: 10, relative: true });
+    expect(api.castCommand).toHaveBeenLastCalledWith("tv", "seek", { seconds: 10, relative: true });
+  });
 
-    socket.onOpen?.(true);
-    expect(player.connected).toBe(true);
+  it("ignores its own state and drops devices that leave", () => {
+    cast.onFrame({
+      type: "state",
+      device: cast.id,
+      state: state({ status: "playing", title: "Me" }),
+    });
+    expect(cast.states[cast.id]).toBeUndefined();
 
-    socket.onState?.(state({ status: "resolving", title: "Dune", message: "Resolving links…" }));
-    expect(player.active).toBe(true);
-    expect(player.state.message).toBe("Resolving links…");
-
-    socket.onState?.(state({ status: "idle", title: null }));
-    expect(player.active).toBe(false);
-
-    socket.onOpen?.(false);
-    expect(player.connected).toBe(false);
+    cast.onFrame({ type: "devices", devices: [dev("mpv", "mpv"), dev(cast.id, "web")] });
+    expect(cast.states.tv).toBeUndefined();
+    expect(player.device).toBe("mpv");
   });
 
   it("keeps the bar up after playback finishes while the title is known", () => {
-    socket.onState?.(state({ status: "idle", title: "Dune", message: "Finished" }));
+    cast.onFrame({
+      type: "state",
+      device: "mpv",
+      state: state({ status: "idle", title: "Up", message: "Finished" }),
+    });
     expect(player.active).toBe(true);
+    cast.onFrame({ type: "state", device: "mpv", state: state({ status: "idle", title: null }) });
+    expect(player.active).toBe(false);
   });
 });

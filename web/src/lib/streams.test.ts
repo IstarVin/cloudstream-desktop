@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { playerSocket, streamLinks, streamSearch } from "./api";
+import { castSocket, streamLinks, streamSearch } from "./api";
 
 /** EventSource stand-in: tests push server events with `emit`. */
 class FakeEventSource {
@@ -85,16 +85,26 @@ describe("streamLinks", () => {
   });
 });
 
-describe("playerSocket", () => {
+describe("castSocket", () => {
   class FakeWebSocket {
     static all: FakeWebSocket[] = [];
+    readyState = 0;
+    sent: string[] = [];
     onopen: (() => void) | null = null;
     onmessage: ((e: { data: string }) => void) | null = null;
     onclose: (() => void) | null = null;
     constructor(readonly url: string) {
       FakeWebSocket.all.push(this);
     }
+    send(data: string) {
+      this.sent.push(data);
+    }
+    open() {
+      this.readyState = 1;
+      this.onopen?.();
+    }
     close() {
+      this.readyState = 3;
       this.onclose?.();
     }
   }
@@ -107,24 +117,32 @@ describe("playerSocket", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it("parses state, reconnects after a drop, and stays closed once stopped", () => {
-    const states = vi.fn();
+  const hello = { type: "hello", id: "me", name: "Firefox", kind: "web", receiver: true } as const;
+
+  it("says hello on every connect, passes frames, reconnects and stays closed once stopped", () => {
+    const frames = vi.fn();
     const open = vi.fn();
-    const stop = playerSocket(states, open);
+    const sock = castSocket(() => hello, frames, open);
     const first = FakeWebSocket.all[0];
-    expect(first.url).toBe("ws://192.168.1.5:6969/api/player/events");
+    expect(first.url).toBe("ws://192.168.1.5:6969/api/cast");
 
-    first.onopen?.();
-    first.onmessage?.({ data: JSON.stringify({ status: "playing", position: 12 }) });
+    sock.send({ type: "state", state: {} as never });
+    expect(first.sent).toEqual([]); // not open yet
+
+    first.open();
+    expect(JSON.parse(first.sent[0])).toEqual(hello);
     expect(open).toHaveBeenLastCalledWith(true);
-    expect(states).toHaveBeenCalledWith({ status: "playing", position: 12 });
+    first.onmessage?.({ data: JSON.stringify({ type: "devices", devices: [] }) });
+    expect(frames).toHaveBeenCalledWith({ type: "devices", devices: [] });
 
-    first.onclose?.();
+    first.close();
     expect(open).toHaveBeenLastCalledWith(false);
     vi.advanceTimersByTime(1500);
     expect(FakeWebSocket.all).toHaveLength(2);
+    FakeWebSocket.all[1].open();
+    expect(JSON.parse(FakeWebSocket.all[1].sent[0])).toEqual(hello);
 
-    stop();
+    sock.stop();
     vi.advanceTimersByTime(5000);
     expect(FakeWebSocket.all).toHaveLength(2);
   });

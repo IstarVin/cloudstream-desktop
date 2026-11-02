@@ -50,7 +50,7 @@ android {
             // AGP 9.3+ DSL: R8 code + resource optimization with the default Android keep rules.
             // App-specific keep rules go in src/main/keepRules/*.keep.
             optimization {
-                enable = true
+                enable = false
             }
             // Falls back to the debug key when no release keystore is configured.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")

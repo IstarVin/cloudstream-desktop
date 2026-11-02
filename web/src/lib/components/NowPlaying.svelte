@@ -22,6 +22,18 @@
   import { toasts } from "../toast.svelte";
 
   const s = $derived(player.state);
+  const info = $derived(player.info);
+  const isMpv = $derived(info?.kind === "mpv");
+  const online = $derived(isMpv ? s.mpvRunning : !!info);
+  const statusText = $derived(
+    isMpv
+      ? s.mpvRunning
+        ? "Playing in mpv"
+        : "mpv is closed"
+      : info
+        ? `Playing on ${info.name}`
+        : "Device disconnected",
+  );
   const pct = $derived(s.duration > 0 ? (s.position / s.duration) * 100 : 0);
   const busy = $derived(s.status === "resolving");
   // While dragging the seek bar, show the drag position instead of the live one.
@@ -88,9 +100,9 @@
           {#if busy || s.status === "error"}
             <span class={{ err: s.status === "error" }}>{s.message ?? "Loading…"}</span>
           {:else}
-            {s.episodeLabel ?? ""}{s.episodeLabel ? " · " : ""}{formatTime(s.position)} / {formatTime(
-              s.duration,
-            )}
+            {info && !isMpv ? `${info.name} · ` : ""}{s.episodeLabel ?? ""}{s.episodeLabel
+              ? " · "
+              : ""}{formatTime(s.position)} / {formatTime(s.duration)}
           {/if}
         </div>
       </div>
@@ -139,11 +151,20 @@
       <button class="icon-btn" onclick={() => (player.expanded = false)} aria-label="Close remote"
         ><ChevronDown size={22} strokeWidth={1.8} aria-hidden="true" /></button
       >
-      <span class="player-status"
-        ><span class={["status-dot", { online: s.mpvRunning }]}></span>{s.mpvRunning
-          ? "Playing in mpv"
-          : "mpv is closed"}</span
-      >
+      {#if player.playing.length > 1}
+        <select
+          class="player-status device-pick"
+          aria-label="Device"
+          value={player.device}
+          onchange={(e) => player.follow(e.currentTarget.value)}
+        >
+          {#each player.playing as d (d.id)}<option value={d.id}>{d.name}</option>{/each}
+        </select>
+      {:else}
+        <span class="player-status"
+          ><span class={["status-dot", { online: online }]}></span>{statusText}</span
+        >
+      {/if}
       <button class="icon-btn" onclick={openSources} aria-label="Sources"
         ><Layers size={22} strokeWidth={1.8} aria-hidden="true" /></button
       >
@@ -292,7 +313,7 @@
             <input
               type="range"
               min="0"
-              max="130"
+              max={isMpv ? 130 : 100}
               value={s.volume}
               onchange={(e) => cmd("volume", { value: +e.currentTarget.value })}
               aria-label="Volume"
@@ -458,6 +479,15 @@
     gap: 8px;
     color: var(--muted);
     font-weight: 600;
+  }
+  .device-pick {
+    width: auto;
+    max-width: 55vw;
+    min-height: 36px;
+    padding: 0 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
   }
   .status-dot {
     width: 7px;
