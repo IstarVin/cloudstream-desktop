@@ -64,6 +64,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -93,7 +94,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
-import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
@@ -174,11 +174,15 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
     val audio = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     val maxVolume = remember { audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).toFloat() }
 
+    val scrubber = remember(player) { Scrubber(player) }
+    DisposableEffect(scrubber) {
+        // Leaving mid-scrub (stop, rotation) must not leave the player muted and paused.
+        onDispose { if (scrubTarget != null) scrubber.end(scrubTarget!!) }
+    }
+
     val handler = remember(player, prefs) {
         object : GestureHandler {
-            var wasPlaying = false
             var holdFrom = 1f
-            var lastScrubSeek = 0L
             var levelValue = 0f
             var brightness = false
 
@@ -211,31 +215,21 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
             }
 
             override fun onSeekStart() {
-                val d = player.duration
-                if (d == C.TIME_UNSET || d <= 0 || !player.isCurrentMediaItemSeekable) return
-                wasPlaying = player.playWhenReady
-                player.playWhenReady = false
-                player.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+                if (!scrubber.begin()) return
                 scrubFrom = player.currentPosition
                 scrubTarget = scrubFrom
             }
 
             override fun onSeek(fraction: Float) {
                 if (scrubTarget == null) return
+                // A seek per touch event: scrubbing mode makes that cheap, and the picture follows the finger.
                 scrubTarget = scrubPosition(scrubFrom, fraction, player.duration)
-                // Seek to the nearest keyframe as the finger moves, so the picture follows the scrub.
-                val now = System.currentTimeMillis()
-                if (now - lastScrubSeek > 120) {
-                    lastScrubSeek = now
-                    player.seekTo(scrubTarget!!)
-                }
+                scrubber.seek(scrubTarget!!)
             }
 
             override fun onSeekEnd() {
                 val target = scrubTarget ?: return
-                player.setSeekParameters(SeekParameters.EXACT)
-                player.seekTo(target)
-                player.playWhenReady = wasPlaying
+                scrubber.end(target)
                 scrubTarget = null
             }
 
@@ -369,15 +363,13 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
                     onInteract = { lastInteraction = System.currentTimeMillis() },
                     onScrub = { target, done ->
                         if (!done) {
-                            if (scrubTarget == null) {
-                                scrubFrom = player.currentPosition
-                                player.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+                            val started = scrubTarget != null || scrubber.begin().also { if (it) scrubFrom = player.currentPosition }
+                            if (started) {
+                                scrubTarget = target
+                                scrubber.seek(target)
                             }
-                            scrubTarget = target
-                            player.seekTo(target)
-                        } else {
-                            player.setSeekParameters(SeekParameters.EXACT)
-                            scrubTarget?.let(player::seekTo)
+                        } else scrubTarget?.let {
+                            scrubber.end(it)
                             scrubTarget = null
                         }
                         lastInteraction = System.currentTimeMillis()
@@ -646,7 +638,7 @@ private fun ActionButton(icon: ImageVector, label: String, modifier: Modifier = 
     }
 }
 
-/** The seekbar: drags scrub live (keyframe seeks) and land exactly on release; AniSkip ranges are marked on it. */
+/** The seekbar: drags scrub live (see [Scrubber]) and land exactly on release; AniSkip ranges are marked on it. */
 @Composable
 private fun SeekBar(position: Long, duration: Long, buffered: Long, skips: List<desktop.player.SkipRange>, onScrub: (Long, Boolean) -> Unit, modifier: Modifier) {
     val max = duration.coerceAtLeast(1L).toFloat()

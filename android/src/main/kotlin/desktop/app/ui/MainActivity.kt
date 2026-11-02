@@ -138,7 +138,8 @@ private fun MainScaffold(onUnpair: () -> Unit) {
     val wide = LocalWindowInfo.current.containerSize.width >= with(LocalDensity.current) { 600.dp.roundToPx() }
     val slideDistance = with(LocalDensity.current) { 32.dp.roundToPx() }
     val forwardOffset = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -slideDistance else slideDistance
-    val motion = remember(forwardOffset) { NavigationMotion(forwardOffset) }
+    val edgeMargin = with(LocalDensity.current) { 8.dp.roundToPx() }
+    val motion = remember(forwardOffset, edgeMargin) { NavigationMotion(forwardOffset, edgeMargin) }
 
     Scaffold(
         bottomBar = {
@@ -174,7 +175,8 @@ private fun MainScaffold(onUnpair: () -> Unit) {
                     )
                 }
             }
-            // Peer tabs crossfade; details move along a shared axis, reversed for Back.
+            // Peer tabs crossfade; details move along a shared axis, reversed for Back. A back gesture previews the
+            // pop with Android's predictive-back motion (the detail shrinks away) and the same motion commits it.
             val pushes = { d: NavDestination? -> d?.hasRoute<TitleRoute>() == true || d?.hasRoute<SectionRoute>() == true }
             NavHost(
                 nav, startDestination = HomeRoute, modifier = Modifier.weight(1f).fillMaxHeight().clipToBounds(),
@@ -182,6 +184,8 @@ private fun MainScaffold(onUnpair: () -> Unit) {
                 exitTransition = { motion.exit(detail = pushes(targetState.destination)) },
                 popEnterTransition = { motion.enter(detail = pushes(initialState.destination), back = true) },
                 popExitTransition = { motion.exit(detail = pushes(initialState.destination), back = true) },
+                predictivePopEnterTransition = { motion.predictiveEnter(detail = pushes(initialState.destination)) },
+                predictivePopExitTransition = { edge -> motion.predictiveExit(detail = pushes(initialState.destination), swipeEdge = edge) },
             ) {
                 composable<HomeRoute> {
                     HomeScreen(
