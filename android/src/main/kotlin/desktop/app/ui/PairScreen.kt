@@ -58,6 +58,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.input.KeyboardType
@@ -77,6 +79,9 @@ import java.util.concurrent.Executors
 @Composable
 fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
     val context = LocalContext.current
+    val tv = LocalTv.current
+    val addressFocus = remember { FocusRequester() }
+    InitialTvFocus(addressFocus)
     val scope = rememberCoroutineScope()
     var scanning by remember { mutableStateOf(false) }
     var manual by rememberSaveable { mutableStateOf(false) }
@@ -98,7 +103,7 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
         scope.launch {
             try {
                 val status = context.app.api.authStatus(config)
-                if (status.authed) onPaired(config) else error = "The desktop refused this token. Scan the code again."
+                if (status.authed) onPaired(config) else error = "The desktop refused this token. Check the code in desktop Settings."
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -129,12 +134,12 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
                 ) { Icon(Icons.Filled.PlayArrow, null, tint = Palette.accentInk, modifier = Modifier.size(32.dp)) }
                 Text("Cloudstream", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
                 Text(
-                    "Watch on your phone, with the sources and library from your desktop. Both need to be on the same network.",
+                    "Watch on your ${if (tv) "TV" else "phone"}, with the sources and library from your desktop. Both need to be on the same network.",
                     color = Palette.muted,
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     PairStep(1, "On the desktop, open Settings and find Pair a phone.")
-                    PairStep(2, "Scan the code it shows with this phone.")
+                    PairStep(2, if (tv) "Enter the desktop address and token shown under the code." else "Scan the code it shows with this phone.")
                 }
             }
         }
@@ -151,23 +156,23 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
                         onCode = { text -> if (!checking) tryPair(ServerConfig.parse(text)) },
                     )
                     Text("Point the camera at the code on your desktop.", color = Palette.muted, style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(onClick = { scanning = false }, enabled = !checking, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Cancel") }
+                    OutlinedButton(onClick = { scanning = false }, enabled = !checking, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator()) { Text("Cancel") }
                 } else {
-                    Button(
+                    if (!tv) Button(
                         onClick = {
                             if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) scanning = true
                             else permission.launch(Manifest.permission.CAMERA)
                         },
                         enabled = !checking,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator(),
                     ) {
                         Icon(Icons.Filled.QrCodeScanner, null)
                         Text("Scan pairing code", Modifier.padding(start = 8.dp))
                     }
-                    TextButton(onClick = { manual = !manual }, enabled = !checking, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)) {
+                    if (!tv) TextButton(onClick = { manual = !manual }, enabled = !checking, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp).tvFocusIndicator()) {
                         Text(if (manual) "Hide manual entry" else "Enter the address instead")
                     }
-                    if (manual) {
+                    if (manual || tv) {
                         OutlinedTextField(
                             address, { address = it },
                             label = { Text("Desktop address") },
@@ -175,7 +180,7 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
                             enabled = !checking,
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Next),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().focusRequester(addressFocus).tvFocusIndicator(),
                         )
                         OutlinedTextField(
                             token, { token = it },
@@ -185,9 +190,9 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
                             keyboardActions = KeyboardActions(onDone = { connect() }),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().tvFocusIndicator(),
                         )
-                        Button(onClick = ::connect, enabled = canConnect, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                        Button(onClick = ::connect, enabled = canConnect, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator()) {
                             Text(if (checking) "Connecting…" else "Connect")
                         }
                     }

@@ -30,6 +30,7 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1"
+        testInstrumentationRunner = "desktop.app.TvTestRunner"
     }
 
     signingConfigs {
@@ -74,6 +75,11 @@ kotlin {
 
 dependencies {
     testImplementation(libs.junit)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.junit)
+    debugImplementation(libs.compose.ui.test.manifest)
     implementation(project(":shared"))
 
     implementation(libs.androidx.core)

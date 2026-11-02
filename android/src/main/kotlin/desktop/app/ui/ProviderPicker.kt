@@ -50,13 +50,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -113,7 +111,7 @@ fun SourceSelector(current: ProviderDto?, onClick: () -> Unit, modifier: Modifie
         onClick = onClick,
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = modifier.heightIn(min = 56.dp).semantics { contentDescription = "Source: ${current?.name ?: "none chosen"}. Change source" },
+        modifier = modifier.heightIn(min = 56.dp).tvFocusIndicator().semantics { contentDescription = "Source: ${current?.name ?: "none chosen"}. Change source" },
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SourceIcon(current)
@@ -155,14 +153,10 @@ fun ProviderPicker(
     val resetFilters = { query = ""; onCategories(emptySet()) }
     LaunchedEffect(query, categories) { listState.scrollToItem(0) }
 
-    ModalBottomSheet(
+    AdaptiveSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        // A scroll/fling at either list boundary must not drag or settle the sheet.
-        // Close, system Back, and the scrim remain available for dismissal.
         sheetGesturesEnabled = false,
         dragHandle = null,
-        sheetMaxWidth = 640.dp,
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
         Column(Modifier.fillMaxWidth().heightIn(max = 720.dp)) {
@@ -171,7 +165,7 @@ fun ProviderPicker(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Choose a source", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
-                IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, "Close source picker") }
+                IconButton(onClick = onDismiss, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Close, "Close source picker") }
             }
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 8.dp),
@@ -188,7 +182,7 @@ fun ProviderPicker(
                 placeholder = { Text("Name, plugin or language") },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 trailingIcon = {
-                    if (query.isNotEmpty()) IconButton(onClick = { query = "" }) {
+                    if (query.isNotEmpty()) IconButton(onClick = { query = "" }, modifier = Modifier.tvFocusIndicator()) {
                         Icon(Icons.Filled.Cancel, "Clear search", modifier = Modifier.size(20.dp))
                     }
                 },
@@ -205,8 +199,8 @@ fun ProviderPicker(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
                     unfocusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
                 ),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
-                    .semantics { contentDescription = "Find a source by name, plugin or language" },
+                modifier = (Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                    .semantics { contentDescription = "Find a source by name, plugin or language" }).tvFocusIndicator(),
             )
             Spacer(Modifier.height(20.dp))
             LazyColumn(
@@ -255,6 +249,7 @@ fun ProviderPicker(
                                             selectedBorderColor = MaterialTheme.colorScheme.primary,
                                             selectedBorderWidth = 1.dp,
                                         ),
+                                        modifier = Modifier.tvFocusIndicator(),
                                     )
                                 }
                             }
@@ -279,7 +274,7 @@ fun ProviderPicker(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
                             )
-                            if (hasFilters) TextButton(onClick = resetFilters, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                            if (hasFilters) TextButton(onClick = resetFilters, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.tvFocusIndicator()) {
                                 Icon(Icons.Filled.RestartAlt, null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.size(6.dp))
                                 Text("Reset filters", style = MaterialTheme.typography.labelMedium)
@@ -303,8 +298,8 @@ fun ProviderPicker(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        if (providers.isEmpty()) TextButton(onClick = onManage) { Text("Manage plugins") }
-                        else TextButton(onClick = resetFilters) { Text("Reset filters") }
+                        if (providers.isEmpty()) TextButton(onClick = onManage, modifier = Modifier.tvFocusIndicator()) { Text("Manage plugins") }
+                        else TextButton(onClick = resetFilters, modifier = Modifier.tvFocusIndicator()) { Text("Reset filters") }
                     }
                 }
             }
@@ -316,7 +311,7 @@ fun ProviderPicker(
 private fun SourceRow(provider: ProviderDto, selected: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Surface(
-        modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large)
+        modifier = Modifier.fillMaxWidth().tvFocusIndicator().clip(MaterialTheme.shapes.large)
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
         shape = MaterialTheme.shapes.large,
         color = colors.surfaceContainerHigh,

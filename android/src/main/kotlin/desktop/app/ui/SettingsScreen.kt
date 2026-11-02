@@ -107,6 +107,7 @@ private enum class SettingsTab(val label: String, val icon: ImageVector) {
 @Composable
 fun SettingsScreen(onUnpair: () -> Unit) {
     val context = LocalContext.current
+    val tv = LocalTv.current
     val api = context.app.api
     val prefs = context.app.prefs
     val scope = rememberCoroutineScope()
@@ -172,7 +173,7 @@ fun SettingsScreen(onUnpair: () -> Unit) {
                         color = if (selected) Palette.surface2 else Palette.surface,
                         contentColor = if (selected) Palette.accent else Palette.muted,
                         border = if (selected) BorderStroke(1.dp, Palette.accent.copy(alpha = 0.4f)) else null,
-                        modifier = Modifier.semantics { role = Role.Tab; this.selected = selected },
+                        modifier = Modifier.tvFocusIndicator().semantics { role = Role.Tab; this.selected = selected },
                     ) {
                         Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Icon(destination.icon, null, Modifier.size(20.dp))
@@ -194,14 +195,16 @@ fun SettingsScreen(onUnpair: () -> Unit) {
             ) {
                 when (tab) {
                     SettingsTab.Playback -> {
-                        item { SettingsSectionTitle("Playback", "Customize playback on this phone and your desktop.") }
-                        item { SettingsNote("Saved on this phone. Changes apply to its video player.") }
-                        item { Header("Gestures", first = true) }
-                        item { SwitchRow("Swipe to seek", player.swipeSeek, help = "Swipe left or right across the video.") { v -> updatePlayer { it.copy(swipeSeek = v) } } }
-                        item { SwitchRow("Brightness gesture", player.brightnessGesture, help = "Swipe up or down on the left edge.") { v -> updatePlayer { it.copy(brightnessGesture = v) } } }
-                        item { SwitchRow("Volume gesture", player.volumeGesture, help = "Swipe up or down on the right edge.") { v -> updatePlayer { it.copy(volumeGesture = v) } } }
-                        item { ChoiceRow("Double-tap seek interval", listOf(5, 10, 15, 30), player.seekStep, { "${it}s" }) { v -> updatePlayer { it.copy(seekStep = v) } } }
-                        item { ChoiceRow("Hold-to-play speed", listOf(1.5f, 2f, 3f), player.holdSpeed, { "${it}×" }) { v -> updatePlayer { it.copy(holdSpeed = v) } } }
+                        item { SettingsSectionTitle("Playback", "Customize playback on this device and your desktop.") }
+                        item { SettingsNote("Saved on this device. Changes apply to its video player.") }
+                        if (!tv) {
+                            item { Header("Gestures", first = true) }
+                            item { SwitchRow("Swipe to seek", player.swipeSeek, help = "Swipe left or right across the video.") { v -> updatePlayer { it.copy(swipeSeek = v) } } }
+                            item { SwitchRow("Brightness gesture", player.brightnessGesture, help = "Swipe up or down on the left edge.") { v -> updatePlayer { it.copy(brightnessGesture = v) } } }
+                            item { SwitchRow("Volume gesture", player.volumeGesture, help = "Swipe up or down on the right edge.") { v -> updatePlayer { it.copy(volumeGesture = v) } } }
+                        } else item { Header("Remote", first = true) }
+                        item { ChoiceRow(if (tv) "Remote seek interval" else "Double-tap seek interval", listOf(5, 10, 15, 30), player.seekStep, { "${it}s" }) { v -> updatePlayer { it.copy(seekStep = v) } } }
+                        if (!tv) item { ChoiceRow("Hold-to-play speed", listOf(1.5f, 2f, 3f), player.holdSpeed, { "${it}×" }) { v -> updatePlayer { it.copy(holdSpeed = v) } } }
                         item { Header("Subtitles") }
                         item { SubtitleSize(player) { v -> updatePlayer { it.copy(subtitleScale = v) } } }
                         item { SwitchRow("Dark subtitle background", player.subtitleBackground, help = "Applies to SRT and VTT subtitles.") { v -> updatePlayer { it.copy(subtitleBackground = v) } } }
@@ -259,8 +262,8 @@ fun SettingsScreen(onUnpair: () -> Unit) {
                                 TextButton(
                                     onClick = { confirmUnpair = true },
                                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                                    modifier = Modifier.heightIn(min = 48.dp),
-                                ) { Text("Unpair this phone") }
+                                    modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
+                                ) { Text("Unpair this device") }
                             }
                         }
                     }
@@ -278,10 +281,10 @@ fun SettingsScreen(onUnpair: () -> Unit) {
     if (confirmUnpair) {
         AlertDialog(
             onDismissRequest = { confirmUnpair = false },
-            title = { Text("Unpair this phone?") },
+            title = { Text("Unpair this device?") },
             text = { Text("You'll need to scan the pairing code on the desktop again to reconnect. Your history and library stay on the desktop.") },
-            confirmButton = { TextButton(onClick = { confirmUnpair = false; onUnpair() }) { Text("Unpair") } },
-            dismissButton = { TextButton(onClick = { confirmUnpair = false }) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { confirmUnpair = false; onUnpair() }, modifier = Modifier.tvFocusIndicator()) { Text("Unpair") } },
+            dismissButton = { TextButton(onClick = { confirmUnpair = false }, modifier = Modifier.tvFocusIndicator()) { Text("Cancel") } },
         )
     }
 }
@@ -337,11 +340,11 @@ private fun SubtitleSize(player: PlayerPrefs, onChange: (Float) -> Unit) {
             onValueChangeFinished = { onChange(scale) },
             valueRange = 0.6f..2f,
             steps = 27,
-            modifier = Modifier.semantics { contentDescription = "Subtitle size"; stateDescription = "$percent percent" },
+            modifier = (Modifier.semantics { contentDescription = "Subtitle size"; stateDescription = "$percent percent" }).tvFocusIndicator(),
         )
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("60–200%", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(enabled = scale != 1f, onClick = { scale = 1f; onChange(1f) }) { Text("Reset size") }
+            TextButton(enabled = scale != 1f, onClick = { scale = 1f; onChange(1f) }, modifier = Modifier.tvFocusIndicator()) { Text("Reset size") }
         }
     }
 }
@@ -354,7 +357,7 @@ private fun DesktopStatus(address: String, status: Load<StatusDto>, onRetry: () 
             Load.Loading -> Text("Checking connection…", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
             is Load.Failed -> Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Not reachable. ${status.message}", style = MaterialTheme.typography.bodySmall, color = Palette.danger, modifier = Modifier.weight(1f, fill = false))
-                TextButton(onClick = onRetry) { Text("Retry") }
+                TextButton(onClick = onRetry, modifier = Modifier.tvFocusIndicator()) { Text("Retry") }
             }
             is Load.Ok -> Text(
                 "Connected · ${status.value.loaded} of ${status.value.plugins} plugins loaded" + if (status.value.building) " (still building)" else "",
@@ -379,7 +382,7 @@ internal fun Header(text: String, first: Boolean = false) {
 @Composable
 internal fun SwitchRow(label: String, checked: Boolean, help: String? = null, onChange: (Boolean) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(value = checked, role = Role.Switch, onValueChange = onChange).padding(vertical = 8.dp),
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).tvFocusIndicator().toggleable(value = checked, role = Role.Switch, onValueChange = onChange).padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -402,7 +405,7 @@ internal fun <T> ChoiceRow(label: String, options: List<T>, value: T, text: (T) 
                     selected = o == value,
                     onClick = { onChange(o) },
                     label = { Text(text(o)) },
-                    modifier = Modifier.semantics { role = Role.RadioButton },
+                    modifier = (Modifier.semantics { role = Role.RadioButton }).tvFocusIndicator(),
                 )
             }
         }
@@ -431,11 +434,11 @@ private fun ProfileEditor(settings: ServerSettings, draft: ProfileDraft, onSave:
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(profiles) { pr -> FilterChip(pr.id == active, { active = pr.id }, label = { Text(pr.name) }, modifier = Modifier.heightIn(min = 48.dp)) }
+            items(profiles) { pr -> FilterChip(pr.id == active, { active = pr.id }, label = { Text(pr.name) }, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) }
         }
         Text("A combined priority of ${SourceProfile.AUTO_PLAY_PRIORITY} or more starts playing right away.",
             style = MaterialTheme.typography.bodySmall, color = Palette.muted)
-        TextButton(onClick = { expanded = !expanded }) {
+        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.tvFocusIndicator()) {
             Text(if (expanded) "Hide priorities and filters" else "Edit priorities and filters")
             Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, null)
         }
@@ -451,23 +454,23 @@ private fun ProfileEditor(settings: ServerSettings, draft: ProfileDraft, onSave:
                 p.sourcePriorities.toSortedMap().forEach { (source, n) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Stepper(source, n, Modifier.weight(1f)) { v -> edit { it.copy(sourcePriorities = it.sourcePriorities + (source to v)) } }
-                        IconButton(onClick = { edit { it.copy(sourcePriorities = it.sourcePriorities - source) } }) { Icon(Icons.Filled.Delete, "Remove $source") }
+                        IconButton(onClick = { edit { it.copy(sourcePriorities = it.sourcePriorities - source) } }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Delete, "Remove $source") }
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(newSource, { newSource = it }, placeholder = { Text("Source name, exactly as listed") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(newSource, { newSource = it }, placeholder = { Text("Source name, exactly as listed") }, singleLine = true, modifier = Modifier.weight(1f).tvFocusIndicator())
                     TextButton(enabled = newSource.isNotBlank(), onClick = {
                         edit { it.copy(sourcePriorities = it.sourcePriorities + (newSource.trim() to 1)) }
                         newSource = ""
-                    }) { Text("Add") }
+                    }, modifier = Modifier.tvFocusIndicator()) { Text("Add") }
                 }
                 SwitchRow("Hide failed sources", p.hideFailedSources) { v -> edit { it.copy(hideFailedSources = v) } }
                 SwitchRow("Hide negative-priority sources", p.hideNegativeSources) { v -> edit { it.copy(hideNegativeSources = v) } }
             }
         }
         if (dirty) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(enabled = dirty, onClick = { onSave(profiles, active) }) { Text("Save profile") }
-            TextButton(enabled = dirty, onClick = { profiles = settings.sourceProfiles; active = settings.sourceProfile }) { Text("Discard") }
+            Button(enabled = dirty, onClick = { onSave(profiles, active) }, modifier = Modifier.tvFocusIndicator()) { Text("Save profile") }
+            TextButton(enabled = dirty, onClick = { profiles = settings.sourceProfiles; active = settings.sourceProfile }, modifier = Modifier.tvFocusIndicator()) { Text("Discard") }
         }
     }
 }
@@ -476,8 +479,8 @@ private fun ProfileEditor(settings: ServerSettings, draft: ProfileDraft, onSave:
 private fun Stepper(label: String, value: Int, modifier: Modifier = Modifier, onChange: (Int) -> Unit) {
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f))
-        IconButton(onClick = { onChange((value - 1).coerceAtLeast(-1000)) }, enabled = value > -1000) { Icon(Icons.Filled.Remove, "Lower $label priority") }
+        IconButton(onClick = { onChange((value - 1).coerceAtLeast(-1000)) }, enabled = value > -1000, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Remove, "Lower $label priority") }
         Text("$value", Modifier.widthIn(min = 48.dp), style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"), textAlign = TextAlign.Center)
-        IconButton(onClick = { onChange((value + 1).coerceAtMost(1000)) }, enabled = value < 1000) { Icon(Icons.Filled.Add, "Raise $label priority") }
+        IconButton(onClick = { onChange((value + 1).coerceAtMost(1000)) }, enabled = value < 1000, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Add, "Raise $label priority") }
     }
 }

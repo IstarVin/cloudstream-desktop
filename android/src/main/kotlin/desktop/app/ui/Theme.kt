@@ -6,6 +6,7 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -73,6 +74,16 @@ private val type = Typography(
     labelSmall = base.labelSmall.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
 )
 
+private val tvType = type.copy(
+    titleMedium = type.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp),
+    titleSmall = type.titleSmall.copy(fontSize = 16.sp, lineHeight = 22.sp),
+    bodyLarge = type.bodyLarge.copy(fontSize = 18.sp, lineHeight = 26.sp),
+    bodyMedium = type.bodyMedium.copy(fontSize = 16.sp, lineHeight = 22.sp),
+    bodySmall = type.bodySmall.copy(fontSize = 14.sp, lineHeight = 20.sp),
+    labelMedium = type.labelMedium.copy(fontSize = 14.sp, lineHeight = 20.sp),
+    labelSmall = type.labelSmall.copy(fontSize = 14.sp, lineHeight = 20.sp),
+)
+
 private val shapes = Shapes(
     extraSmall = RoundedCornerShape(4.dp),
     small = RoundedCornerShape(8.dp),
@@ -86,5 +97,7 @@ val TabularNumbers = TextStyle(fontFeatureSettings = "tnum")
 
 @Composable
 fun AppTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = colors, typography = type, shapes = shapes, content = content)
+    CompositionLocalProvider(LocalTv provides isTelevision()) {
+        MaterialTheme(colorScheme = colors, typography = if (LocalTv.current) tvType else type, shapes = shapes, content = content)
+    }
 }

@@ -358,7 +358,7 @@ private fun TitleContent(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val summaryWidth = (maxWidth * 0.4f).coerceIn(340.dp, 440.dp)
-        if (maxWidth >= TwoPaneWidth && hasEpisodes) {
+        if ((LocalTv.current || maxWidth >= TwoPaneWidth) && hasEpisodes) {
             Row(Modifier.widthIn(max = 1280.dp).fillMaxSize().align(Alignment.TopCenter)) {
                 Pane(summary + cast, rememberLazyListState(), Modifier.width(summaryWidth).fillMaxHeight())
                 Box(Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant))
@@ -385,7 +385,7 @@ private fun Overview(plot: String, identity: String) {
         if (overflowing || expanded) TextButton(
             onClick = { expanded = !expanded },
             contentPadding = PaddingValues(horizontal = 0.dp),
-            modifier = Modifier.heightIn(min = 48.dp).semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" },
+            modifier = (Modifier.heightIn(min = 48.dp).semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }).tvFocusIndicator(),
         ) {
             Text(if (expanded) "Show less" else "Show more")
             Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, null, Modifier.padding(start = 4.dp).size(18.dp))
@@ -449,12 +449,12 @@ private fun Actions(d: Details, episodes: List<Episode>, next: Episode?, onPlay:
             val play = Modifier.weight(1f).heightIn(min = 52.dp)
             when {
                 d.kind == "torrent" -> Text("Torrents aren't supported.", color = Palette.muted, modifier = Modifier.weight(1f))
-                d.movieData != null && episodes.isEmpty() -> Button(onClick = { onPlay(d.movieData!!) }, play) {
+                d.movieData != null && episodes.isEmpty() -> Button(onClick = { onPlay(d.movieData!!) }, modifier = play.tvFocusIndicator()) {
                     Icon(Icons.Filled.PlayArrow, null)
                     val p = d.movieProgress
                     Text(if (resuming) "Resume" else if (d.kind == "live") "Watch live" else if (p?.watched == true) "Play again" else "Play", Modifier.padding(start = 8.dp))
                 }
-                next != null -> Button(onClick = { onPlay(next.data) }, play) {
+                next != null -> Button(onClick = { onPlay(next.data) }, modifier = play.tvFocusIndicator()) {
                     Icon(Icons.Filled.PlayArrow, null)
                     val p = next.progress
                     val label = episodeTitle(next.copy(name = null), episodes.indexOf(next))
@@ -507,12 +507,12 @@ private fun EpisodesHeader(
                     style = MaterialTheme.typography.bodySmall, color = Palette.muted,
                 )
             }
-            if (canJump) TextButton(onClick = { focus.clearFocus(); keyboard?.hide(); onJump() }) { Text("Jump to next") }
+            if (canJump) TextButton(onClick = { focus.clearFocus(); keyboard?.hide(); onJump() }, modifier = Modifier.tvFocusIndicator()) { Text("Jump to next") }
         }
         if (dubs.size > 1) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(dubs) { x ->
-                    FilterChip(x == dub, { onDub(x) }, label = { Text(x) }, modifier = Modifier.heightIn(min = 48.dp))
+                    FilterChip(x == dub, { onDub(x) }, label = { Text(x) }, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator())
                 }
             }
         }
@@ -520,7 +520,7 @@ private fun EpisodesHeader(
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(seasons) { s ->
                     val name = d.seasons.firstOrNull { it.season == s }?.let { it.name ?: "Season ${it.displaySeason ?: s}" } ?: s?.let { "Season $it" } ?: "Other"
-                    FilterChip(season == s, { onSeason(s) }, label = { Text(name) }, modifier = Modifier.heightIn(min = 48.dp))
+                    FilterChip(season == s, { onSeason(s) }, label = { Text(name) }, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator())
                 }
             }
         }
@@ -530,7 +530,7 @@ private fun EpisodesHeader(
                 label = { Text("Find an episode") },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 trailingIcon = {
-                    if (filter.isNotEmpty()) IconButton(onClick = { onFilter("") }) {
+                    if (filter.isNotEmpty()) IconButton(onClick = { onFilter("") }, modifier = Modifier.tvFocusIndicator()) {
                         Icon(Icons.Filled.Close, "Clear episode search")
                     }
                 },
@@ -538,7 +538,7 @@ private fun EpisodesHeader(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { focus.clearFocus(); keyboard?.hide() }),
                 shape = MaterialTheme.shapes.medium,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().tvFocusIndicator(),
             )
         }
     }
@@ -557,13 +557,13 @@ private fun EpisodePagination(page: Int, pageCount: Int, onPage: (Int) -> Unit) 
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        TextButton(onClick = { onPage(page - 1) }, enabled = page > 0, modifier = Modifier.heightIn(min = 48.dp)) {
+        TextButton(onClick = { onPage(page - 1) }, enabled = page > 0, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) {
             Text("Previous")
         }
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
             TextButton(
                 onClick = { choosingPage = true },
-                modifier = Modifier.heightIn(min = 48.dp).semantics { stateDescription = "Page ${page + 1} of $pageCount" },
+                modifier = (Modifier.heightIn(min = 48.dp).semantics { stateDescription = "Page ${page + 1} of $pageCount" }).tvFocusIndicator(),
                 contentPadding = PaddingValues(horizontal = 8.dp),
             ) {
                 Text("Page ${page + 1} of $pageCount", maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
@@ -579,13 +579,13 @@ private fun EpisodePagination(page: Int, pageCount: Int, onPage: (Int) -> Unit) 
                     DropdownMenuItem(
                         text = { Text("Page ${target + 1}") },
                         onClick = { choosingPage = false; onPage(target) },
-                        modifier = Modifier.semantics { stateDescription = if (target == page) "Current page" else "" },
+                        modifier = (Modifier.semantics { stateDescription = if (target == page) "Current page" else "" }).tvFocusIndicator(),
                         trailingIcon = { if (target == page) Icon(Icons.Filled.CheckCircle, "Current page", tint = Palette.accent) },
                     )
                 }
             }
         }
-        TextButton(onClick = { onPage(page + 1) }, enabled = page < pageCount - 1, modifier = Modifier.heightIn(min = 48.dp)) {
+        TextButton(onClick = { onPage(page + 1) }, enabled = page < pageCount - 1, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) {
             Text("Next")
         }
     }
@@ -607,7 +607,7 @@ private fun EpisodeRow(e: Episode, index: Int, d: Details, isNext: Boolean, onPl
         Row(
             Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium)
                 .background(if (isNext) Palette.surface2 else Color.Transparent)
-                .clickable(role = Role.Button, onClickLabel = "Play $title", onClick = onPlay)
+                .tvFocusIndicator().clickable(role = Role.Button, onClickLabel = "Play $title", onClick = onPlay)
                 .semantics { stateDescription = if (watched) "Watched" else if (p != null && p.position > 30) "In progress" else "Not watched" }
                 .padding(start = 8.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.Top,
@@ -631,7 +631,7 @@ private fun EpisodeRow(e: Episode, index: Int, d: Details, isNext: Boolean, onPl
                     Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
-            IconButton(onClick = onWatched, modifier = Modifier.semantics { stateDescription = if (watched) "Watched" else "Not watched" }) {
+            IconButton(onClick = onWatched, modifier = (Modifier.semantics { stateDescription = if (watched) "Watched" else "Not watched" }).tvFocusIndicator()) {
                 if (watched) Icon(Icons.Filled.CheckCircle, "Mark $title unwatched", tint = Palette.good)
                 else Icon(Icons.Outlined.CheckCircle, "Mark $title watched", tint = Palette.muted)
             }
@@ -658,9 +658,10 @@ private fun BookmarkMenu(current: String?, onPick: (String?) -> Unit) {
                     text = { Text(text) },
                     onClick = { open = false; onPick(id) },
                     trailingIcon = { if (id == current) Icon(Icons.Filled.CheckCircle, "Current list", tint = Palette.accent) },
+                    modifier = Modifier.tvFocusIndicator(),
                 )
             }
-            if (current != null) DropdownMenuItem(text = { Text("Remove from library") }, onClick = { open = false; onPick(null) })
+            if (current != null) DropdownMenuItem(text = { Text("Remove from library") }, onClick = { open = false; onPick(null) }, modifier = Modifier.tvFocusIndicator())
         }
     }
 }

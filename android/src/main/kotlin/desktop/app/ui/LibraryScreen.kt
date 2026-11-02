@@ -106,7 +106,7 @@ fun LibraryScreen(onTitle: (String, String) -> Unit, onBrowse: () -> Unit) {
             }
             val grid: @Composable (content: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit) -> Unit = { content ->
                 LazyVerticalGrid(
-                    GridCells.Adaptive(100.dp),
+                    GridCells.Adaptive(if (LocalTv.current) 140.dp else 100.dp),
                     state = if (tab == 0) historyGrid else bookmarkGrid,
                     contentPadding = PaddingValues(Gutter),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -127,7 +127,7 @@ fun LibraryScreen(onTitle: (String, String) -> Unit, onBrowse: () -> Unit) {
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("${h.value.size} ${if (h.value.size == 1) "title" else "titles"}", style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.weight(1f))
-                                TextButton(onClick = { confirmClear = true }, enabled = !changingHistory) { Text("Clear history") }
+                                TextButton(onClick = { confirmClear = true }, enabled = !changingHistory, modifier = Modifier.tvFocusIndicator()) { Text("Clear history") }
                             }
                         }
                         items(h.value, key = { it.provider + it.url }) { e ->
@@ -137,7 +137,7 @@ fun LibraryScreen(onTitle: (String, String) -> Unit, onBrowse: () -> Unit) {
                                 IconButton(
                                     onClick = { changeHistory { api.forget(e.provider, e.url) } },
                                     enabled = !changingHistory,
-                                    modifier = Modifier.align(Alignment.TopEnd),
+                                    modifier = Modifier.align(Alignment.TopEnd).tvFocusIndicator(),
                                 ) {
                                     Box(Modifier.size(28.dp).background(Palette.scrim, CircleShape), contentAlignment = Alignment.Center) {
                                         Icon(Icons.Filled.Close, "Forget ${e.title}", tint = Palette.onImage, modifier = Modifier.size(16.dp))
@@ -153,10 +153,10 @@ fun LibraryScreen(onTitle: (String, String) -> Unit, onBrowse: () -> Unit) {
                     is Load.Ok -> grid {
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                item { FilterChip(list == null, { list = null }, label = { Text("All") }, modifier = Modifier.heightIn(min = 48.dp)) }
+                                item { FilterChip(list == null, { list = null }, label = { Text("All") }, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) }
                                 BOOKMARK_LISTS.forEach { (id, label) ->
                                     val n = b.value.count { it.list == id }
-                                    if (n > 0) item(key = id) { FilterChip(list == id, { list = id }, label = { Text("$label $n") }, modifier = Modifier.heightIn(min = 48.dp)) }
+                                    if (n > 0) item(key = id) { FilterChip(list == id, { list = id }, label = { Text("$label $n") }, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) }
                                 }
                             }
                         }
@@ -184,9 +184,9 @@ fun LibraryScreen(onTitle: (String, String) -> Unit, onBrowse: () -> Unit) {
                 TextButton(onClick = {
                     confirmClear = false
                     changeHistory { api.clearHistory() }
-                }) { Text("Clear") }
+                }, modifier = Modifier.tvFocusIndicator()) { Text("Clear") }
             },
-            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmClear = false }, modifier = Modifier.tvFocusIndicator()) { Text("Cancel") } },
         )
     }
 }

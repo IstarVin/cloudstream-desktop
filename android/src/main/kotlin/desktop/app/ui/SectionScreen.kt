@@ -95,12 +95,12 @@ fun SectionScreen(provider: String, section: Int, row: String, name: String, onT
         topBar = {
             TopAppBar(
                 title = { Text(row.ifBlank { name }) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                navigationIcon = { IconButton(onClick = onBack, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
             )
         },
     ) { padding ->
         LazyVerticalGrid(
-            GridCells.Adaptive(100.dp),
+            GridCells.Adaptive(if (LocalTv.current) 140.dp else 100.dp),
             state = grid,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = Gutter, end = Gutter, top = padding.calculateTopPadding() + 8.dp, bottom = 24.dp),

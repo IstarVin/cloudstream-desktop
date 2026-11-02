@@ -183,7 +183,7 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
                         onClick = { picking = true },
                         modifier = Modifier.weight(1f, fill = false).widthIn(max = 480.dp),
                     )
-                    IconButton(onClick = onManage) { Icon(Icons.Outlined.Extension, "Manage plugins") }
+                    IconButton(onClick = onManage, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Outlined.Extension, "Manage plugins") }
                 }
             }
             status?.takeIf { it.building }?.let { s ->
@@ -262,7 +262,7 @@ private fun ContinueWatchingCard(entry: ContinueEntry, onClick: () -> Unit) {
         onClick = onClick,
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = MaterialTheme.shapes.large,
-        modifier = Modifier.width(292.dp).semantics(mergeDescendants = true) {
+        modifier = Modifier.width(if (LocalTv.current) 320.dp else 292.dp).tvFocusIndicator().semantics(mergeDescendants = true) {
             progress?.let { stateDescription = "${(it * 100).toInt()}% watched" }
         },
     ) {
@@ -329,7 +329,7 @@ private fun HomeSectionRows(vm: HomeViewModel, section: HomeSection, onTitle: (S
         is Load.Failed -> Column(Modifier.padding(Gutter)) {
             SectionTitle(section.name)
             Text(page.message, color = Palette.muted, style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = { vm.loadSection(section.index) }) { Text("Retry") }
+            TextButton(onClick = { vm.loadSection(section.index) }, modifier = Modifier.tvFocusIndicator()) { Text("Retry") }
         }
         is Load.Ok -> page.value.rows.filter { it.items.isNotEmpty() }.forEach { row ->
             Column(Modifier.padding(top = 24.dp)) {
@@ -339,7 +339,7 @@ private fun HomeSectionRows(vm: HomeViewModel, section: HomeSection, onTitle: (S
                 ) {
                     Text(row.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
                     Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = { onMore(row.name) }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "See all ${row.name}" }) {
+                    TextButton(onClick = { onMore(row.name) }, modifier = (Modifier.heightIn(min = 48.dp).semantics { contentDescription = "See all ${row.name}" }).tvFocusIndicator()) {
                         Text("See all")
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(18.dp))
                     }

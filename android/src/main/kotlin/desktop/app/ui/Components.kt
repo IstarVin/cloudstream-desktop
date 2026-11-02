@@ -94,7 +94,7 @@ fun Poster(
     subtitle: String? = null,
     progress: Float? = null,
     badge: String? = null,
-    width: Dp? = 120.dp,
+    width: Dp? = if (LocalTv.current) 140.dp else 120.dp,
     /** Width over height: posters are 2:3, landscape rows 16:9. */
     aspect: Float = 2f / 3f,
     onClick: () -> Unit,
@@ -102,7 +102,7 @@ fun Poster(
     Column(
         modifier.then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())
             .clip(MaterialTheme.shapes.medium)
-            .clickable(role = Role.Button, onClickLabel = "Open $title", onClick = onClick)
+            .tvFocusIndicator().clickable(role = Role.Button, onClickLabel = "Open $title", onClick = onClick)
             .semantics(mergeDescendants = true) {
                 progress?.takeIf { it.isFinite() }?.let { stateDescription = "${(it.coerceIn(0f, 1f) * 100).toInt()}% watched" }
             },
@@ -181,7 +181,7 @@ fun ErrorBox(message: String, modifier: Modifier = Modifier, onRetry: (() -> Uni
             modifier = Modifier.semantics { heading() },
         )
         Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 440.dp))
-        if (onRetry != null) Button(onClick = onRetry) { Text("Try again") }
+        if (onRetry != null) Button(onClick = onRetry, modifier = Modifier.tvFocusIndicator()) { Text("Try again") }
     }
 }
 
@@ -219,7 +219,7 @@ fun EmptyState(
         Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(32.dp))
         Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center, modifier = Modifier.semantics { heading() })
         Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 360.dp))
-        if (actionLabel != null && onAction != null) TextButton(onClick = onAction) { Text(actionLabel) }
+        if (actionLabel != null && onAction != null) TextButton(onClick = onAction, modifier = Modifier.tvFocusIndicator()) { Text(actionLabel) }
     }
 }
 
@@ -262,7 +262,7 @@ sealed interface Load<out T> {
     data class Failed(val message: String) : Load<Nothing>
 }
 
-const val UNREACHABLE = "Make sure Cloudstream Desktop is running and this phone is on the same network."
+const val UNREACHABLE = "Make sure Cloudstream Desktop is running and this device is on the same network."
 
 /** What to tell the person: network failures name the likely cause instead of an OkHttp socket message. */
 fun Throwable.userMessage(): String = when (this) {

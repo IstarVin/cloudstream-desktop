@@ -39,14 +39,12 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -181,7 +179,7 @@ fun LazyListScope.pluginItems(c: PluginsController, onRetry: () -> Unit) {
                     c.query, { c.query = it },
                     placeholder = { Text("Search plugins or providers") },
                     leadingIcon = { Icon(Icons.Filled.Search, null) },
-                    trailingIcon = { if (c.query.isNotEmpty()) IconButton(onClick = { c.query = "" }) { Icon(Icons.Filled.Close, "Clear search") } },
+                    trailingIcon = { if (c.query.isNotEmpty()) IconButton(onClick = { c.query = "" }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Close, "Clear search") } },
                     singleLine = true,
                     shape = RoundedCornerShape(8.dp),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -189,7 +187,7 @@ fun LazyListScope.pluginItems(c: PluginsController, onRetry: () -> Unit) {
                         focusedContainerColor = Palette.surface2,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
                     ),
-                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Search plugins or providers" },
+                    modifier = (Modifier.fillMaxWidth().semantics { contentDescription = "Search plugins or providers" }).tvFocusIndicator(),
                 )
             }
             item {
@@ -200,7 +198,7 @@ fun LazyListScope.pluginItems(c: PluginsController, onRetry: () -> Unit) {
                     Text("${all.count { it.status.equals("loaded", true) }} loaded", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                 }
                 if (repo != null && updates > 0) {
-                    Button(onClick = { c.update(null) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Button(onClick = { c.update(null) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) {
                         Text("Update $updates ${if (updates == 1) "plugin" else "plugins"}")
                     }
                 }
@@ -226,7 +224,7 @@ private fun PluginSource(c: PluginsController, onRefresh: () -> Unit) {
             shape = RoundedCornerShape(8.dp),
             colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(containerColor = Palette.surface2, contentColor = Palette.text),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            modifier = Modifier.heightIn(min = 48.dp),
+            modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
         ) {
             if (c.busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
             else Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp))
@@ -240,7 +238,7 @@ private fun PluginSource(c: PluginsController, onRefresh: () -> Unit) {
                 Modifier.fillMaxWidth().padding(14.dp), style = MaterialTheme.typography.bodyMedium,
             )
         }
-        TextButton(onClick = { expanded = !expanded }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+        TextButton(onClick = { expanded = !expanded }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp), modifier = Modifier.tvFocusIndicator()) {
             Text(if (repo) "Repository details" else "Local build details", color = Palette.muted)
             Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null, Modifier.padding(start = 8.dp).size(18.dp), tint = Palette.muted)
         }
@@ -272,7 +270,7 @@ private fun PluginFilterMenu(c: PluginsController, updates: Int, issues: Int) {
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             PluginFilter.entries.forEach { filter ->
                 val count = when (filter) { PluginFilter.All -> null; PluginFilter.Updates -> updates; PluginFilter.Issues -> issues }
-                DropdownMenuItem(text = { Text(filter.label + (count?.let { " ($it)" } ?: "")) }, onClick = { c.filter = filter; expanded = false })
+                DropdownMenuItem(text = { Text(filter.label + (count?.let { " ($it)" } ?: "")) }, onClick = { c.filter = filter; expanded = false }, modifier = Modifier.tvFocusIndicator())
             }
         }
     }
@@ -290,7 +288,7 @@ private fun pluginSummary(p: PluginDto): String = listOfNotNull(
 private fun PluginRow(p: PluginDto, onOpen: () -> Unit, onToggle: (Boolean) -> Unit, enabled: Boolean) {
     Column {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 88.dp).clickable(role = Role.Button, onClickLabel = "Open ${p.name} details", onClick = onOpen).padding(vertical = 8.dp),
+            Modifier.fillMaxWidth().heightIn(min = 88.dp).tvFocusIndicator().clickable(role = Role.Button, onClickLabel = "Open ${p.name} details", onClick = onOpen).padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -336,10 +334,8 @@ fun PluginSheet(c: PluginsController, api: Api, tell: (String) -> Unit) {
         return
     }
     val repo = c.source?.takeIf { it.mode == "repo" }
-    ModalBottomSheet(
+    AdaptiveSheet(
         onDismissRequest = { c.selected = null },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        sheetMaxWidth = 640.dp,
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = Gutter).padding(bottom = 32.dp)) {
@@ -350,8 +346,8 @@ fun PluginSheet(c: PluginsController, api: Api, tell: (String) -> Unit) {
             SwitchRow("Enabled", p.enabled) { c.setEnabled(p, it) }
             if (repo != null && (p.hasUpdate() || p.previous != null)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                    if (p.hasUpdate()) Button(onClick = { c.update(listOf(p.name)) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp)) { Text("Update to v${p.available}") }
-                    if (p.previous != null) OutlinedButton(onClick = { c.rollback(p.name) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp)) { Text("Roll back to v${p.previous}") }
+                    if (p.hasUpdate()) Button(onClick = { c.update(listOf(p.name)) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) { Text("Update to v${p.available}") }
+                    if (p.previous != null) OutlinedButton(onClick = { c.rollback(p.name) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) { Text("Roll back to v${p.previous}") }
                 }
             }
             if (p.settingsSchema.isNotEmpty()) {
@@ -407,7 +403,7 @@ private fun PluginSettingsForm(p: PluginDto, api: Api, tell: (String) -> Unit) {
                         Text(f.label)
                         f.help?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.muted) }
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-                            items(f.options) { o -> FilterChip((value.ifEmpty { f.default.orEmpty() }) == o.value, { set(o.value) }, label = { Text(o.label) }, modifier = Modifier.heightIn(min = 48.dp)) }
+                            items(f.options) { o -> FilterChip((value.ifEmpty { f.default.orEmpty() }) == o.value, { set(o.value) }, label = { Text(o.label) }, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) }
                         }
                     }
                     else -> {
@@ -422,18 +418,18 @@ private fun PluginSettingsForm(p: PluginDto, api: Api, tell: (String) -> Unit) {
                             visualTransformation = if (secret && !shown) PasswordVisualTransformation() else VisualTransformation.None,
                             keyboardOptions = KeyboardOptions(keyboardType = if (f.type == "int") KeyboardType.Number else KeyboardType.Text, autoCorrectEnabled = false),
                             trailingIcon = if (secret) ({
-                                IconButton(onClick = { revealed[id] = !shown }) {
+                                IconButton(onClick = { revealed[id] = !shown }, modifier = Modifier.tvFocusIndicator()) {
                                     Icon(if (shown) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, if (shown) "Hide ${f.label}" else "Show ${f.label}")
                                 }
                             }) else null,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().tvFocusIndicator(),
                         )
                     }
                 }
             }
             Button(
                 enabled = dirty && !saving,
-                modifier = Modifier.heightIn(min = 48.dp),
+                modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
                 onClick = {
                     saving = true
                     scope.launch {

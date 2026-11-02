@@ -11,6 +11,8 @@ import android.media.AudioManager
 import android.provider.Settings as SystemSettings
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.focusable
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -76,6 +78,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -84,6 +93,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -100,6 +110,8 @@ import androidx.media3.ui.PlayerView
 import desktop.app.data.PlayerPrefs
 import desktop.app.ui.TabularNumbers
 import desktop.app.ui.Palette
+import desktop.app.ui.LocalTv
+import desktop.app.ui.tvFocusIndicator
 import desktop.app.ui.formatTime
 import kotlinx.coroutines.delay
 import kotlin.math.abs
@@ -121,6 +133,12 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
     val activity = context as Activity
     val haptics = LocalHapticFeedback.current
     val player = vm.player
+    val tv = LocalTv.current
+    val windowFocused = LocalWindowInfo.current.isWindowFocused
+    val remoteFocus = remember { FocusRequester() }
+    val playFocus = remember { FocusRequester() }
+    val errorFocus = remember { FocusRequester() }
+    var consumedRemoteKey by remember { mutableStateOf<Int?>(null) }
     val s by vm.session.collectAsState()
 
     var controls by remember { mutableStateOf(true) }
@@ -170,6 +188,16 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
     }
     LaunchedEffect(s.pickSource) { if (s.pickSource) sheet = Sheet.Sources }
     LaunchedEffect(prefs.subtitleScale) { vm.engine.setAssScale(prefs.subtitleScale) }
+    LaunchedEffect(tv, windowFocused, controls, sheet, s.status, buffering) {
+        if (tv && windowFocused && sheet == null) {
+            // The video surface owns input while controls are hidden; revealing them starts at Play.
+            androidx.compose.runtime.withFrameNanos { }
+            if (s.status == "error") errorFocus.requestFocus()
+            else if (controls && !buffering && s.status !in listOf("resolving", "loading")) playFocus.requestFocus()
+            else remoteFocus.requestFocus()
+        }
+    }
+    BackHandler(enabled = tv && sheet == null && controls) { controls = false }
 
     val audio = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     val maxVolume = remember { audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).toFloat() }
@@ -273,11 +301,41 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
         }
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(Modifier.fillMaxSize().background(Color.Black)
+        .onPreviewKeyEvent { event ->
+            if (!tv || inPip) return@onPreviewKeyEvent false
+            if (event.type == KeyEventType.KeyUp && consumedRemoteKey == event.nativeKeyEvent.keyCode) {
+                consumedRemoteKey = null
+                return@onPreviewKeyEvent true
+            }
+            if (event.type == KeyEventType.KeyDown) lastInteraction = System.currentTimeMillis()
+            val action = remoteAction(event.nativeKeyEvent.keyCode, controls, sheet != null)
+                ?: return@onPreviewKeyEvent false
+            if (event.type == KeyEventType.KeyDown) {
+                consumedRemoteKey = event.nativeKeyEvent.keyCode
+                when (action) {
+                    RemoteAction.ShowControls -> controls = true
+                    RemoteAction.TogglePause -> if (player.isPlaying) player.pause() else player.play()
+                    RemoteAction.Play -> player.play()
+                    RemoteAction.Pause -> player.pause()
+                    RemoteAction.SeekBack, RemoteAction.SeekForward -> {
+                        val offset = prefs.seekStep * 1000L * if (action == RemoteAction.SeekBack) -1 else 1
+                        player.seekTo(remoteSeekPosition(player.currentPosition, duration, offset))
+                    }
+                    RemoteAction.Previous -> vm.prev()
+                    RemoteAction.Next -> vm.next()
+                }
+            }
+            true
+        }
+        .focusRequester(remoteFocus)
+        .focusable(tv && (!controls || buffering || s.status in listOf("resolving", "loading")))) {
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     useController = false
+                    isFocusable = false
+                    descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
                     layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     setShutterBackgroundColor(AndroidColor.BLACK)
                     setKeepContentOnPlayerReset(true)
@@ -307,7 +365,7 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
             modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = pinch; scaleY = pinch },
         )
 
-        if (!inPip) {
+        if (!inPip && !tv) {
             Box(
                 Modifier.fillMaxSize().playerGestures(handler, locked, prefs.swipeSeek) { left ->
                     if (left) prefs.brightnessGesture else prefs.volumeGesture
@@ -339,8 +397,8 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
             ) {
                 Text(s.message ?: "Playback failed", color = Color.White)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = { sheet = Sheet.Sources }) { Text("Sources") }
-                    OutlinedButton(onClick = { vm.retry() }) { Text("Retry") }
+                    Button(onClick = { sheet = Sheet.Sources }, modifier = Modifier.tvFocusIndicator()) { Text("Sources") }
+                    OutlinedButton(onClick = { vm.retry() }, modifier = Modifier.focusRequester(errorFocus).tvFocusIndicator()) { Text("Retry") }
                 }
             }
         }
@@ -355,6 +413,8 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
                     position = scrubTarget ?: position, duration = duration, buffered = buffered, playing = playing, speed = speed,
                     resizeLabel = RESIZE_MODES[resizeIndex].second,
                     onBack = onBack,
+                    playFocus = playFocus,
+                    seekStep = prefs.seekStep,
                     onSheet = { sheet = it; lastInteraction = System.currentTimeMillis() },
                     onLock = { locked = true; controls = true },
                     onResize = {
@@ -380,7 +440,7 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
             if (locked && controls) {
                 IconButton(
                     onClick = { locked = false },
-                    modifier = Modifier.align(Alignment.CenterStart).safeDrawingPadding().padding(16.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape),
+                    modifier = Modifier.align(Alignment.CenterStart).safeDrawingPadding().padding(16.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape).tvFocusIndicator(),
                 ) { Icon(Icons.Filled.LockOpen, "Unlock", tint = Color.White) }
             }
 
@@ -388,7 +448,7 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
             s.skip?.let { range ->
                 Button(
                     onClick = { vm.skip(range) },
-                    modifier = Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(end = 24.dp, bottom = 96.dp),
+                    modifier = Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(end = 24.dp, bottom = 96.dp).tvFocusIndicator(),
                 ) { Text("Skip ${range.label.lowercase()}") }
             }
             s.upNext?.let { n ->
@@ -401,8 +461,8 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
                         Text(desktop.app.ui.episodeTitle(e, s.item!!.index + 1), color = Palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                        Button(onClick = { vm.next() }) { Text("Play now") }
-                        TextButton(onClick = { vm.cancelUpNext() }) { Text("Cancel") }
+                        Button(onClick = { vm.next() }, modifier = Modifier.tvFocusIndicator()) { Text("Play now") }
+                        TextButton(onClick = { vm.cancelUpNext() }, modifier = Modifier.tvFocusIndicator()) { Text("Cancel") }
                     }
                 }
             }
@@ -503,6 +563,8 @@ private fun Controls(
     speed: Float,
     resizeLabel: String,
     onBack: () -> Unit,
+    playFocus: FocusRequester,
+    seekStep: Int,
     onSheet: (Sheet) -> Unit,
     onLock: () -> Unit,
     onResize: () -> Unit,
@@ -522,7 +584,7 @@ private fun Controls(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White) }
+            IconButton(onClick = onBack, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White) }
             Column(Modifier.weight(1f)) {
                 Text(item?.details?.name.orEmpty(), color = Color.White, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val sub = listOfNotNull(item?.displayLabel, s.current?.let { "${it.source} · ${it.qualityLabel}" }).joinToString("  ·  ")
@@ -530,7 +592,7 @@ private fun Controls(
             }
             TextButton(
                 onClick = { onInteract(); onResize() },
-                modifier = Modifier.heightIn(min = 48.dp).background(Palette.scrim, CircleShape),
+                modifier = Modifier.heightIn(min = 48.dp).background(Palette.scrim, CircleShape).tvFocusIndicator(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 Icon(Icons.Filled.AspectRatio, null, tint = Color.White, modifier = Modifier.size(20.dp))
@@ -551,6 +613,7 @@ private fun Controls(
                 if (s.status == "ended") "Replay" else if (playing) "Pause" else "Play",
                 size = 72,
                 prominent = true,
+                modifier = Modifier.focusRequester(playFocus),
             ) {
                 onInteract()
                 when {
@@ -578,13 +641,13 @@ private fun Controls(
                     style = MaterialTheme.typography.labelMedium.merge(TabularNumbers),
                 )
             }
-            SeekBar(position, duration, buffered, s.skips, onScrub, Modifier.fillMaxWidth())
+            SeekBar(position, duration, buffered, s.skips, onScrub, seekStep, Modifier.fillMaxWidth())
             BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val actionCount = 4 + (if (item != null && item.episodes.isNotEmpty()) 1 else 0) +
+                val actionCount = (if (LocalTv.current) 3 else 4) + (if (item != null && item.episodes.isNotEmpty()) 1 else 0) +
                     (if (item?.hasNext == true) 1 else 0)
                 val actionWidth = (maxWidth / actionCount).coerceAtLeast(88.dp)
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                    ActionButton(Icons.Filled.Lock, "Lock", Modifier.width(actionWidth), onClick = onLock)
+                    if (!LocalTv.current) ActionButton(Icons.Filled.Lock, "Lock", Modifier.width(actionWidth), onClick = onLock)
                     ActionButton(Icons.Filled.Speed, "Speed ${formatSpeed(speed)}×", Modifier.width(actionWidth)) { onSheet(Sheet.Speed) }
                     ActionButton(Icons.Filled.ClosedCaption, "Audio & subs", Modifier.width(actionWidth).semantics { contentDescription = "Subtitles & audio" }) { onSheet(Sheet.Subtitles) }
                     ActionButton(Icons.Filled.Source, "Sources", Modifier.width(actionWidth)) { onSheet(Sheet.Sources) }
@@ -604,15 +667,16 @@ private fun Controls(
 private fun RoundButton(
     icon: ImageVector,
     label: String,
-    enabled: Boolean = true,
     size: Int,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     prominent: Boolean = false,
     onClick: () -> Unit,
 ) {
     IconButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.size(size.dp).background(
+        modifier = modifier.size(size.dp).tvFocusIndicator().background(
             if (prominent) Color.White else Palette.scrim.copy(alpha = if (enabled) 0.55f else 0.25f), CircleShape,
         ),
     ) {
@@ -628,7 +692,7 @@ private fun RoundButton(
 private fun ActionButton(icon: ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     TextButton(
         onClick = onClick,
-        modifier = modifier.heightIn(min = 56.dp),
+        modifier = (modifier.heightIn(min = 56.dp)).tvFocusIndicator(),
         shape = RoundedCornerShape(8.dp),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
     ) {
@@ -641,8 +705,9 @@ private fun ActionButton(icon: ImageVector, label: String, modifier: Modifier = 
 
 /** The seekbar: drags scrub live (see [Scrubber]) and land exactly on release; AniSkip ranges are marked on it. */
 @Composable
-private fun SeekBar(position: Long, duration: Long, buffered: Long, skips: List<desktop.player.SkipRange>, onScrub: (Long, Boolean) -> Unit, modifier: Modifier) {
+private fun SeekBar(position: Long, duration: Long, buffered: Long, skips: List<desktop.player.SkipRange>, onScrub: (Long, Boolean) -> Unit, seekStep: Int, modifier: Modifier) {
     val max = duration.coerceAtLeast(1L).toFloat()
+    val tv = LocalTv.current
     // Keep Material's touch, keyboard and accessibility behavior with a quieter video timeline.
     Slider(
         value = if (duration > 0) position.toFloat().coerceIn(0f, max) else 0f,
@@ -650,7 +715,15 @@ private fun SeekBar(position: Long, duration: Long, buffered: Long, skips: List<
         onValueChangeFinished = { onScrub(position, true) },
         valueRange = 0f..max,
         enabled = duration > 0,
-        modifier = modifier.heightIn(min = 48.dp).semantics { contentDescription = "Playback position" },
+        modifier = modifier.heightIn(min = 48.dp).semantics { contentDescription = "Playback position" }
+            .onPreviewKeyEvent { event ->
+                if (!tv || duration <= 0 || event.key !in listOf(Key.DirectionLeft, Key.DirectionRight)) return@onPreviewKeyEvent false
+                if (event.type == KeyEventType.KeyDown) {
+                    val offset = seekStep * 1000L * if (event.key == Key.DirectionLeft) -1 else 1
+                    onScrub(remoteSeekPosition(position, duration, offset), false)
+                } else if (event.type == KeyEventType.KeyUp) onScrub(position, true)
+                true
+            }.tvFocusIndicator(),
         thumb = {
             // Slider measures this slot at its touch-target height. Center the visible dot inside it.
             Box(Modifier.width(12.dp).heightIn(min = 48.dp), contentAlignment = Alignment.Center) {

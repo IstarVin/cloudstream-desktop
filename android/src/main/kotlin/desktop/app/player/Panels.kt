@@ -40,12 +40,20 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,6 +65,8 @@ import androidx.media3.common.Tracks
 import desktop.api.LinkDto
 import desktop.api.SubtitleDto
 import desktop.app.ui.Palette
+import desktop.app.ui.LocalTv
+import desktop.app.ui.tvFocusIndicator
 import desktop.app.ui.episodeTitle
 
 /** A panel over the right of the video, with a scrim that closes it. */
@@ -65,17 +75,27 @@ private fun SidePanel(onDismiss: () -> Unit, widthFraction: Float = 0.5f, conten
     BackHandler(onBack = onDismiss)
     val scrim = remember { MutableInteractionSource() }
     val panel = remember { MutableInteractionSource() }
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)).clickable(scrim, null, onClick = onDismiss)) {
-        Column(
-            Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(widthFraction)
-                .background(Palette.surface)
-                .clickable(panel, null) {}
-                // Only the edges the panel touches: the right one and the top and bottom.
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.End))
-                .padding(vertical = 8.dp),
-            content = content,
-        )
+    val tv = LocalTv.current
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(tv) { if (tv) { withFrameNanos { }; focus.requestFocus() } }
+    val body: @Composable () -> Unit = {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f))
+            .focusProperties { canFocus = false }.clickable(scrim, null, onClick = onDismiss)) {
+            Column(
+                Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(widthFraction)
+                    .background(Palette.surface)
+                    .focusProperties { canFocus = false }
+                    .clickable(panel, null) {}
+                    .focusRequester(focus).focusGroup()
+                    // Only the edges the panel touches: the right one and the top and bottom.
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.End))
+                    .padding(vertical = 8.dp),
+                content = content,
+            )
+        }
     }
+    if (tv) Dialog(onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) { body() }
+    else body()
 }
 
 @Composable
@@ -86,7 +106,7 @@ private fun PanelTitle(text: String, modifier: Modifier = Modifier) {
 @Composable
 private fun Choice(title: String, detail: String? = null, selected: Boolean, badges: List<Pair<String, Color>> = emptyList(), dim: Boolean = false, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick)
+        Modifier.fillMaxWidth().tvFocusIndicator().clickable(onClick = onClick)
             .background(if (selected) Palette.accent.copy(alpha = 0.14f) else Color.Transparent)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -130,7 +150,7 @@ fun SourcesPanel(vm: PlayerViewModel, s: Session, onDismiss: () -> Unit) {
             Column(Modifier.weight(1.4f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     PanelTitle("Sources", Modifier.weight(1f))
-                    if (hidden > 0) TextButton(onClick = { showHidden = !showHidden }) {
+                    if (hidden > 0) TextButton(onClick = { showHidden = !showHidden }, modifier = Modifier.tvFocusIndicator()) {
                         Text(if (showHidden) "Hide $hidden" else "$hidden hidden by profile")
                     }
                 }
@@ -177,7 +197,7 @@ fun SourcesPanel(vm: PlayerViewModel, s: Session, onDismiss: () -> Unit) {
         }
         HorizontalDivider()
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss, modifier = Modifier.tvFocusIndicator()) { Text("Cancel") }
             Button(onClick = {
                 val chosen = s.links.firstOrNull { it.id == link }
                 if (chosen != null && chosen.id != s.current?.id) {
@@ -186,7 +206,7 @@ fun SourcesPanel(vm: PlayerViewModel, s: Session, onDismiss: () -> Unit) {
                 }
                 applySubtitle(vm, s, subtitle)
                 onDismiss()
-            }) { Text("Apply") }
+            }, modifier = Modifier.tvFocusIndicator()) { Text("Apply") }
         }
     }
 }

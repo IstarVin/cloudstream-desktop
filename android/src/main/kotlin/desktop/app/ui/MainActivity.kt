@@ -42,6 +42,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -92,7 +95,7 @@ private fun Root() {
 
     LaunchedEffect(Unit) {
         api.unauthorized.collect {
-            pairMessage = "The desktop no longer accepts this phone's pairing. Scan its code again."
+            pairMessage = "The desktop no longer accepts this device's pairing. Pair it again from desktop Settings."
             paired = false
         }
     }
@@ -135,7 +138,10 @@ private fun MainScaffold(onUnpair: () -> Unit) {
         }
     }
     val toTitle: (String, String) -> Unit = { provider, url -> nav.navigate(TitleRoute(provider, url)) }
-    val wide = LocalWindowInfo.current.containerSize.width >= with(LocalDensity.current) { 600.dp.roundToPx() }
+    val tv = LocalTv.current
+    val initialFocus = remember { FocusRequester() }
+    InitialTvFocus(initialFocus)
+    val wide = tv || LocalWindowInfo.current.containerSize.width >= with(LocalDensity.current) { 600.dp.roundToPx() }
     val slideDistance = with(LocalDensity.current) { 32.dp.roundToPx() }
     val forwardOffset = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -slideDistance else slideDistance
     val edgeMargin = with(LocalDensity.current) { 8.dp.roundToPx() }
@@ -156,7 +162,8 @@ private fun MainScaffold(onUnpair: () -> Unit) {
             }
         },
     ) { padding ->
-        Row(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
+        Row(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()
+            .then(if (tv) Modifier.padding(horizontal = 24.dp, vertical = 12.dp) else Modifier)) {
             if (wide) NavigationRail(
                 modifier = Modifier.fillMaxHeight().verticalScroll(rememberScrollState()),
                 containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -168,6 +175,7 @@ private fun MainScaffold(onUnpair: () -> Unit) {
             ) {
                 tabs.forEach { tab ->
                     NavigationRailItem(
+                        modifier = Modifier.then(if (tab == tabs.first()) Modifier.focusRequester(initialFocus) else Modifier).tvFocusIndicator(),
                         selected = dest?.hasRoute(tab.route::class) == true,
                         onClick = { open(tab.route) },
                         icon = { Icon(tab.icon, null) },
@@ -179,7 +187,7 @@ private fun MainScaffold(onUnpair: () -> Unit) {
             // pop with Android's predictive-back motion (the detail shrinks away) and the same motion commits it.
             val pushes = { d: NavDestination? -> d?.hasRoute<TitleRoute>() == true || d?.hasRoute<SectionRoute>() == true }
             NavHost(
-                nav, startDestination = HomeRoute, modifier = Modifier.weight(1f).fillMaxHeight().clipToBounds(),
+                nav, startDestination = HomeRoute, modifier = Modifier.weight(1f).fillMaxHeight().clipToBounds().focusGroup(),
                 enterTransition = { motion.enter(detail = pushes(targetState.destination)) },
                 exitTransition = { motion.exit(detail = pushes(targetState.destination)) },
                 popEnterTransition = { motion.enter(detail = pushes(initialState.destination), back = true) },

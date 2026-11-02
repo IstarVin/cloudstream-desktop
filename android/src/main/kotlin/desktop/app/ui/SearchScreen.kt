@@ -144,18 +144,18 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
             query, { query = it },
             placeholder = { Text("Search movies, series, anime…") },
             leadingIcon = {
-                IconButton(onClick = { run(query) }, enabled = query.isNotBlank()) {
+                IconButton(onClick = { run(query) }, enabled = query.isNotBlank(), modifier = Modifier.tvFocusIndicator()) {
                     Icon(Icons.Filled.Search, "Search")
                 }
             },
             trailingIcon = {
-                if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Clear, "Clear search text") }
+                if (query.isNotEmpty()) IconButton(onClick = { query = "" }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Clear, "Clear search text") }
             },
             singleLine = true,
             shape = MaterialTheme.shapes.large,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { run(query) }),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 8.dp).semantics { contentDescription = "Search all sources" },
+            modifier = (Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 8.dp).semantics { contentDescription = "Search all sources" }).tvFocusIndicator(),
         )
         val showFilters = vm.lastQuery.isNotEmpty()
         if (showFilters) LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -166,7 +166,7 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
                     onClick = { type = value },
                     label = { Text(label) },
                     leadingIcon = if (type == value) ({ Icon(Icons.Filled.Check, null, Modifier.size(16.dp)) }) else null,
-                    modifier = Modifier.heightIn(min = 48.dp),
+                    modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
                 )
             }
         }
@@ -192,7 +192,7 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
                     item {
                         Row(Modifier.fillMaxWidth().padding(start = Gutter, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             SectionTitle("Recent searches", Modifier.weight(1f))
-                            TextButton(onClick = { scope.launch { prefs.clearRecentSearches() } }) { Text("Clear") }
+                            TextButton(onClick = { scope.launch { prefs.clearRecentSearches() } }, modifier = Modifier.tvFocusIndicator()) { Text("Clear") }
                         }
                     }
                     items(recents, key = { "recent-$it" }) { r ->
@@ -237,7 +237,7 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
                             Text(provider)
                             Text(error, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                         }
-                        IconButton(onClick = { vm.search(vm.lastQuery, only = provider.takeUnless { it == "Search" }) }, enabled = !searching) { Icon(Icons.Filled.Refresh, "Retry $provider") }
+                        IconButton(onClick = { vm.search(vm.lastQuery, only = provider.takeUnless { it == "Search" }) }, enabled = !searching, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Refresh, "Retry $provider") }
                     }
                 }
             }

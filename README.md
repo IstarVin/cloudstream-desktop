@@ -32,8 +32,8 @@ See [source profiles](docs/SOURCE_PROFILES.md) for behavior and settings API det
 
 ## Android app
 
-`android/` is a phone client that plays on the phone with ExoPlayer instead of controlling mpv: the same home,
-search, title, library and settings pages, plus libass subtitles, a source picker and touch gestures. Plugins still run
+`android/` is a phone, tablet and Android TV client that plays locally with ExoPlayer instead of controlling mpv: the same home,
+search, title, library and settings pages, plus libass subtitles, a source picker and touch gestures on phones. Plugins still run
 on the desktop, so the server must be running and reachable on the LAN.
 
 ```bash
@@ -42,6 +42,20 @@ on the desktop, so the server must be running and reachable on the LAN.
 
 Open the app and scan the code from Settings → Pair a phone on the desktop, or enter the address and token by hand. The
 module is only part of the build when an Android SDK is found, so server-only checkouts build as before.
+
+On Android TV, launch Cloudstream from the TV launcher and enter the desktop address and token shown under the
+pairing code. TV mode uses a navigation rail, larger text and posters, focus outlines, and pickers that contain
+remote focus. Use the D-pad to move and Select to activate. During playback, Select/Up/Down reveals hidden controls,
+Left/Right seeks when controls are hidden, and the focused timeline seeks by the configured seek step. Media keys
+support play/pause, rewind/fast-forward and previous/next episode. Back closes a picker, hides playback controls,
+then returns to the title.
+
+TV UI tests run with television configuration on either a phone emulator or a TV image. Select a disposable emulator
+so tests do not run on your personal device:
+
+```bash
+ANDROID_SERIAL=emulator-5556 ./gradlew :android:connectedDebugAndroidTest
+```
 
 ## Develop
 
