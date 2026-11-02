@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { streamSearch } from "#lib/api";
   import Poster from "#lib/components/Poster.svelte";
   import { searchState } from "#lib/search-state.svelte";
   import type { SearchItem } from "#lib/types";
@@ -74,22 +73,33 @@
     </button>
   </form>
 
-  <div class="scroll-x filters" role="group" aria-label="Filter search results">
-    <button
-      class="chip"
-      class:on={st.type === null}
-      aria-pressed={st.type === null}
-      onclick={() => (st.type = null)}>All</button
-    >
-    {#each Object.keys(TYPE_GROUPS) as t (t)}
+  {#if provider}
+    <div class="search-scope">
+      <span>Searching in <strong>{provider}</strong></span>
+      <a href={`/search${submittedQuery ? `?${new URLSearchParams({ q: submittedQuery })}` : ""}`}
+        >Search all providers</a
+      >
+    </div>
+  {/if}
+
+  {#if submittedQuery}
+    <div class="scroll-x filters" role="group" aria-label="Filter search results">
       <button
         class="chip"
-        class:on={st.type === t}
-        aria-pressed={st.type === t}
-        onclick={() => (st.type = st.type === t ? null : t)}>{t}</button
+        class:on={st.type === null}
+        aria-pressed={st.type === null}
+        onclick={() => (st.type = null)}>All</button
       >
-    {/each}
-  </div>
+      {#each Object.keys(TYPE_GROUPS) as t (t)}
+        <button
+          class="chip"
+          class:on={st.type === t}
+          aria-pressed={st.type === t}
+          onclick={() => (st.type = st.type === t ? null : t)}>{t}</button
+        >
+      {/each}
+    </div>
+  {/if}
 
   <div class="search-status" role="status" aria-atomic="true">
     {#if submittedQuery}
@@ -106,7 +116,7 @@
     <h2 class="section-title">
       {r.provider} <span class="count">{r.items.length}</span>
     </h2>
-    <div class="scroll-x">
+    <div class="results-grid">
       {#each r.items as item (item.url)}
         <Poster
           provider={item.provider}
@@ -192,8 +202,26 @@
     padding: 0;
     font-size: 16px;
   }
+  .search-scope {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .search-scope strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .search-scope a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
   .filters {
-    margin-top: 16px;
+    margin-top: 20px;
     gap: 8px;
   }
   .search-submit {
@@ -227,6 +255,15 @@
     font-size: 13px;
     overflow-wrap: anywhere;
   }
+  .results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    gap: 24px 16px;
+  }
+  .results-grid :global(.card) {
+    --card-w: 100%;
+    min-width: 0;
+  }
   .search-empty {
     max-width: 480px;
     margin-inline: auto;
@@ -257,6 +294,11 @@
   }
   .errors div {
     overflow-wrap: anywhere;
+  }
+  @media (min-width: 900px) {
+    .results-grid {
+      grid-template-columns: repeat(auto-fill, minmax(164px, 1fr));
+    }
   }
   @media (max-width: 599px) {
     .search-submit {

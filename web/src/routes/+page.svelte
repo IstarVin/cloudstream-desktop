@@ -68,11 +68,19 @@
       <p>Your next watch starts here.</p>
     </div>
     {#if current}
-      <a
-        class="btn browse-search"
-        href={`/search?${new URLSearchParams({ provider: current.name })}`}
-        ><Search size={18} strokeWidth={1.8} aria-hidden="true" /> Search {current.name}</a
-      >
+      <form class="browse-search" action="/search" role="search">
+        <Search size={19} strokeWidth={1.8} aria-hidden="true" />
+        <input type="hidden" name="provider" value={current.name} />
+        <input
+          type="search"
+          name="q"
+          aria-label={`Search ${current.name}`}
+          placeholder={`Search ${current.name}`}
+          enterkeyhint="search"
+          required
+        />
+        <button type="submit" aria-label="Submit search">Search</button>
+      </form>
     {/if}
     {#if status.data?.building}<span class="building"
         ><span class="spinner"></span> Building plugins…</span
@@ -159,7 +167,51 @@
     margin-bottom: 0;
   }
   .browse-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: min(100%, 380px);
+    min-height: 48px;
     margin-left: auto;
+    padding: 4px 4px 4px 14px;
+    color: var(--muted);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+  }
+  .browse-search:focus-within {
+    border-color: var(--accent);
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .browse-search input {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+  }
+  .browse-search input:focus-visible {
+    outline: 0;
+  }
+  .browse-search button {
+    min-height: 38px;
+    padding: 0 12px;
+    border-radius: 5px;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .browse-search button:hover {
+    background: var(--surface-3);
+  }
+  @media (max-width: 599px) {
+    .browse-search {
+      width: 100%;
+      margin-left: 0;
+    }
   }
   .building {
     display: inline-flex;

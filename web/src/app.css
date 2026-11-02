@@ -27,7 +27,12 @@
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: var(--surface-3) var(--bg);
+  scrollbar-color: transparent transparent;
+}
+
+*:hover,
+*:focus-within {
+  scrollbar-color: var(--surface-3) transparent;
 }
 
 ::selection {
@@ -360,8 +365,13 @@ h3 {
 }
 
 .scroll-x::-webkit-scrollbar-thumb {
-  background: var(--surface-3);
+  background: transparent;
   border-radius: 4px;
+}
+
+.scroll-x:hover::-webkit-scrollbar-thumb,
+.scroll-x:focus-within::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
 }
 
 @media (min-width: 900px) {
