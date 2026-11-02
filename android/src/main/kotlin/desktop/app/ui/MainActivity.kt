@@ -6,16 +6,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -52,11 +42,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -133,13 +126,19 @@ private fun MainScaffold(onUnpair: () -> Unit) {
     )
     val entry by nav.currentBackStackEntryAsState()
     val dest = entry?.destination
-    fun open(route: Any) = nav.navigate(route) {
-        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-        launchSingleTop = true
-        restoreState = true
+    fun open(route: Any) {
+        if (nav.currentDestination?.hasRoute(route::class) == true) return
+        nav.navigate(route) {
+            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
     }
     val toTitle: (String, String) -> Unit = { provider, url -> nav.navigate(TitleRoute(provider, url)) }
     val wide = LocalWindowInfo.current.containerSize.width >= with(LocalDensity.current) { 600.dp.roundToPx() }
+    val slideDistance = with(LocalDensity.current) { 32.dp.roundToPx() }
+    val forwardOffset = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -slideDistance else slideDistance
+    val motion = remember(forwardOffset) { NavigationMotion(forwardOffset) }
 
     Scaffold(
         bottomBar = {
@@ -175,20 +174,14 @@ private fun MainScaffold(onUnpair: () -> Unit) {
                     )
                 }
             }
-            // Tabs fade through; opening a title or a collection pushes along the x axis (Material motion), and Back reverses it.
+            // Peer tabs crossfade; details move along a shared axis, reversed for Back.
             val pushes = { d: NavDestination? -> d?.hasRoute<TitleRoute>() == true || d?.hasRoute<SectionRoute>() == true }
             NavHost(
-                nav, startDestination = HomeRoute, modifier = Modifier.weight(1f).fillMaxHeight(),
-                enterTransition = {
-                    fadeIn(tween(210, delayMillis = 90, easing = LinearOutSlowInEasing)) +
-                        if (pushes(targetState.destination)) slideInHorizontally(tween(300, easing = FastOutSlowInEasing)) { it / 10 } else EnterTransition.None
-                },
-                exitTransition = { fadeOut(tween(90, easing = FastOutLinearInEasing)) },
-                popEnterTransition = { fadeIn(tween(210, delayMillis = 90, easing = LinearOutSlowInEasing)) },
-                popExitTransition = {
-                    fadeOut(tween(90, easing = FastOutLinearInEasing)) +
-                        if (pushes(initialState.destination)) slideOutHorizontally(tween(300, easing = FastOutSlowInEasing)) { it / 10 } else ExitTransition.None
-                },
+                nav, startDestination = HomeRoute, modifier = Modifier.weight(1f).fillMaxHeight().clipToBounds(),
+                enterTransition = { motion.enter(detail = pushes(targetState.destination)) },
+                exitTransition = { motion.exit(detail = pushes(targetState.destination)) },
+                popEnterTransition = { motion.enter(detail = pushes(initialState.destination), back = true) },
+                popExitTransition = { motion.exit(detail = pushes(initialState.destination), back = true) },
             ) {
                 composable<HomeRoute> {
                     HomeScreen(
