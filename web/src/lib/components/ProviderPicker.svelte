@@ -6,25 +6,31 @@
   let {
     providers,
     current,
-    contentType,
     onchoose,
-    onfilter,
   }: {
     providers: Provider[];
     current: Provider | undefined;
-    contentType: string;
     onchoose: (name: string) => void;
-    onfilter: (type: string) => void;
   } = $props();
 
   const id = $props.id();
   let open = $state(false);
   let query = $state("");
+  let contentTypes = $state<string[]>([]);
   let trigger: HTMLButtonElement;
   const filters = $derived(
     CONTENT_TYPES.filter((group) => providers.some((p) => matchesContentType(p.types, group.id))),
   );
-  const matching = $derived(providers.filter((p) => matchesContentType(p.types, contentType)));
+  const matching = $derived(
+    providers.filter(
+      (p) => !contentTypes.length || contentTypes.some((type) => matchesContentType(p.types, type)),
+    ),
+  );
+  const selectedLabels = $derived(
+    CONTENT_TYPES.filter((group) => contentTypes.includes(group.id))
+      .map((group) => group.label)
+      .join(", "),
+  );
   const visible = $derived(
     matching
       .filter((p) =>
@@ -55,8 +61,38 @@
     close();
   }
 
+  function readFilters(): string[] {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem("home-provider-categories") ?? "[]");
+      if (!Array.isArray(saved)) return [];
+      return CONTENT_TYPES.filter((group) => saved.includes(group.id)).map((group) => group.id);
+    } catch {
+      return contentTypes;
+    }
+  }
+
+  function setFilters(types: string[]) {
+    contentTypes = types;
+    try {
+      localStorage.setItem("home-provider-categories", JSON.stringify(types));
+    } catch {
+      // Storage may be unavailable; filtering still works for this session.
+    }
+  }
+
+  function toggleFilter(type: string) {
+    setFilters(
+      contentTypes.includes(type)
+        ? contentTypes.filter((selected) => selected !== type)
+        : [...contentTypes, type],
+    );
+  }
+
   function toggle() {
-    if (!open) query = "";
+    if (!open) {
+      query = "";
+      contentTypes = readFilters();
+    }
     open = !open;
   }
 </script>
@@ -123,23 +159,18 @@
         >
       </div>
       <div class="filters" role="group" aria-label="Filter sources by content type">
-        <button
-          class={["chip", { on: contentType === "all" }]}
-          aria-pressed={contentType === "all"}
-          onclick={() => onfilter("all")}>All</button
-        >
         {#each filters as filter (filter.id)}
           <button
-            class={["chip", { on: contentType === filter.id }]}
-            aria-pressed={contentType === filter.id}
-            onclick={() => onfilter(filter.id)}>{filter.label}</button
+            class={["chip", { on: contentTypes.includes(filter.id) }]}
+            aria-pressed={contentTypes.includes(filter.id)}
+            onclick={() => toggleFilter(filter.id)}>{filter.label}</button
           >
         {/each}
       </div>
       <div class="list-heading" role="status">
         {visible.length}
-        {visible.length === 1 ? "source" : "sources"}{contentType !== "all"
-          ? ` for ${CONTENT_TYPES.find((t) => t.id === contentType)?.label ?? contentType}`
+        {visible.length === 1 ? "source" : "sources"}{selectedLabels
+          ? ` for ${selectedLabels}`
           : " available"}
       </div>
       {#if visible.length}
@@ -179,12 +210,12 @@
         </ul>
       {:else}
         <div class="no-sources">
-          <p>No sources match{query.trim() ? ` “${query.trim()}”` : " this content type"}.</p>
+          <p>No sources match{query.trim() ? ` “${query.trim()}”` : " these categories"}.</p>
           <button
             class="btn"
             onclick={() => {
               query = "";
-              onfilter("all");
+              setFilters([]);
             }}>Reset filters</button
           >
         </div>

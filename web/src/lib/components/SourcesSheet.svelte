@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Captions, Check, TriangleAlert, X } from "@lucide/svelte";
+  import { Captions, Check, Download, TriangleAlert, X } from "@lucide/svelte";
   import { createQuery } from "@tanstack/svelte-query";
   import { api } from "../api";
   import { modal } from "../dialog";
@@ -36,6 +36,7 @@
   const visible = $derived(ranked.filter((l) => linkVisible(l, profile, failed, currentLink)));
   const groups = $derived(groupLinks(visible));
   const best = $derived(visible.find((l) => l.playable && !failed.has(l.id))?.id);
+  const canDownload = $derived(!!settings.data?.fetcharr_url && !!t?.meta);
   let subsOpen = $state(false);
 
   function toggleSub(id: string) {
@@ -126,47 +127,65 @@
           </div>
           {#each g.links as l (l.id)}
             {@const detailAt = l.name.indexOf(" · ")}
-            <button
-              class={[
-                "link",
-                {
-                  current: l.id === currentLink,
-                  failed: failed.has(l.id) && l.id !== currentLink,
-                },
-              ]}
-              disabled={!l.playable}
-              onclick={() => sources.pick(l, playingThis)}
-            >
-              <span class="lname">
-                <span class="row-top">
-                  <span class={["q", { hd: l.quality >= 720 && l.quality !== AUTO_QUALITY }]}
-                    >{l.qualityLabel}</span
-                  >
-                  <span class="type">{l.type} · priority {linkPriority(l, profile)}</span>
-                  {#if failed.has(l.id) && l.id !== currentLink}
-                    <span class="tag bad">Failed</span>
-                  {:else if l.id === currentLink}
-                    <span class="tag selected"
-                      ><Check size={14} strokeWidth={2} aria-hidden="true" /> Playing</span
+            <div class="link-row">
+              <button
+                class={[
+                  "link",
+                  {
+                    current: l.id === currentLink,
+                    failed: failed.has(l.id) && l.id !== currentLink,
+                  },
+                ]}
+                disabled={!l.playable}
+                onclick={() => sources.pick(l, playingThis)}
+              >
+                <span class="lname">
+                  <span class="row-top">
+                    <span class={["q", { hd: l.quality >= 720 && l.quality !== AUTO_QUALITY }]}
+                      >{l.qualityLabel}</span
                     >
-                  {:else if l.id === best}
-                    <span class="tag">Best</span>
+                    <span class="type">{l.type} · priority {linkPriority(l, profile)}</span>
+                    {#if failed.has(l.id) && l.id !== currentLink}
+                      <span class="tag bad">Failed</span>
+                    {:else if l.id === currentLink}
+                      <span class="tag selected"
+                        ><Check size={14} strokeWidth={2} aria-hidden="true" /> Playing</span
+                      >
+                    {:else if l.id === best}
+                      <span class="tag">Best</span>
+                    {/if}
+                  </span>
+                  <span class="link-name"
+                    >{detailAt === -1 ? l.name : l.name.slice(0, detailAt)}</span
+                  >
+                  {#if detailAt !== -1}
+                    <span class="details">{l.name.slice(detailAt + 3)}</span>
                   {/if}
+                  <span class="host"
+                    >{l.host}{l.proxied ? " · proxied" : ""}{l.drm
+                      ? l.playable
+                        ? " · ClearKey"
+                        : " · DRM (unsupported)"
+                      : ""}</span
+                  >
                 </span>
-                <span class="link-name">{detailAt === -1 ? l.name : l.name.slice(0, detailAt)}</span
+              </button>
+              {#if canDownload && l.downloadable}
+                <button
+                  class="dl"
+                  aria-label={`Send ${l.source} ${l.qualityLabel} to Fetcharr`}
+                  title="Send to Fetcharr"
+                  disabled={!!sources.sending}
+                  onclick={() => sources.download(l)}
                 >
-                {#if detailAt !== -1}
-                  <span class="details">{l.name.slice(detailAt + 3)}</span>
-                {/if}
-                <span class="host"
-                  >{l.host}{l.proxied ? " · proxied" : ""}{l.drm
-                    ? l.playable
-                      ? " · ClearKey"
-                      : " · DRM (unsupported)"
-                    : ""}</span
-                >
-              </span>
-            </button>
+                  {#if sources.sending === l.id}<span class="spinner"></span>{:else}<Download
+                      size={18}
+                      strokeWidth={1.8}
+                      aria-hidden="true"
+                    />{/if}
+                </button>
+              {/if}
+            </div>
           {/each}
         </div>
       {/each}
@@ -351,6 +370,31 @@
   }
   .link.failed .lname {
     opacity: 0.6;
+  }
+  .link-row {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 4px;
+  }
+  .link-row .link {
+    margin-bottom: 0;
+  }
+  .dl {
+    flex-shrink: 0;
+    width: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    color: var(--muted);
+    transition: background-color 150ms ease;
+  }
+  .dl:hover:not(:disabled) {
+    background: var(--surface-3);
+  }
+  .dl:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
   .link {
     width: 100%;
