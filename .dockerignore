@@ -1,0 +1,16 @@
+.git
+.github
+.gradle
+.kotlin
+.vscode
+.idea
+**/build
+**/node_modules
+local.properties
+keystore.properties
+*.jks
+*.keystore
+android
+postman
+testdata
+server/src/main/resources/web

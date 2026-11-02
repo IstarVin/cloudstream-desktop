@@ -1,0 +1,15 @@
+services:
+  cloudstream:
+    build: .
+    init: true            # reaps Chromium's child processes
+    shm_size: 1gb         # Chromium's shared memory
+    ports:
+      - "6969:6969"
+    volumes:
+      - config:/config
+      - data:/data
+    restart: unless-stopped
+
+volumes:
+  config:
+  data:

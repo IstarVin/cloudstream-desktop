@@ -11,6 +11,7 @@ plugins.dev_path = "/mnt/AJ/Projects/cloudstream-extensions-istarvin"
 plugins.build_on_start = true    # dev mode: run gradlew for enabled modules at startup
 plugins.disabled = ["Fetcharr", "StreamCorner"]   # (UI)
 
+mpv.enabled = true               # false on a headless host (Docker): never start mpv; play on a client (the Android app)
 mpv.path = "mpv"
 mpv.extra_args = []              # (UI) e.g. ["--profile=gpu-hq"]
 

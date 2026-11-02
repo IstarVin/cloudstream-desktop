@@ -42,6 +42,7 @@ class MpvManager(private val config: Config, private val settings: Settings) {
 
     suspend fun ensureRunning(): MpvIpc = mutex.withLock {
         ipc?.takeIf { running }?.let { return it }
+        if (!config.mpvEnabled) throw MpvError("mpv is disabled (mpv.enabled = false); play from the phone app instead")
         if (System.getenv("DISPLAY").isNullOrBlank() && System.getenv("WAYLAND_DISPLAY").isNullOrBlank()) throw NoDisplayException()
 
         socket.delete()

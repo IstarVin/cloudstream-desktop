@@ -1,0 +1,26 @@
+# cloudstream-desktop configuration for the Docker image. Restart the container after editing.
+# Settings marked (UI) can also be changed on the Settings page; the page's value wins once set there.
+
+bind = "0.0.0.0:6969"
+
+# No local extensions checkout in the container: plugins are downloaded from the published repo.
+plugins.source = "repo"
+plugins.repo_url = "https://raw.githubusercontent.com/NropVox/cloudstream-extensions-nropvox/builds/repo.json"   # (UI)
+plugins.disabled = ["Fetcharr", "StreamCorner"]   # (UI)
+
+# No display or audio in a container; play on a client (the Android app).
+mpv.enabled = false
+
+playback.autoplay_best = true    # (UI)
+playback.autoplay_next = true    # (UI)
+playback.proxy_all = false       # (UI)
+playback.skip_segments = "prompt" # (UI) prompt | auto | off
+
+ui.show_nsfw = false             # (UI)
+
+# Chromium, for sites behind Cloudflare or that need a real browser. It starts on demand.
+chromium.path = "chromium"
+chromium.mode = "headless"       # (UI) headless | xvfb; "headed" needs a display
+chromium.idle_minutes = 10
+
+network.max_requests_per_host = 2

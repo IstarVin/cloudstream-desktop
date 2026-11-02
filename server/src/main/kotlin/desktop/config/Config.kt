@@ -9,6 +9,8 @@ data class Config(
     val devPath: File,
     val buildOnStart: Boolean,
     val mpvPath: String,
+    /** False on a headless host (a container): the server never starts mpv, and playback stays with the clients' own players. */
+    val mpvEnabled: Boolean,
     val androidSdk: File?,
     val chromiumPath: String,
     val chromiumIdleMinutes: Long,
@@ -54,6 +56,7 @@ data class Config(
                 devPath = devPath,
                 buildOnStart = bool("plugins.build_on_start") ?: true,
                 mpvPath = str("mpv.path") ?: "mpv",
+                mpvEnabled = bool("mpv.enabled") ?: true,
                 androidSdk = str("android.sdk_path")?.let(::File),
                 chromiumPath = str("chromium.path") ?: "chromium",
                 chromiumIdleMinutes = long("chromium.idle_minutes") ?: 10L,
