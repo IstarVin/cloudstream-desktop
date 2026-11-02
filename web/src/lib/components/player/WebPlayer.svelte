@@ -17,6 +17,7 @@
     RotateCcw,
     SkipBack,
     SkipForward,
+    Square,
     Sun,
     Volume2,
     VolumeX,
@@ -742,6 +743,9 @@
             onseek={(t) => p.seekTo(t)}
           />
           <div class="actions">
+            <button class="icon" onclick={close} aria-label="Stop and close player" title="Stop"
+              ><Square size={20} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /></button
+            >
             <button
               class="icon"
               onclick={() => video && (video.muted = !video.muted)}

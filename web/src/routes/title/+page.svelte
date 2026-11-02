@@ -197,7 +197,7 @@
           {:else if d.kind === "torrent"}
             <span class="muted">Torrents aren't supported.</span>
           {/if}
-          <label class="bm">
+          <label class={["bm", { saved: !!d.bookmarked }]}>
             <span class="bm-icon"
               ><Bookmark
                 size={18}
@@ -401,12 +401,19 @@
   .actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 14px;
+    align-items: center;
+    gap: 12px;
+    margin-top: 18px;
+  }
+  .actions .btn {
+    min-height: 48px;
+    padding-inline: 20px;
+    line-height: 1.3;
   }
   .bm {
     position: relative;
-    display: inline-block;
+    display: inline-flex;
+    min-width: 0;
     max-width: 100%;
     color: var(--muted);
   }
@@ -426,15 +433,32 @@
   }
   .bm select {
     appearance: none;
+    display: inline-flex;
+    align-items: center;
+    width: 100%;
     max-width: 100%;
-    min-height: 44px;
-    padding: 9px 40px 9px 42px;
-    border-radius: 999px;
+    min-height: 48px;
+    padding: 12px 42px;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    line-height: 1.3;
     cursor: pointer;
-    transition: background 0.15s;
+    transition:
+      background-color 150ms,
+      border-color 150ms;
   }
   .bm select:hover {
     background: var(--surface-3);
+  }
+  .bm.saved {
+    color: var(--accent);
+  }
+  .bm.saved select {
+    background-color: var(--accent-soft);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .bm.saved select:hover {
+    background-color: color-mix(in srgb, var(--accent) 20%, var(--surface-2));
   }
   .plot {
     margin: 28px 0 0;
