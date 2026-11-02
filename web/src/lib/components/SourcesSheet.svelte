@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { Captions, Check, Download, TriangleAlert, X } from "@lucide/svelte";
+  import { Captions, Check, TriangleAlert, X } from "@lucide/svelte";
   import { createQuery } from "@tanstack/svelte-query";
   import { api } from "../api";
   import { modal } from "../dialog";
+  import { PLAY_TARGETS, playTarget } from "../play-target.svelte";
   import { player } from "../player.svelte";
   import {
     AUTO_QUALITY,
@@ -13,6 +14,7 @@
     sourceRecord,
   } from "../ranking";
   import { sources } from "../sources.svelte";
+  import { webPlayer } from "../web-player.svelte";
   import SourceProfiles from "./SourceProfiles.svelte";
 
   const settings = createQuery(() => ({
@@ -26,24 +28,41 @@
   );
 
   const t = $derived(sources.target);
+  /** Playing in this browser's player, or in the server's mpv. */
+  const inBrowser = $derived(!!t && webPlayer.playing(t.provider, t.data));
   const playingThis = $derived(
     !!t && player.state.provider === t.provider && player.state.data === t.data,
   );
-  const currentLink = $derived(playingThis ? player.state.link?.id : null);
-  const failed = $derived(new Set(playingThis ? (player.state.failedLinks ?? []) : []));
+  const currentLink = $derived(
+    inBrowser ? webPlayer.current?.id : playingThis ? player.state.link?.id : null,
+  );
+  const failed = $derived(
+    new Set(inBrowser ? webPlayer.failed : playingThis ? (player.state.failedLinks ?? []) : []),
+  );
+  const statusMessage = $derived(
+    inBrowser
+      ? webPlayer.status === "resolving"
+        ? webPlayer.message
+        : null
+      : playingThis && player.state.status === "resolving"
+        ? player.state.message
+        : null,
+  );
   // What auto-play would pick next: the best link that hasn't failed.
   const ranked = $derived([...sources.links].sort((a, b) => compareLinks(a, b, profile)));
   const visible = $derived(ranked.filter((l) => linkVisible(l, profile, failed, currentLink)));
   const groups = $derived(groupLinks(visible));
   const best = $derived(visible.find((l) => l.playable && !failed.has(l.id))?.id);
-  const canDownload = $derived(!!settings.data?.fetcharr_url && !!t?.meta);
   let subsOpen = $state(false);
 
   function toggleSub(id: string) {
     sources.chosenSubs = sources.chosenSubs.includes(id)
       ? sources.chosenSubs.filter((s) => s !== id)
       : [...sources.chosenSubs, id];
-    if (playingThis && sources.chosenSubs.includes(id)) player.command("sub-add", { id });
+    if (!sources.chosenSubs.includes(id)) return;
+    const sub = sources.subtitles.find((s) => s.id === id);
+    if (inBrowser && sub) void webPlayer.selectSubtitle(sub);
+    else if (playingThis) player.command("sub-add", { id });
   }
 </script>
 
@@ -77,6 +96,22 @@
         ><X size={22} strokeWidth={1.8} aria-hidden="true" /></button
       >
     </header>
+    <div class="play-on" role="radiogroup" aria-label="Play on">
+      <span class="muted">Play on</span>
+      {#each PLAY_TARGETS as target (target.id)}
+        {@const unavailable = target.id === "mpv" && !playTarget.mpvAvailable}
+        <button
+          class={["chip", { on: playTarget.effective === target.id }]}
+          role="radio"
+          aria-checked={playTarget.effective === target.id}
+          disabled={unavailable}
+          title={unavailable
+            ? "mpv isn't available on the server (headless host or mpv.enabled = false)"
+            : undefined}
+          onclick={() => (playTarget.override = target.id)}>{target.label}</button
+        >
+      {/each}
+    </div>
 
     <div class="list">
       <div class="profile-controls">
@@ -107,8 +142,8 @@
         {#if visible.length < sources.links.length}<span
             >{sources.links.length - visible.length} hidden by profile</span
           >{/if}
-        {#if playingThis && player.state.status === "resolving"}
-          <span class="accent">· {player.state.message}</span>
+        {#if statusMessage}
+          <span class="accent">· {statusMessage}</span>
         {/if}
       </div>
 
@@ -170,21 +205,6 @@
                   >
                 </span>
               </button>
-              {#if canDownload && l.downloadable}
-                <button
-                  class="dl"
-                  aria-label={`Send ${l.source} ${l.qualityLabel} to Fetcharr`}
-                  title="Send to Fetcharr"
-                  disabled={!!sources.sending}
-                  onclick={() => sources.download(l)}
-                >
-                  {#if sources.sending === l.id}<span class="spinner"></span>{:else}<Download
-                      size={18}
-                      strokeWidth={1.8}
-                      aria-hidden="true"
-                    />{/if}
-                </button>
-              {/if}
             </div>
           {/each}
         </div>
@@ -297,6 +317,21 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .play-on {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 16px 8px;
+    font-size: 13.5px;
+  }
+  .play-on .muted {
+    margin-right: 2px;
+  }
+  .play-on .chip:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
   .status {
     display: flex;
     align-items: center;
@@ -378,23 +413,6 @@
   }
   .link-row .link {
     margin-bottom: 0;
-  }
-  .dl {
-    flex-shrink: 0;
-    width: 44px;
-    display: grid;
-    place-items: center;
-    border-radius: var(--radius-sm);
-    background: var(--surface-2);
-    color: var(--muted);
-    transition: background-color 150ms ease;
-  }
-  .dl:hover:not(:disabled) {
-    background: var(--surface-3);
-  }
-  .dl:disabled {
-    opacity: 0.5;
-    cursor: default;
   }
   .link {
     width: 100%;

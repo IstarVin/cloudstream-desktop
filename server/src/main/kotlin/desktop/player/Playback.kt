@@ -164,7 +164,10 @@ class Playback(
 
     // ---- starting playback -------------------------------------------------------------------------------------
 
+    val mpvAvailable get() = mpv.available
+
     suspend fun play(req: PlayRequest) {
+        mpv.checkAvailable()
         val (p, r) = catalog.loadRaw(req.provider, req.url)
         val details = Mapper.details(p.api.name, r, p.nsfw, true)
         val item = if (details.movieData == req.data || details.episodes.isEmpty()) {

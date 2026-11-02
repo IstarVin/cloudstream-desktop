@@ -3,6 +3,8 @@
   import { api } from "#lib/api";
   import PluginSettings from "#lib/components/PluginSettings.svelte";
   import SourceProfiles from "#lib/components/SourceProfiles.svelte";
+  import { PLAY_TARGETS, playTarget, type PlayTarget } from "#lib/play-target.svelte";
+  import { prefs } from "#lib/player/prefs.svelte";
   import { toasts } from "#lib/toast.svelte";
   import type {
     BrowserMode,
@@ -373,6 +375,119 @@
             <h2 id="playback-heading">Playback</h2>
             <p>Choose how streams start and what happens next.</p>
           </div>
+          <h3>Player on this device</h3>
+          <label class="setting-row">
+            <span class="setting-copy"
+              ><b>Play episodes on</b>
+              <small class="muted"
+                >Saved in this browser only. You can still switch for one episode in the sources
+                panel.{status.data && !status.data.mpvAvailable
+                  ? " mpv isn't available on this server, so episodes play in the browser."
+                  : ""}</small
+              ></span
+            >
+            <select
+              value={playTarget.default}
+              onchange={(e) => playTarget.setDefault(e.currentTarget.value as PlayTarget)}
+            >
+              {#each PLAY_TARGETS as t (t.id)}
+                <option
+                  value={t.id}
+                  disabled={t.id === "mpv" && status.data != null && !status.data.mpvAvailable}
+                  >{t.label}</option
+                >
+              {/each}
+            </select>
+          </label>
+          <details class="advanced">
+            <summary>Browser player <ChevronDown size={17} aria-hidden="true" /></summary>
+            <div class="advanced-fields">
+              <label class="setting-row">
+                <span class="setting-copy"><b>Double-tap and arrow-key seek</b></span>
+                <select
+                  value={String(prefs.value.seekStep)}
+                  onchange={(e) => prefs.update({ seekStep: Number(e.currentTarget.value) })}
+                >
+                  {#each [5, 10, 15, 30] as n (n)}<option value={String(n)}>{n} seconds</option
+                    >{/each}
+                </select>
+              </label>
+              <label class="setting-row">
+                <span class="setting-copy"><b>Speed while holding the video</b></span>
+                <select
+                  value={String(prefs.value.holdSpeed)}
+                  onchange={(e) => prefs.update({ holdSpeed: Number(e.currentTarget.value) })}
+                >
+                  {#each [1.5, 2, 3] as n (n)}<option value={String(n)}>{n}×</option>{/each}
+                </select>
+              </label>
+              <label class="toggle">
+                <span
+                  ><b>Swipe sideways to seek</b><small>Drag across the video to scrub.</small></span
+                >
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={prefs.value.swipeSeek}
+                  onchange={(e) => prefs.update({ swipeSeek: e.currentTarget.checked })}
+                />
+              </label>
+              <label class="toggle">
+                <span
+                  ><b>Swipe up and down for volume and brightness</b><small
+                    >Touch screens: right half for volume, left half for brightness.</small
+                  ></span
+                >
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={prefs.value.volumeGesture && prefs.value.brightnessGesture}
+                  onchange={(e) =>
+                    prefs.update({
+                      volumeGesture: e.currentTarget.checked,
+                      brightnessGesture: e.currentTarget.checked,
+                    })}
+                />
+              </label>
+              <label class="setting-row">
+                <span class="setting-copy"><b>Subtitle size</b></span>
+                <select
+                  value={String(prefs.value.subtitleScale)}
+                  onchange={(e) => prefs.update({ subtitleScale: Number(e.currentTarget.value) })}
+                >
+                  {#each [0.75, 0.9, 1, 1.15, 1.3, 1.5] as n (n)}<option value={String(n)}
+                      >{Math.round(n * 100)}%</option
+                    >{/each}
+                </select>
+              </label>
+              <label class="toggle">
+                <span
+                  ><b>Subtitles on a dark box</b><small
+                    >Instead of an outline. ASS subtitles keep their own styling.</small
+                  ></span
+                >
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={prefs.value.subtitleBackground}
+                  onchange={(e) => prefs.update({ subtitleBackground: e.currentTarget.checked })}
+                />
+              </label>
+              <label class="toggle">
+                <span
+                  ><b>Picture-in-picture when leaving the tab</b><small
+                    >Keeps the video playing in a small window, where the browser supports it.</small
+                  ></span
+                >
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={prefs.value.autoPip}
+                  onchange={(e) => prefs.update({ autoPip: e.currentTarget.checked })}
+                />
+              </label>
+            </div>
+          </details>
           <h3>Auto-play</h3>
           <label class="toggle">
             <span

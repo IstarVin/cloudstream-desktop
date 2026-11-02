@@ -11,10 +11,13 @@ import type {
   PluginInfo,
   PluginSource,
   PrefEntry,
+  ProgressRequest,
   Provider,
   SearchItem,
   Settings,
+  SkipRange,
   Status,
+  Stream,
   Subtitle,
 } from "./types";
 
@@ -66,6 +69,34 @@ export const api = {
     startAt?: number;
   }) => post("/api/play", body),
   player: (cmd: string, body: Record<string, unknown> = {}) => post(`/api/player/${cmd}`, body),
+
+  // Playing in the browser: the same endpoints the phone app's player uses.
+  stream: (link: string) => get<Stream>(`/api/stream?${q({ link })}`),
+  subtitleUrl: (id: string) => `/api/subtitle?${q({ id })}`,
+  resume: (provider: string, data: string) =>
+    get<{ position?: number | null }>(`/api/resume?${q({ provider, data })}`),
+  progress: (req: ProgressRequest) => post("/api/progress", req),
+  /** Survives the page closing, for the last save. */
+  progressBeacon: (req: ProgressRequest) =>
+    navigator.sendBeacon?.(
+      "/api/progress",
+      new Blob([JSON.stringify(req)], { type: "application/json" }),
+    ),
+  reportLink: (link: string, success: boolean) => post("/api/links/report", { link, success }),
+  skips: (p: {
+    episode: number;
+    duration: number;
+    malId?: number | null;
+    aniListId?: number | null;
+  }) =>
+    get<SkipRange[]>(
+      `/api/skips?${q({
+        episode: String(p.episode),
+        duration: String(p.duration),
+        ...(p.malId != null ? { malId: String(p.malId) } : {}),
+        ...(p.aniListId != null ? { aniListId: String(p.aniListId) } : {}),
+      })}`,
+    ),
 
   history: () => get<HistoryEntry[]>("/api/history"),
   deleteHistory: (provider: string, url: string) =>

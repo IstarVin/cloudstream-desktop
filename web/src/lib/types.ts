@@ -163,6 +163,29 @@ export interface Subtitle {
   id: string;
   lang: string;
   url: string;
+  /** Guessed from the URL; `/api/subtitle` sniffs the real one. */
+  format?: SubtitleFormat | null;
+}
+
+export type SubtitleFormat = "ass" | "vtt" | "srt" | "ttml";
+
+/** A link made playable for a player in the browser: usually a same-origin `/proxy/...` path. */
+export interface Stream {
+  url: string;
+  type: string;
+  headers: Record<string, string>;
+  proxied: boolean;
+  clearKey?: { kid: string; key: string } | null;
+}
+
+export interface ProgressRequest {
+  provider: string;
+  url: string;
+  data: string;
+  watched?: boolean;
+  position?: number;
+  duration?: number;
+  label?: string | null;
 }
 
 export interface Track {
@@ -307,6 +330,8 @@ export interface Status {
   loaded: number;
   providers: number;
   mpvRunning: boolean;
+  /** Whether the server can play in mpv (off on a headless host such as Docker). */
+  mpvAvailable: boolean;
   authed: boolean;
   loopback: boolean;
 }

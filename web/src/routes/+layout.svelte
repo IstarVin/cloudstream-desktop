@@ -4,6 +4,8 @@
   import NowPlaying from "#lib/components/NowPlaying.svelte";
   import Pairing from "#lib/components/Pairing.svelte";
   import SourcesSheet from "#lib/components/SourcesSheet.svelte";
+  import WebPlayer from "#lib/components/player/WebPlayer.svelte";
+  import { playTarget } from "#lib/play-target.svelte";
   import { player } from "#lib/player.svelte";
   import { toasts } from "#lib/toast.svelte";
   import { rememberTab, restoreScroll, saveScroll, tabUrl } from "#lib/view-state";
@@ -34,7 +36,10 @@
     .authStatus()
     .then((s) => {
       authed = s.authed;
-      if (s.authed) player.start();
+      if (s.authed) {
+        player.start();
+        void playTarget.refresh();
+      }
     })
     .catch(() => (authed = false));
 
@@ -90,6 +95,7 @@
       </main>
     </div>
     <NowPlaying />
+    <WebPlayer />
     <SourcesSheet />
   </QueryClientProvider>
 {:else}

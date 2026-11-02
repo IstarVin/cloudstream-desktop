@@ -28,7 +28,7 @@ import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
-class MpvError(message: String) : IOException(message)
+open class MpvError(message: String) : IOException(message)
 
 /** mpv's JSON IPC over its unix socket: commands with request ids, and a stream of events. */
 class MpvIpc private constructor(private val channel: SocketChannel) {

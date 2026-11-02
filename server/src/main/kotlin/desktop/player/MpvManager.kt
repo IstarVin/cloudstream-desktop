@@ -14,6 +14,8 @@ class NoDisplayException : Exception(
         "Run `systemctl --user import-environment DISPLAY WAYLAND_DISPLAY` and restart the service."
 )
 
+class MpvUnavailableException(message: String) : MpvError(message)
+
 /**
  * Owns the one mpv process: started on the first play, kept idle between items, and started again on the next play
  * after the user closes it (never restarted on its own).
@@ -40,10 +42,28 @@ class MpvManager(private val config: Config, private val settings: Settings) {
         }
     }
 
+    private val hasDisplay get() = !System.getenv("DISPLAY").isNullOrBlank() || !System.getenv("WAYLAND_DISPLAY").isNullOrBlank()
+
+    /** The configured binary as a path, or found on `PATH`. */
+    private val binaryFound by lazy {
+        val path = File(config.mpvPath)
+        if (path.isAbsolute || config.mpvPath.contains(File.separatorChar)) return@lazy path.canExecute()
+        System.getenv("PATH").orEmpty().split(File.pathSeparator).any { File(it, config.mpvPath).canExecute() }
+    }
+
+    /** Whether mpv can be started here at all; clients without it play on their own player. */
+    val available get() = config.mpvEnabled && hasDisplay && binaryFound
+
+    /** Throws when playing in mpv can't work on this host. */
+    fun checkAvailable() {
+        if (!config.mpvEnabled) throw MpvUnavailableException("mpv is disabled (mpv.enabled = false); play in the browser or the phone app instead")
+        if (!hasDisplay) throw NoDisplayException()
+        if (!binaryFound) throw MpvUnavailableException("mpv isn't installed (mpv.path = ${config.mpvPath}); play in the browser or the phone app instead")
+    }
+
     suspend fun ensureRunning(): MpvIpc = mutex.withLock {
         ipc?.takeIf { running }?.let { return it }
-        if (!config.mpvEnabled) throw MpvError("mpv is disabled (mpv.enabled = false); play from the phone app instead")
-        if (System.getenv("DISPLAY").isNullOrBlank() && System.getenv("WAYLAND_DISPLAY").isNullOrBlank()) throw NoDisplayException()
+        checkAvailable()
 
         socket.delete()
         val cmd = buildList {

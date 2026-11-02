@@ -287,6 +287,8 @@ data class StatusDto(
     val loaded: Int,
     val providers: Int,
     val mpvRunning: Boolean,
+    /** Whether the server can play in mpv (off on a headless host such as Docker). */
+    val mpvAvailable: Boolean = false,
     val authed: Boolean,
     val loopback: Boolean,
 )

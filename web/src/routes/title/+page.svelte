@@ -68,6 +68,7 @@
       data,
       title: det.name,
       label,
+      details: det,
     });
   }
 

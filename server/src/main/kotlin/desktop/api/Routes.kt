@@ -134,6 +134,7 @@ fun Route.apiRoutes(s: Services) {
                 loaded = plugins.count { it.status == PluginHost.Status.LOADED },
                 providers = s.catalog.visibleProviders().size,
                 mpvRunning = s.playback.state.value.mpvRunning,
+                mpvAvailable = s.playback.mpvAvailable,
                 authed = true,
                 loopback = s.auth.isLoopback(call),
             ))

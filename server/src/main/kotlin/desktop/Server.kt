@@ -16,6 +16,7 @@ import desktop.links.ClientStreams
 import desktop.links.LinkService
 import desktop.links.StreamProxy
 import desktop.player.MpvManager
+import desktop.player.MpvUnavailableException
 import desktop.player.NoDisplayException
 import desktop.player.Playback
 import desktop.player.SkipTimes
@@ -67,6 +68,7 @@ fun serve(config: Config, db: Database, settings: Settings, host: PluginHost, sc
             exception<IllegalArgumentException> { call, e -> call.respond(HttpStatusCode.BadRequest, mapOf("error" to e.message)) }
             exception<BadRequestException> { call, e -> call.respond(HttpStatusCode.BadRequest, mapOf("error" to (e.cause?.message ?: e.message))) }
             exception<NoDisplayException> { call, e -> call.respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to e.message)) }
+            exception<MpvUnavailableException> { call, e -> call.respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to e.message)) }
             exception<ChromiumUnavailableException> { call, e -> call.respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to e.message)) }
             exception<PluginFailure> { call, e -> call.respond(HttpStatusCode.BadGateway, mapOf("error" to e.message)) }
             exception<TimeoutCancellationException> { call, _ -> call.respond(HttpStatusCode.GatewayTimeout, mapOf("error" to "The provider took too long")) }
