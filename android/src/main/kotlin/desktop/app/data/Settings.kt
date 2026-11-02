@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import desktop.player.SourceProfile
 import kotlinx.coroutines.flow.Flow
@@ -61,6 +62,7 @@ class Prefs(private val context: Context) {
         val server = stringPreferencesKey("server")
         val homeProvider = stringPreferencesKey("home_provider")
         val homeType = stringPreferencesKey("home_type")
+        val homeCategories = stringSetPreferencesKey("home_categories")
         val seekStep = intPreferencesKey("seek_step")
         val holdSpeed = floatPreferencesKey("hold_speed")
         val subtitleScale = floatPreferencesKey("subtitle_scale")
@@ -83,8 +85,14 @@ class Prefs(private val context: Context) {
 
     val homeProvider: Flow<String?> = context.store.data.map { it[K.homeProvider] }
     suspend fun setHomeProvider(name: String) = context.store.edit { it[K.homeProvider] = name }
-    val homeType: Flow<String> = context.store.data.map { it[K.homeType] ?: "all" }
-    suspend fun setHomeType(id: String) = context.store.edit { it[K.homeType] = id }
+    // Preserve the old single-category preference until the user changes their selection.
+    val homeCategories: Flow<Set<String>> = context.store.data.map {
+        it[K.homeCategories] ?: setOfNotNull(it[K.homeType]?.takeUnless { id -> id == "all" })
+    }
+    suspend fun setHomeCategories(ids: Set<String>) = context.store.edit {
+        it[K.homeCategories] = ids
+        it.remove(K.homeType)
+    }
 
     val player: Flow<PlayerPrefs> = context.store.data.map { p -> p.toPlayerPrefs() }
 

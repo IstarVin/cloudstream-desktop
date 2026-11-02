@@ -1,8 +1,24 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     kotlin("plugin.compose")
     kotlin("plugin.serialization")
 }
+
+// Release signing: keystore.properties (storeFile, storePassword, keyAlias, keyPassword)
+// in the android/ or root dir, with env vars (ANDROID_KEYSTORE_FILE, ANDROID_KEYSTORE_PASSWORD,
+// ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD) taking precedence.
+val keystoreProps = Properties().apply {
+    listOf(file("keystore.properties"), rootProject.file("keystore.properties"))
+        .firstOrNull { it.isFile }
+        ?.inputStream()?.use { load(it) }
+}
+
+fun signingValue(env: String, prop: String): String? =
+    System.getenv(env)?.takeIf { it.isNotBlank() } ?: keystoreProps.getProperty(prop)
+
+val releaseStoreFile = signingValue("ANDROID_KEYSTORE_FILE", "storeFile")
 
 android {
     namespace = "desktop.app"
@@ -16,11 +32,26 @@ android {
         versionName = "0.1"
     }
 
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = signingValue("ANDROID_KEYSTORE_PASSWORD", "storePassword")
+                keyAlias = signingValue("ANDROID_KEY_ALIAS", "keyAlias")
+                keyPassword = signingValue("ANDROID_KEY_PASSWORD", "keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
-            // Sideloaded builds: signed with the debug key unless a release config is added.
-            signingConfig = signingConfigs.getByName("debug")
+            // AGP 9.3+ DSL: R8 code + resource optimization with the default Android keep rules.
+            // App-specific keep rules go in src/main/keepRules/*.keep.
+            optimization {
+                enable = true
+            }
+            // Falls back to the debug key when no release keystore is configured.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
@@ -42,6 +73,7 @@ kotlin {
 }
 
 dependencies {
+    testImplementation(libs.junit)
     implementation(project(":shared"))
 
     implementation(libs.androidx.core)

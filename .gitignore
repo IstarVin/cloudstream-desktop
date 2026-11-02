@@ -6,3 +6,8 @@ build/
 local.properties
 node_modules/
 /server/src/main/resources/web/
+
+# Android signing
+keystore.properties
+*.jks
+*.keystore

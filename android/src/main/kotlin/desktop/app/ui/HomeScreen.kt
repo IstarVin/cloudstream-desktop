@@ -1,10 +1,8 @@
 package desktop.app.ui
 
 import android.app.Application
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,22 +10,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.FilterChip
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -37,24 +29,26 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil3.compose.AsyncImage
 import desktop.api.ContinueEntry
 import desktop.api.HomePage
 import desktop.api.HomeSection
 import desktop.api.ProviderDto
 import desktop.api.StatusDto
 import desktop.app.app
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -66,7 +60,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     val providers = MutableStateFlow<Load<List<ProviderDto>>>(Load.Loading)
     val provider = MutableStateFlow<String?>(null)
-    val typeFilter = MutableStateFlow("all")
+    val categories = MutableStateFlow<Set<String>>(emptySet())
+    private var sectionJob: Job? = null
+    private val pageJobs = mutableListOf<Job>()
     val sections = MutableStateFlow<Load<List<HomeSection>>>(Load.Loading)
     val pages = mutableStateMapOf<Int, Load<HomePage>>()
     val continueWatching = MutableStateFlow<List<ContinueEntry>>(emptyList())
@@ -74,7 +70,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val refreshing = MutableStateFlow(false)
 
     init {
-        viewModelScope.launch { typeFilter.value = prefs.homeType.first() }
+        viewModelScope.launch { categories.value = ContentTypes.normalize(prefs.homeCategories.first()) }
         load()
         // Plugins build in the background after the server starts; show the progress and reload when they're in.
         viewModelScope.launch {
@@ -105,6 +101,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun choose(name: String?, remember: Boolean = true) {
+        sectionJob?.cancel()
+        pageJobs.forEach { it.cancel() }
+        pageJobs.clear()
         provider.value = name
         pages.clear()
         if (name == null) {
@@ -113,27 +112,31 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (remember) viewModelScope.launch { prefs.setHomeProvider(name) }
         sections.value = Load.Loading
-        viewModelScope.launch {
+        sectionJob = viewModelScope.launch {
             sections.value = try {
                 Load.Ok(api.homeSections(name))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Load.Failed(e.userMessage())
             }
         }
     }
 
-    fun setType(id: String) {
-        typeFilter.value = id
-        viewModelScope.launch { prefs.setHomeType(id) }
+    fun setCategories(ids: Set<String>) {
+        categories.value = ContentTypes.normalize(ids)
+        viewModelScope.launch { prefs.setHomeCategories(categories.value) }
     }
 
     fun loadSection(index: Int) {
         val p = provider.value ?: return
-        if (pages[index] is Load.Ok) return
+        if (pages[index] is Load.Ok || pages[index] == Load.Loading) return
         pages[index] = Load.Loading
-        viewModelScope.launch {
+        pageJobs += viewModelScope.launch {
             pages[index] = try {
                 Load.Ok(api.home(p, index))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Load.Failed(e.userMessage())
             }
@@ -142,7 +145,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 }
 
 @Composable
-fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, String, String) -> Unit) {
+fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, String, String) -> Unit, onManage: () -> Unit) {
     val vm: HomeViewModel = viewModel()
     val providers by vm.providers.collectAsState()
     val provider by vm.provider.collectAsState()
@@ -150,27 +153,21 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
     val cont by vm.continueWatching.collectAsState()
     val status by vm.status.collectAsState()
     val refreshing by vm.refreshing.collectAsState()
-    val typeFilter by vm.typeFilter.collectAsState()
-    var picking by remember { mutableStateOf(false) }
+    val categories by vm.categories.collectAsState()
+    var picking by rememberSaveable { mutableStateOf(false) }
 
     PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.load() }, modifier = Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
-                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Home", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    val current = (providers as? Load.Ok)?.value?.firstOrNull { it.name == provider }
-                    Row(
-                        Modifier.clip(RoundedCornerShape(20.dp)).background(Palette.surface2).clickable { picking = true }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        current?.iconUrl?.let {
-                            AsyncImage(imageRequest(it), null, Modifier.size(20.dp).clip(CircleShape))
-                            Spacer(Modifier.size(8.dp))
-                        }
-                        Text(provider ?: "Choose provider", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Icon(Icons.Filled.ArrowDropDown, null)
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Home", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f).semantics { heading() })
+                        TextButton(onClick = onManage) { Text("Manage plugins") }
                     }
+                    SourceSelector(
+                        current = (providers as? Load.Ok)?.value?.firstOrNull { it.name == provider },
+                        onClick = { picking = true },
+                    )
                 }
             }
             status?.takeIf { it.building }?.let { s ->
@@ -178,14 +175,14 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
                     Text(
                         "Loading plugins… ${s.loaded} of ${s.plugins} ready",
                         color = Palette.muted,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                     )
                 }
             }
             if (cont.isNotEmpty()) {
-                item { SectionTitle("Continue watching", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp)) }
+                item { SectionTitle("Continue watching", Modifier.padding(start = 20.dp, top = 20.dp, bottom = 12.dp)) }
                 item {
-                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(cont, key = { it.provider + it.url }) { c ->
                             Poster(
                                 c.title, c.poster,
@@ -199,12 +196,20 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
             }
             when (val p = providers) {
                 is Load.Failed -> item { ErrorBox(p.message, onRetry = { vm.load() }) }
-                Load.Loading -> item { Loading() }
+                Load.Loading -> item { CatalogLoading() }
                 is Load.Ok -> when (val s = sections) {
-                    Load.Loading -> item { Loading() }
+                    Load.Loading -> item { CatalogLoading() }
                     is Load.Failed -> item { ErrorBox(s.message, onRetry = { vm.choose(provider) }) }
                     is Load.Ok -> {
-                        if (s.value.isEmpty() && provider == null) item { ErrorBox("No provider has a home page.") }
+                        if (s.value.isEmpty()) item {
+                            EmptyState(
+                                Icons.Filled.VideoLibrary,
+                                if (provider == null) "Start with a source" else "No collections available",
+                                if (provider == null) "Enable a plugin with a home page to start browsing." else "This source has no home collections right now. Try another source.",
+                                actionLabel = if (provider == null) "Manage plugins" else "Change source",
+                                onAction = if (provider == null) onManage else ({ picking = true }),
+                            )
+                        }
                         items(s.value, key = { "section-${it.index}" }) { section ->
                             HomeSectionRows(vm, section, onTitle = onTitle, onMore = { row -> onSection(provider!!, section.index, row, section.name) })
                         }
@@ -218,8 +223,9 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
         ProviderPicker(
             providers = (providers as? Load.Ok)?.value?.filter { it.hasMainPage }.orEmpty(),
             selected = provider,
-            typeFilter = typeFilter,
-            onType = vm::setType,
+            categories = categories,
+            onCategories = vm::setCategories,
+            onManage = { picking = false; onManage() },
             onDismiss = { picking = false },
             onPick = {
                 picking = false
@@ -233,25 +239,25 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
 private fun HomeSectionRows(vm: HomeViewModel, section: HomeSection, onTitle: (String, String) -> Unit, onMore: (String) -> Unit) {
     LaunchedEffect(section.index, vm.provider.collectAsState().value) { vm.loadSection(section.index) }
     when (val page = vm.pages[section.index]) {
-        null, Load.Loading -> Column(Modifier.padding(16.dp)) {
+        null, Load.Loading -> Column(Modifier.padding(20.dp)) {
             SectionTitle(section.name)
-            Spacer(Modifier.height(8.dp))
-            Box(Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(10.dp)).background(Palette.surface))
+            PosterPlaceholders()
         }
-        is Load.Failed -> Column(Modifier.padding(16.dp)) {
+        is Load.Failed -> Column(Modifier.padding(20.dp)) {
             SectionTitle(section.name)
             Text(page.message, color = Palette.muted, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { vm.loadSection(section.index) }) { Text("Retry") }
         }
         is Load.Ok -> page.value.rows.filter { it.items.isNotEmpty() }.forEach { row ->
-            Column(Modifier.padding(top = 12.dp)) {
+            Column(Modifier.padding(top = 20.dp)) {
                 Row(
-                    Modifier.fillMaxWidth().clickable { onMore(row.name) }.padding(horizontal = 16.dp, vertical = 6.dp),
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button, onClickLabel = "See all ${row.name}") { onMore(row.name) }.padding(horizontal = 20.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     SectionTitle(row.name, Modifier.weight(1f))
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "See all")
                 }
-                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(row.items, key = { it.provider + it.url }) { item ->
                         Poster(
                             item.name, item.poster,
@@ -265,57 +271,6 @@ private fun HomeSectionRows(vm: HomeViewModel, section: HomeSection, onTitle: (S
                     }
                 }
             }
-        }
-    }
-}
-
-/** The web UI's provider picker: search by name, plugin or language, filter by content type. */
-@Composable
-fun ProviderPicker(
-    providers: List<ProviderDto>,
-    selected: String?,
-    typeFilter: String,
-    onType: (String) -> Unit,
-    onDismiss: () -> Unit,
-    onPick: (String) -> Unit,
-) {
-    var query by remember { mutableStateOf("") }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(horizontal = 16.dp)) {
-            OutlinedTextField(query, { query = it }, placeholder = { Text("Search providers") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
-                item { FilterChip(typeFilter == "all", { onType("all") }, label = { Text("All") }) }
-                items(ContentTypes.groups.filter { g -> providers.any { ContentTypes.matches(it.types, g.id) } }) { g ->
-                    FilterChip(typeFilter == g.id, { onType(g.id) }, label = { Text(g.label) })
-                }
-            }
-        }
-        val q = query.trim().lowercase()
-        val shown = providers.filter { p ->
-            ContentTypes.matches(p.types, typeFilter) &&
-                (q.isEmpty() || listOf(p.name, p.plugin, p.lang).any { it.lowercase().contains(q) })
-        }
-        LazyColumn(Modifier.fillMaxWidth().height(480.dp)) {
-            items(shown, key = { it.name }) { p ->
-                Row(
-                    Modifier.fillMaxWidth().clickable { onPick(p.name) }.padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.size(32.dp).clip(CircleShape).background(Palette.surface2), contentAlignment = Alignment.Center) {
-                        val req = imageRequest(p.iconUrl)
-                        if (req != null) AsyncImage(req, null, Modifier.size(32.dp)) else Text(p.name.take(1))
-                    }
-                    Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                        Text(p.name)
-                        Text(
-                            "${p.lang.uppercase()} · ${ContentTypes.labels(p.types)}",
-                            style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    if (p.name == selected) Icon(Icons.Filled.Check, null, tint = Palette.accent)
-                }
-            }
-            if (shown.isEmpty()) item { TextButton(onClick = { query = ""; onType("all") }) { Text("Clear filters") } }
         }
     }
 }

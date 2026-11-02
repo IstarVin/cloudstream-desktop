@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -92,10 +93,10 @@ fun SectionScreen(provider: String, section: Int, row: String, name: String, onT
         },
     ) { padding ->
         LazyVerticalGrid(
-            GridCells.Adaptive(110.dp),
+            GridCells.Adaptive(100.dp),
             state = grid,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = 24.dp),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = padding.calculateTopPadding() + 8.dp, bottom = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -105,6 +106,9 @@ fun SectionScreen(provider: String, section: Int, row: String, name: String, onT
             }
             if (loading) item(span = { GridItemSpan(maxLineSpan) }) { Loading() }
             error?.let { item(span = { GridItemSpan(maxLineSpan) }) { ErrorBox(it, onRetry = { error = null; more() }) } }
+            if (!loading && error == null && pages.isNotEmpty() && items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                EmptyState(Icons.Filled.VideoLibrary, "No titles available", "This collection is empty right now. Go back to browse another collection.", actionLabel = "Back to browsing", onAction = onBack)
+            }
         }
     }
 }

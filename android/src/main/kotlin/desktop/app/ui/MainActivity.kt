@@ -1,24 +1,33 @@
 package desktop.app.ui
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import android.graphics.Color
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,6 +39,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -111,10 +123,11 @@ private fun MainScaffold(onUnpair: () -> Unit) {
         restoreState = true
     }
     val toTitle: (String, String) -> Unit = { provider, url -> nav.navigate(TitleRoute(provider, url)) }
+    val wide = LocalWindowInfo.current.containerSize.width >= with(LocalDensity.current) { 600.dp.roundToPx() }
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
+            if (!wide) NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                 tabs.forEach { tab ->
                     val selected = dest?.hasRoute(tab.route::class) == true
                     NavigationBarItem(
@@ -127,23 +140,40 @@ private fun MainScaffold(onUnpair: () -> Unit) {
             }
         },
     ) { padding ->
-        NavHost(nav, startDestination = HomeRoute, modifier = Modifier.padding(padding)) {
-            composable<HomeRoute> {
-                HomeScreen(
-                    onTitle = toTitle,
-                    onSection = { p, s, row, name -> nav.navigate(SectionRoute(p, s, row, name)) },
-                )
+        Row(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
+            if (wide) NavigationRail(
+                modifier = Modifier.fillMaxHeight().verticalScroll(rememberScrollState()),
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                header = { Icon(Icons.Filled.VideoLibrary, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 16.dp).size(28.dp)) },
+            ) {
+                tabs.forEach { tab ->
+                    NavigationRailItem(
+                        selected = dest?.hasRoute(tab.route::class) == true,
+                        onClick = { open(tab.route) },
+                        icon = { Icon(tab.icon, null) },
+                        label = { Text(tab.label) },
+                    )
+                }
             }
-            composable<SearchRoute> { SearchScreen(initial = it.toRoute<SearchRoute>().q, onTitle = toTitle) }
-            composable<LibraryRoute> { LibraryScreen(onTitle = toTitle) }
-            composable<SettingsRoute> { SettingsScreen(onUnpair = onUnpair) }
-            composable<SectionRoute> {
-                val r = it.toRoute<SectionRoute>()
-                SectionScreen(r.provider, r.section, r.row, r.name, onTitle = toTitle, onBack = { nav.popBackStack() })
-            }
-            composable<TitleRoute> {
-                val r = it.toRoute<TitleRoute>()
-                TitleScreen(r.provider, r.url, onTitle = toTitle, onBack = { nav.popBackStack() })
+            NavHost(nav, startDestination = HomeRoute, modifier = Modifier.weight(1f).fillMaxHeight()) {
+                composable<HomeRoute> {
+                    HomeScreen(
+                        onTitle = toTitle,
+                        onSection = { p, s, row, name -> nav.navigate(SectionRoute(p, s, row, name)) },
+                        onManage = { open(SettingsRoute) },
+                    )
+                }
+                composable<SearchRoute> { SearchScreen(initial = it.toRoute<SearchRoute>().q, onTitle = toTitle) }
+                composable<LibraryRoute> { LibraryScreen(onTitle = toTitle, onBrowse = { open(HomeRoute) }) }
+                composable<SettingsRoute> { SettingsScreen(onUnpair = onUnpair) }
+                composable<SectionRoute> {
+                    val r = it.toRoute<SectionRoute>()
+                    SectionScreen(r.provider, r.section, r.row, r.name, onTitle = toTitle, onBack = { nav.popBackStack() })
+                }
+                composable<TitleRoute> {
+                    val r = it.toRoute<TitleRoute>()
+                    TitleScreen(r.provider, r.url, onTitle = toTitle, onBack = { nav.popBackStack() })
+                }
             }
         }
     }

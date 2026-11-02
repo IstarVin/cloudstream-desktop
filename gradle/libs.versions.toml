@@ -19,6 +19,7 @@ camerax = "1.6.2"
 ass = "0.5.1"
 
 [libraries]
+junit = { module = "junit:junit", version = "4.13.2" }
 dex2jar = { module = "de.femtopedia.dex2jar:dex-translator", version.ref = "dex2jar" }
 cloudstream-library = { module = "com.github.recloudstream.cloudstream:library-jvm", version.ref = "cloudstream" }
 nicehttp = { module = "com.github.Blatzar:NiceHttp", version.ref = "nicehttp" }
