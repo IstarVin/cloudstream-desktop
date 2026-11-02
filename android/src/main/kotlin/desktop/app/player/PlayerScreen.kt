@@ -177,7 +177,7 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
     val scrubber = remember(player) { Scrubber(player) }
     DisposableEffect(scrubber) {
         // Leaving mid-scrub (stop, rotation) must not leave the player muted and paused.
-        onDispose { if (scrubTarget != null) scrubber.end(scrubTarget!!) }
+        onDispose { scrubTarget?.let(scrubber::end) }
     }
 
     val handler = remember(player, prefs) {
@@ -223,8 +223,9 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
             override fun onSeek(fraction: Float) {
                 if (scrubTarget == null) return
                 // A seek per touch event: scrubbing mode makes that cheap, and the picture follows the finger.
-                scrubTarget = scrubPosition(scrubFrom, fraction, player.duration)
-                scrubber.seek(scrubTarget!!)
+                val target = scrubPosition(scrubFrom, fraction, player.duration)
+                scrubTarget = target
+                scrubber.seek(target)
             }
 
             override fun onSeekEnd() {
