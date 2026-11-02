@@ -19,6 +19,7 @@ fun signingValue(env: String, prop: String): String? =
     System.getenv(env)?.takeIf { it.isNotBlank() } ?: keystoreProps.getProperty(prop)
 
 val releaseStoreFile = signingValue("ANDROID_KEYSTORE_FILE", "storeFile")
+val jvmVersion = libs.versions.jvm.get().toInt()
 
 android {
     namespace = "desktop.app"
@@ -57,8 +58,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.toVersion(jvmVersion)
+        targetCompatibility = JavaVersion.toVersion(jvmVersion)
     }
 
     buildFeatures {
@@ -67,7 +68,7 @@ android {
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(jvmVersion)
     compilerOptions {
         optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
     }
