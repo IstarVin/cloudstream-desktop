@@ -4,7 +4,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -58,7 +58,9 @@ class CdpConnection private constructor() : AutoCloseable {
         try {
             // java.net.http.WebSocket allows one outstanding send at a time.
             sendLock.withLock { socket.sendText(message.toString(), true).await() }
-            return withTimeout(timeoutMs) { reply.await() }
+            // Not withTimeout: its TimeoutCancellationException would silently cancel a caller's async instead of failing it.
+            return withTimeoutOrNull(timeoutMs) { reply.await() }
+                ?: throw CdpException("Chromium didn't answer $method in ${timeoutMs / 1000} s")
         } finally {
             pending.remove(id)
         }

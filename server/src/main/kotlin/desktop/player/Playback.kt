@@ -297,7 +297,7 @@ class Playback(
             link.clearKey?.let { put("demuxer-lavf-o", "cenc_decryption_key=$it") }
             sampleAesKey?.let { put("demuxer-lavf-o", "seg_format_options=decryption_key=$it") }
         }
-        log.info("Playing {} [{}] {} via {}", l.source, Mapper.qualityLabel(l.quality), if (needsProxy) "proxy" else "direct", l.url)
+        log.info("Playing {} [{}] {} via {}", l.source, Mapper.qualityLabel(l.quality), if (needsProxy) "proxy" else "direct", brief(l.url))
         _state.update { it.copy(status = "resolving", message = "Loading ${l.source} ${Mapper.qualityLabel(l.quality)}…", link = links.dto(link), position = startAt ?: 0.0, duration = 0.0, skip = null) }
         try {
             val reply = ipc.command("loadfile", url, "replace", -1, opts)
@@ -646,4 +646,11 @@ class Playback(
 
     /** Current link set for the sources sheet (the item being played), if any. */
     fun currentSet(): LinkSet? = session?.set
+
+    /** [url] short enough for the log: no query, and a long path cut (proxy URLs pack signed headers into it). */
+    private fun brief(url: String): String = runCatching {
+        val uri = java.net.URI(url)
+        val path = uri.rawPath.orEmpty()
+        "${uri.scheme}://${uri.host}" + if (path.length > 48) path.take(48) + "…" else path
+    }.getOrDefault(url.take(80))
 }

@@ -561,6 +561,7 @@ object Chromium {
 
     private suspend fun backgroundSolve(url: String, host: String): Map<String, String>? {
         log.info("Solving the Cloudflare check for $host in Chromium")
+        val start = System.currentTimeMillis()
         val solved = try {
             withTab { tab ->
                 // A solve only runs after the site refused what we had, so a clearance still in Chromium's jar is
@@ -575,10 +576,16 @@ object Chromium {
         } catch (e: ChromiumUnavailableException) {
             log.warning("Can't solve the Cloudflare check for $host: ${e.message}")
             return null
+        } catch (e: Exception) {
+            // Without this the Deferred just fails: nothing is logged and no check is listed, while the request that
+            // started it still waits out manualWaitMs for a manual solve nobody is offered.
+            log.warning("The Cloudflare solve for $host failed: $e")
+            null
         } finally {
             solves.remove(host)
         }
         if (solved != null) {
+            log.info("Passed the Cloudflare check for $host in ${(System.currentTimeMillis() - start) / 1000} s")
             Clearances.hosts[host] = solved
             removeChallenges("cloudflare", host)
         } else {
