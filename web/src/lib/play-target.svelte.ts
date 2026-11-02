@@ -5,48 +5,52 @@ import type { DeviceKind, Status } from "./types";
 /** Where an episode plays: "browser" (here), or a cast device's id; "mpv" is the server's screen. */
 export type PlayTarget = string;
 
-/** The choices for this device's default player. Other devices come and go, so they're one-off picks. */
-export const PLAY_TARGETS: { id: PlayTarget; label: string }[] = [
-  { id: "browser", label: "This browser" },
-  { id: "mpv", label: "Server mpv" },
-];
-
 const KEY = "play-target";
 
 function load(): PlayTarget | null {
   try {
-    const v = localStorage.getItem(KEY);
-    return v === "browser" || v === "mpv" ? v : null;
+    return localStorage.getItem(KEY) || null;
   } catch {
     return null;
   }
 }
 
-/** This device's default player, plus a one-off choice from the sources sheet. */
+/** Where this device plays, like Jellyfin's cast button: this browser until another device is picked, and it stays picked. */
 class PlayTargets {
-  /** The saved default; null until chosen, when it follows the server (mpv on the desktop itself). */
+  /** The saved pick; null until one is made, which means this browser. */
   saved = $state<PlayTarget | null>(load());
-  /** Chosen in the sources sheet for the episode on screen. */
-  override = $state<PlayTarget | null>(null);
   status = $state<Pick<Status, "mpvAvailable" | "loopback"> | null>(null);
 
   get mpvAvailable() {
     return !!this.status?.mpvAvailable;
   }
 
-  get default(): PlayTarget {
-    return this.saved ?? (this.status?.loopback && this.mpvAvailable ? "mpv" : "browser");
-  }
-
-  /** The player the next play uses; falls back to the browser when the chosen one isn't there. */
+  /** The player the next play uses; falls back to the browser while the picked device is away, without forgetting it. */
   get effective(): PlayTarget {
-    const t = this.override ?? this.default;
+    const t = this.saved ?? "browser";
     if (t === "browser") return t;
     if (t === "mpv") return this.mpvAvailable ? t : "browser";
     return cast.targets.some((d) => d.id === t) ? t : "browser";
   }
 
-  /** The choices in the sources sheet: here, mpv (greyed out when unavailable), then the connected devices. */
+  /** Playing somewhere other than this browser. */
+  get remote() {
+    return this.effective !== "browser";
+  }
+
+  /** The kind of player `effective` is, for the cast button's icon. */
+  get kind(): DeviceKind | "browser" {
+    const t = this.effective;
+    return t === "browser" ? t : (cast.device(t)?.kind ?? "browser");
+  }
+
+  /** The name of the player `effective` is. */
+  get label(): string {
+    const t = this.effective;
+    return this.options.find((o) => o.id === t)?.label ?? "This browser";
+  }
+
+  /** The choices in the cast menu: here, mpv (greyed out when unavailable), then the connected devices. */
   get options(): {
     id: PlayTarget;
     label: string;
@@ -76,7 +80,7 @@ class PlayTargets {
     }
   }
 
-  setDefault(t: PlayTarget) {
+  select(t: PlayTarget) {
     this.saved = t;
     try {
       localStorage.setItem(KEY, t);

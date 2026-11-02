@@ -1,6 +1,5 @@
 <script lang="ts">
   import { Captions, Check, TriangleAlert, X } from "@lucide/svelte";
-  import { DEVICE_ICONS } from "./device-icons";
   import { createQuery } from "@tanstack/svelte-query";
   import { api } from "../api";
   import { modal } from "../dialog";
@@ -91,30 +90,13 @@
         <h2>Sources</h2>
         <div class="muted ellipsis">
           {t.title}{t.label ? ` · ${t.label}` : ""}
+          {playTarget.remote ? ` · on ${playTarget.label}` : ""}
         </div>
       </div>
       <button class="close" onclick={() => sources.hide()} aria-label="Close"
         ><X size={22} strokeWidth={1.8} aria-hidden="true" /></button
       >
     </header>
-    <div class="play-on" role="radiogroup" aria-label="Play on">
-      <span class="muted">Play on</span>
-      {#each playTarget.options as target (target.id)}
-        {@const Icon = DEVICE_ICONS[target.kind]}
-        <button
-          class={["chip", { on: playTarget.effective === target.id }]}
-          role="radio"
-          aria-checked={playTarget.effective === target.id}
-          disabled={target.disabled}
-          title={target.disabled
-            ? "mpv isn't available on the server (headless host or mpv.enabled = false)"
-            : undefined}
-          onclick={() => (playTarget.override = target.id)}
-          ><Icon size={15} strokeWidth={1.8} aria-hidden="true" />{target.label}</button
-        >
-      {/each}
-    </div>
-
     <div class="list">
       <div class="profile-controls">
         {#if settings.data}
@@ -318,21 +300,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  .play-on {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 0 16px 8px;
-    font-size: 13.5px;
-  }
-  .play-on .muted {
-    margin-right: 2px;
-  }
-  .play-on .chip:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
   }
   .status {
     display: flex;

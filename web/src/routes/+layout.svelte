@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from "#lib/api";
   import { cast } from "#lib/cast.svelte";
+  import CastButton from "#lib/components/CastButton.svelte";
   import BrowserChecks from "#lib/components/BrowserChecks.svelte";
   import NowPlaying from "#lib/components/NowPlaying.svelte";
   import Pairing from "#lib/components/Pairing.svelte";
@@ -92,6 +93,7 @@
         {/each}
       </nav>
       <main id="main-content" tabindex="-1">
+        <CastButton class="cast-top" />
         <BrowserChecks />
         {@render children()}
       </main>
@@ -160,6 +162,15 @@
   }
   main {
     min-width: 0;
+  }
+  :global(.cast-top) {
+    position: fixed;
+    top: calc(8px + env(safe-area-inset-top, 0px));
+    right: 12px;
+    z-index: 30;
+    background: rgb(14 15 19 / 0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--line);
   }
   main:focus {
     outline: none;

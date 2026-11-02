@@ -4,7 +4,6 @@
   import { cast } from "#lib/cast.svelte";
   import PluginSettings from "#lib/components/PluginSettings.svelte";
   import SourceProfiles from "#lib/components/SourceProfiles.svelte";
-  import { PLAY_TARGETS, playTarget, type PlayTarget } from "#lib/play-target.svelte";
   import { prefs } from "#lib/player/prefs.svelte";
   import { toasts } from "#lib/toast.svelte";
   import type {
@@ -376,30 +375,6 @@
             <h2 id="playback-heading">Playback</h2>
             <p>Choose how streams start and what happens next.</p>
           </div>
-          <h3>Player on this device</h3>
-          <label class="setting-row">
-            <span class="setting-copy"
-              ><b>Play episodes on</b>
-              <small class="muted"
-                >Saved in this browser only. You can still switch for one episode in the sources
-                panel.{status.data && !status.data.mpvAvailable
-                  ? " mpv isn't available on this server, so episodes play in the browser."
-                  : ""}</small
-              ></span
-            >
-            <select
-              value={playTarget.default}
-              onchange={(e) => playTarget.setDefault(e.currentTarget.value as PlayTarget)}
-            >
-              {#each PLAY_TARGETS as t (t.id)}
-                <option
-                  value={t.id}
-                  disabled={t.id === "mpv" && status.data != null && !status.data.mpvAvailable}
-                  >{t.label}</option
-                >
-              {/each}
-            </select>
-          </label>
           <h3>Casting</h3>
           <label class="setting-row">
             <span class="setting-copy"

@@ -32,7 +32,6 @@ class Sources {
 
   /** Starts playback of an episode on this device's player (or the device it casts to) and shows its sources. */
   async play(t: Target, startAt?: number) {
-    playTarget.override = null;
     await playTarget.refresh();
     const target = playTarget.effective;
     if (target === "browser") {
