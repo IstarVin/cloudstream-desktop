@@ -126,6 +126,8 @@ private class Session(val item: Item, val set: LinkSet, val generation: Int, var
     /** True once mpv has loaded the current link; position events before that belong to the previous file. */
     var fileLoaded = false
     var watchers: Job? = null
+    /** Bumped by every [Playback.autoPick] and by a manual source pick; a waiting auto-pick that's out of date gives up. */
+    @Volatile var pickToken = 0
 }
 
 /**
@@ -218,10 +220,12 @@ class Playback(
 
     /**
      * Waits for a link with auto-play priority (links keep resolving meanwhile), or for all of them, then plays the
-     * best untried one. In fallback mode it takes the next one as soon as any is available.
+     * best untried one. In fallback mode it takes the next one as soon as any is available. Picking a source by hand
+     * (or another auto-pick starting) ends the wait.
      */
     private suspend fun autoPick(s: Session, fallback: Boolean) {
-        while (s.generation == generation) {
+        val token = ++s.pickToken
+        while (s.generation == generation && s.pickToken == token) {
             val profile = settings.activeSourceProfile()
             val candidates = ranked(s, profile).filter { it.id !in s.tried }
             val ready = AutoPlay.ready(fallback, s.set.done, candidates.firstOrNull()?.let { profile.priority(it.link.source, it.link.quality) } ?: 0)
@@ -574,6 +578,7 @@ class Playback(
             "source" -> {
                 val link = body.linkId?.let(links::link) ?: throw IllegalArgumentException("Unknown link")
                 if (s != null && s.set.links.contains(link)) {
+                    s.pickToken++
                     playLink(s, link, _state.value.position.takeIf { it > 5 } ?: s.startAt)
                 }
             }
