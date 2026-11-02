@@ -92,12 +92,13 @@ class StreamProxy {
             val body = res.body
             val isPlaylist = type.contains("mpegurl", true) || url.substringBefore('?').endsWith(".m3u8")
             if (isPlaylist && res.isSuccessful) {
-                val text = withContext(Dispatchers.IO) { body.string() }
-                if (text.trimStart().startsWith("#EXTM3U")) {
-                    call.respondText(keep(target, token, url, text, res.request.url.toString()), ContentType.parse("application/vnd.apple.mpegurl"))
+                // Some CDNs label every file mpegurl, init segments included; those bytes must not go through a charset.
+                val bytes = withContext(Dispatchers.IO) { body.bytes() }
+                if (bytes.take(PLAYLIST_SNIFF).toByteArray().decodeToString().trimStart().startsWith("#EXTM3U")) {
+                    call.respondText(keep(target, token, url, bytes.decodeToString(), res.request.url.toString()), ContentType.parse("application/vnd.apple.mpegurl"))
                     return
                 }
-                call.respondBytes(text.toByteArray(), ContentType.parse(type.ifEmpty { "text/plain" }), HttpStatusCode.fromValue(res.code))
+                call.respondBytes(bytes, runCatching { ContentType.parse(type) }.getOrDefault(ContentType.Application.OctetStream), HttpStatusCode.fromValue(res.code))
                 return
             }
             if (res.isSuccessful && (type.contains("dash+xml", true) || url.substringBefore('?').endsWith(".mpd"))) {
@@ -137,13 +138,29 @@ class StreamProxy {
             val uri = baseUri.resolve(ref.trim())
             return if (uri.scheme.equals("http", true) || uri.scheme.equals("https", true)) path(token, uri.toString()) else ref
         }
-        return playlist.lineSequence().joinToString("\n") { line ->
+        val textSubs = hasTextSubtitles(playlist)
+        return playlist.lineSequence().filterNot { textSubs && isTextSubtitle(it) }.joinToString("\n") { line ->
             when {
                 line.isBlank() -> line
+                textSubs && "#EXT-X-STREAM-INF" in line -> SUBTITLES_ATTR.replace(line, "")
                 line.startsWith("#") -> URI_ATTR.replace(line) { m -> "URI=\"${proxied(m.groupValues[1])}\"" }
                 else -> proxied(line)
             }
         }
+    }
+
+    /**
+     * Whether the master playlist at [url] lists subtitles as bare `.vtt`/`.srt` files. ffmpeg opens every such
+     * rendition as an HLS playlist, fails on each, and then fails the video variants with them, so mpv plays audio only.
+     * Those links go through the proxy, which drops the renditions (the subtitles reach mpv as external files anyway).
+     */
+    suspend fun hasTextSubtitles(url: String, headers: Map<String, String>): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()
+            app.baseClient.newCall(req).execute().use { res ->
+                res.isSuccessful && hasTextSubtitles(res.body.string())
+            }
+        }.getOrDefault(false)
     }
 
     /**
@@ -255,6 +272,15 @@ class StreamProxy {
     }
 
     companion object {
+        private const val PLAYLIST_SNIFF = 16
+
+        private val SUBTITLES_ATTR = Regex(""",SUBTITLES="[^"]*"""")
+        private val TEXT_SUBTITLE = Regex("""URI="[^"?]+\.(vtt|srt)(\?[^"]*)?"""", RegexOption.IGNORE_CASE)
+
+        private fun isTextSubtitle(line: String) =
+            line.startsWith("#EXT-X-MEDIA") && "TYPE=SUBTITLES" in line && TEXT_SUBTITLE.containsMatchIn(line)
+        fun hasTextSubtitles(playlist: String) = playlist.lineSequence().any(::isTextSubtitle)
+
         private val RANGE = Regex("""bytes=(\d+)-(\d*)""")
         private val SEGMENT_LIST = Regex("""<SegmentList\b([^>]*)>(.*?)</SegmentList>""", RegexOption.DOT_MATCHES_ALL)
         private val TIMELINE_D = Regex("""<S\b[^>]*\sd="(\d+)"""")

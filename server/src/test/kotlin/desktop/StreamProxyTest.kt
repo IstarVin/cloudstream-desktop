@@ -43,6 +43,23 @@ class StreamProxyTest {
         assertEquals("https://host.example/abs/seg-2.ts", decode(out[5]))
     }
 
+    /** ffmpeg opens bare .vtt renditions as playlists and the video variants fail with them (HentaiHaven). */
+    @Test
+    fun dropsTextSubtitleRenditions() {
+        val master = """
+            #EXTM3U
+            #EXT-X-MEDIA:URI="snd/a.m3u8",TYPE=AUDIO,GROUP-ID="audio",NAME="English"
+            #EXT-X-MEDIA:URI="s/en.vtt",TYPE=SUBTITLES,GROUP-ID="subs",LANGUAGE="en",NAME="English"
+            #EXT-X-STREAM-INF:BANDWIDTH=800000,AUDIO="audio",SUBTITLES="subs"
+            360p/v.m3u8
+        """.trimIndent()
+        assertTrue(StreamProxy.hasTextSubtitles(master))
+        val out = StreamProxy().rewrite(master, "https://host.example/v/master.m3u8", "tok")
+        assertTrue("TYPE=SUBTITLES" !in out && "SUBTITLES=" !in out && "en.vtt" !in out)
+        assertTrue("TYPE=AUDIO" in out)
+        assertTrue(!StreamProxy.hasTextSubtitles(master.replace("en.vtt", "en.m3u8")))
+    }
+
     @Test
     fun rewritesMasterPlaylistsAndInitSegments() {
         val master = """
@@ -76,6 +93,19 @@ class StreamProxyTest {
                 assertTrue(key.startsWith("/proxy/"), key)
                 assertContentEquals(Base64.getDecoder().decode("NqW2zqmvjXE0rSEbcmEEFg=="), client.get(key).readRawBytes())
                 assertTrue(playlist[1].endsWith(",KEYFORMAT=\"identity\""), playlist[1])
+            }
+        }
+    }
+
+    /** HentaiHaven's CDN labels its fMP4 init segment mpegurl; decoding it as text corrupts the bytes. */
+    @Test
+    fun keepsBinaryBodiesLabelledAsPlaylists() {
+        val init = ByteArray(64) { (it * 7 + 0x80).toByte() }
+        LocalServer { ex -> ex.respond(200, init, "application/x-mpegURL") }.use { upstream ->
+            val proxy = StreamProxy()
+            testApplication {
+                routing { get("/proxy/{token}/{encoded}/{name?}") { proxy.serve(call, call.parameters["token"]!!, call.parameters["encoded"]!!) } }
+                assertContentEquals(init, client.get(proxy.register("${upstream.url}/snd/i.mp4", emptyMap(), null)).readRawBytes())
             }
         }
     }

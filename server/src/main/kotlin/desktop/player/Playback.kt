@@ -267,7 +267,8 @@ class Playback(
         val referer = lh.referer
         // mpv splits header lists on commas, and ffmpeg cuts URLs at 4096 bytes; anything it can't express goes
         // through the proxy.
-        val needsProxy = link.proxied || headers.values.any { ',' in it } || l.url.length > 4000 || settings.bool(Settings.PROXY_ALL)
+        val needsProxy = link.proxied || headers.values.any { ',' in it } || l.url.length > 4000 || settings.bool(Settings.PROXY_ALL) ||
+            (l.type == ExtractorLinkType.M3U8 && proxy.hasTextSubtitles(l.url, lh.all))
         var sampleAesKey: String? = null
         val url = if (l.source in debugFailSources) {
             "http://127.0.0.1:9/debug-failed-source"
