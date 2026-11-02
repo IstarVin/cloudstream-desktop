@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import desktop.api.Bookmark
 import desktop.api.HistoryEntry
 import desktop.app.app
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -88,7 +90,7 @@ fun LibraryScreen(onTitle: (String, String) -> Unit, onBrowse: () -> Unit) {
             changingHistory = false
         }
     }
-    LaunchedEffect(Unit) { reload() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { reload() }
     LaunchedEffect(list) { bookmarkGrid.scrollToItem(0) }
     LaunchedEffect(bookmarks) {
         val saved = (bookmarks as? Load.Ok)?.value

@@ -6,9 +6,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,19 +19,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -39,14 +47,13 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -54,6 +61,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -66,15 +74,24 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.text.HtmlCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import coil3.compose.AsyncImage
+import coil3.compose.SubcomposeAsyncImage
+import coil3.compose.SubcomposeAsyncImageContent
 import desktop.api.BookmarkRequest
 import desktop.api.Details
 import desktop.api.Episode
@@ -106,6 +123,7 @@ fun activeDub(d: Details, chosen: String?): String? {
 
 /** Wide enough to put the title's details and its episodes side by side. */
 private val TwoPaneWidth = 840.dp
+private const val EpisodesPerPage = 20
 
 @Composable
 fun TitleScreen(provider: String, url: String, onTitle: (String, String) -> Unit, onBack: () -> Unit) {
@@ -113,8 +131,8 @@ fun TitleScreen(provider: String, url: String, onTitle: (String, String) -> Unit
     val api = context.app.api
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
-    var details by remember { mutableStateOf<Load<Details>>(Load.Loading) }
-    var dubChoice by rememberSaveable { mutableStateOf<String?>(null) }
+    var details by remember(provider, url) { mutableStateOf<Load<Details>>(Load.Loading) }
+    var dubChoice by rememberSaveable(provider, url) { mutableStateOf<String?>(null) }
 
     fun load(quiet: Boolean = false) = scope.launch {
         if (!quiet) details = Load.Loading
@@ -183,6 +201,8 @@ private sealed interface Part {
     data object Tags : Part { override val key = "tags" }
     data object Plot : Part { override val key = "plot" }
     data object EpisodesHeader : Part { override val key = "episodes-header" }
+    data object EpisodesPagination : Part { override val key = "episodes-pagination" }
+    data object EpisodesEmpty : Part { override val key = "episodes-empty" }
     data class Ep(val index: Int, val episode: Episode) : Part { override val key get() = "ep-" + episode.data }
     data object Cast : Part { override val key = "cast" }
     data object Related : Part { override val key = "related" }
@@ -203,19 +223,34 @@ private fun TitleContent(
     val dubs = d.episodes.mapNotNull { it.dub }.distinct()
     val seasons = episodes.map { it.season }.distinct()
     val next = nextUp(episodes)
-    var season by rememberSaveable(d.url, dub) { mutableStateOf(next?.season ?: seasons.firstOrNull()) }
-    var filter by rememberSaveable { mutableStateOf("") }
-    var plotExpanded by rememberSaveable { mutableStateOf(false) }
+    var season by rememberSaveable(d.provider, d.url, dub) { mutableStateOf(next?.season ?: seasons.firstOrNull()) }
+    var filter by rememberSaveable(d.provider, d.url, dub) { mutableStateOf("") }
+    var page by rememberSaveable(d.provider, d.url, dub, season, filter) { mutableIntStateOf(0) }
     var jumpTo by remember { mutableStateOf<String?>(null) }
+    var scrollToEpisodes by remember { mutableStateOf(false) }
     val plot = remember(d.plot) { d.plot?.let { HtmlCompat.fromHtml(it, HtmlCompat.FROM_HTML_MODE_COMPACT).toString().trim() }.orEmpty() }
 
     val shown = remember(episodes, seasons.size, season, filter) {
-        episodes.withIndex().filter { (_, e) ->
+        val query = filter.trim()
+        episodes.withIndex().filter { (index, e) ->
             (seasons.size <= 1 || e.season == season) &&
-                (filter.isBlank() || episodeTitle(e, 0).contains(filter, ignoreCase = true) || e.episode?.toString() == filter.trim())
+                (query.isBlank() || episodeTitle(e, index).contains(query, ignoreCase = true) || e.episode?.toString() == query)
         }
     }
-    val hasEpisodes = episodes.isNotEmpty() || dubs.size > 1
+    val pageCount = ((shown.size + EpisodesPerPage - 1) / EpisodesPerPage).coerceAtLeast(1)
+    val currentPage = page.coerceIn(0, pageCount - 1)
+    val pageEpisodes = shown.drop(currentPage * EpisodesPerPage).take(EpisodesPerPage)
+    LaunchedEffect(jumpTo, shown) {
+        val target = jumpTo ?: return@LaunchedEffect
+        val index = shown.indexOfFirst { it.value.data == target }
+        if (index >= 0) page = index / EpisodesPerPage
+    }
+    fun changePage(value: Int) {
+        jumpTo = null
+        page = value.coerceIn(0, pageCount - 1)
+        scrollToEpisodes = true
+    }
+    val hasEpisodes = episodes.isNotEmpty() || dubs.size > 1 || d.kind in listOf("series", "anime")
     val summary = buildList {
         add(Part.Hero)
         add(Part.Actions)
@@ -225,7 +260,9 @@ private fun TitleContent(
     val episodeParts = buildList {
         if (hasEpisodes) {
             add(Part.EpisodesHeader)
-            shown.forEach { (i, e) -> add(Part.Ep(i, e)) }
+            pageEpisodes.forEach { (i, e) -> add(Part.Ep(i, e)) }
+            if (shown.isEmpty()) add(Part.EpisodesEmpty)
+            if (pageCount > 1) add(Part.EpisodesPagination)
         }
     }
     val cast = if (d.actors.isNotEmpty()) listOf(Part.Cast) else emptyList()
@@ -244,24 +281,31 @@ private fun TitleContent(
                     )
                 }
             }
-            Part.Plot -> Column(Modifier.padding(horizontal = Gutter, vertical = 12.dp)) {
-                Text(plot, maxLines = if (plotExpanded) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis, color = Palette.muted)
-                // Only offer the toggle when there is more to show than the preview.
-                if (plot.length > 200) TextButton(onClick = { plotExpanded = !plotExpanded }) { Text(if (plotExpanded) "Show less" else "Show more") }
+            Part.Plot -> Overview(plot, d.provider + d.url)
+            Part.EpisodesHeader -> Column {
+                EpisodesHeader(
+                    d, dubs, dub, seasons, season, filter, episodes,
+                    canJump = next != null && episodes.size > 12,
+                    onDub = onDub,
+                    onSeason = { season = it },
+                    onFilter = { filter = it },
+                    onJump = {
+                        next?.let { n ->
+                            filter = ""
+                            if (seasons.size > 1) season = n.season
+                            jumpTo = n.data
+                        }
+                    },
+                )
+                if (pageCount > 1) EpisodePagination(currentPage, pageCount, ::changePage)
             }
-            Part.EpisodesHeader -> EpisodesHeader(
-                d, dubs, dub, seasons, season, filter, episodes.size, shown.size,
-                canJump = next != null && episodes.size > 12,
-                onDub = onDub,
-                onSeason = { season = it },
-                onFilter = { filter = it },
-                onJump = {
-                    next?.let { n ->
-                        filter = ""
-                        if (seasons.size > 1) season = n.season
-                        jumpTo = n.data
-                    }
-                },
+            Part.EpisodesPagination -> EpisodePagination(currentPage, pageCount, ::changePage)
+            Part.EpisodesEmpty -> EmptyState(
+                Icons.Filled.Search,
+                if (filter.isNotBlank()) "No matching episodes" else "No episodes available",
+                if (filter.isNotBlank()) "Try another episode number or name." else "This source hasn't listed any episodes for this selection yet.",
+                actionLabel = if (filter.isNotBlank()) "Clear search" else null,
+                onAction = if (filter.isNotBlank()) ({ filter = "" }) else null,
             )
             is Part.Ep -> EpisodeRow(part.episode, part.index, d, isNext = part.episode.data == next?.data, onPlay = { onPlay(part.episode.data) }, onWatched = { onWatched(part.episode) })
             Part.Cast -> Column {
@@ -293,13 +337,18 @@ private fun TitleContent(
 
     @Composable
     fun Pane(parts: List<Part>, state: LazyListState, modifier: Modifier) {
-        // A jump to the next episode waits for the season it needs to be showing.
-        LaunchedEffect(jumpTo, parts) {
-            val target = jumpTo ?: return@LaunchedEffect
-            val index = parts.indexOfFirst { it is Part.Ep && it.episode.data == target }
+        // Wait for the requested episode's season and page before scrolling.
+        LaunchedEffect(jumpTo, scrollToEpisodes, parts) {
+            val target = jumpTo
+            val index = when {
+                target != null -> parts.indexOfFirst { it is Part.Ep && it.episode.data == target }
+                scrollToEpisodes -> parts.indexOf(Part.EpisodesHeader)
+                else -> return@LaunchedEffect
+            }
             if (index >= 0) {
                 state.animateScrollToItem(index)
                 jumpTo = null
+                scrollToEpisodes = false
             }
         }
         LazyColumn(modifier, state = state, contentPadding = PaddingValues(bottom = 32.dp)) {
@@ -308,61 +357,124 @@ private fun TitleContent(
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        if (maxWidth >= TwoPaneWidth) {
-            Row(Modifier.fillMaxSize()) {
-                Pane(summary + cast, rememberLazyListState(), Modifier.width(380.dp).fillMaxHeight())
+        val summaryWidth = (maxWidth * 0.4f).coerceIn(340.dp, 440.dp)
+        if (maxWidth >= TwoPaneWidth && hasEpisodes) {
+            Row(Modifier.widthIn(max = 1280.dp).fillMaxSize().align(Alignment.TopCenter)) {
+                Pane(summary + cast, rememberLazyListState(), Modifier.width(summaryWidth).fillMaxHeight())
+                Box(Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant))
                 Pane(episodeParts + related, rememberLazyListState(), Modifier.weight(1f).fillMaxHeight())
             }
         } else {
-            Pane(summary + episodeParts + cast + related, rememberLazyListState(), Modifier.fillMaxSize())
+            Pane(summary + episodeParts + cast + related, rememberLazyListState(), Modifier.widthIn(max = 760.dp).fillMaxSize().align(Alignment.TopCenter))
+        }
+    }
+}
+
+@Composable
+private fun Overview(plot: String, identity: String) {
+    var expanded by rememberSaveable(identity) { mutableStateOf(false) }
+    var overflowing by remember(plot) { mutableStateOf(false) }
+    Column(Modifier.padding(horizontal = Gutter).padding(top = 20.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionTitle("Overview")
+        Text(
+            plot, style = MaterialTheme.typography.bodyMedium,
+            maxLines = if (expanded) Int.MAX_VALUE else 3,
+            overflow = TextOverflow.Ellipsis, color = Palette.muted,
+            onTextLayout = { if (!expanded) overflowing = it.hasVisualOverflow },
+        )
+        if (overflowing || expanded) TextButton(
+            onClick = { expanded = !expanded },
+            contentPadding = PaddingValues(horizontal = 0.dp),
+            modifier = Modifier.heightIn(min = 48.dp).semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" },
+        ) {
+            Text(if (expanded) "Show less" else "Show more")
+            Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, null, Modifier.padding(start = 4.dp).size(18.dp))
         }
     }
 }
 
 @Composable
 private fun Hero(d: Details, onBack: () -> Unit) {
-    Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
-        AsyncImage(imageRequest(d.background ?: d.poster, d.posterHeaders), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        // Fades into the page, so the title below reads against the page colour whatever the artwork is.
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.25f to Color.Transparent, 1f to Palette.bg)))
-        Row(Modifier.align(Alignment.BottomStart).padding(horizontal = Gutter), verticalAlignment = Alignment.Bottom) {
-            Box(Modifier.width(88.dp).aspectRatio(2f / 3f).clip(MaterialTheme.shapes.small).background(Palette.surface2)) {
-                AsyncImage(imageRequest(d.poster, d.posterHeaders), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+    val shortWindow = LocalWindowInfo.current.containerSize.height < with(LocalDensity.current) { 480.dp.roundToPx() }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val artworkHeight = if (shortWindow) (maxWidth * 0.3f).coerceIn(112.dp, 144.dp) else (maxWidth * 0.5f).coerceIn(168.dp, 240.dp)
+        Box(Modifier.fillMaxWidth().height(artworkHeight)) {
+            AsyncImage(imageRequest(d.background ?: d.poster, d.posterHeaders), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Palette.scrim.copy(alpha = 0.15f), 0.45f to Palette.bg.copy(alpha = 0.4f), 1f to Palette.bg)))
+        }
+        Column(Modifier.fillMaxWidth().padding(top = artworkHeight - 64.dp).padding(horizontal = Gutter)) {
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Box(Modifier.width(80.dp).aspectRatio(2f / 3f).clip(MaterialTheme.shapes.small).background(Palette.surface2)) {
+                    AsyncImage(imageRequest(d.poster, d.posterHeaders), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val logo = imageRequest(d.logo)
+                    val title: @Composable () -> Unit = {
+                        Text(d.name, style = MaterialTheme.typography.headlineMedium.copy(lineBreak = LineBreak.Heading), modifier = Modifier.semantics { heading() })
+                    }
+                    if (logo != null) SubcomposeAsyncImage(
+                        logo, d.name, Modifier.fillMaxWidth().semantics { heading() },
+                        contentScale = ContentScale.Fit, alignment = Alignment.CenterStart,
+                        loading = { title() }, error = { title() },
+                        success = { SubcomposeAsyncImageContent(Modifier.fillMaxWidth().height(44.dp)) },
+                    ) else title()
+                    Text(d.provider, color = Palette.muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
             }
-            Column(Modifier.padding(start = 12.dp)) {
-                val logo = imageRequest(d.logo)
-                if (logo != null) AsyncImage(logo, d.name, Modifier.height(44.dp).fillMaxWidth(), contentScale = ContentScale.Fit, alignment = Alignment.CenterStart)
-                else Text(d.name, style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                val meta = listOfNotNull(d.year?.toString(), d.score?.let { "★ %.1f".format(it) }, d.contentRating, d.duration?.let { "$it min" }, d.showStatus)
-                if (meta.isNotEmpty()) Text(meta.joinToString(" · "), color = Palette.muted, style = MaterialTheme.typography.bodySmall)
-                Text(d.provider, color = Palette.muted, style = MaterialTheme.typography.bodySmall)
+            FlowRow(
+                Modifier.padding(top = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                d.score?.let { score ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Filled.Star, "Rating", tint = Palette.muted, modifier = Modifier.size(16.dp))
+                        Text("%.1f".format(score), style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+                listOfNotNull(d.year?.toString(), d.contentRating?.takeIf { it.isNotBlank() }, d.duration?.takeIf { it > 0 }?.let { "$it min" }, d.showStatus?.takeIf { it.isNotBlank() }).forEach {
+                    Text(it, color = Palette.muted, style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
-        // Last, so it draws over the artwork.
         BackButton(onBack)
     }
 }
 
 @Composable
 private fun Actions(d: Details, episodes: List<Episode>, next: Episode?, onPlay: (String) -> Unit, onBookmark: (String?) -> Unit) {
-    Row(Modifier.padding(horizontal = Gutter, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        val play = Modifier.weight(1f).heightIn(min = 48.dp)
-        when {
-            d.kind == "torrent" -> Text("Torrents aren't supported.", color = Palette.muted, modifier = Modifier.weight(1f))
-            d.movieData != null && episodes.isEmpty() -> Button(onClick = { onPlay(d.movieData!!) }, play) {
-                Icon(Icons.Filled.PlayArrow, null)
-                val p = d.movieProgress
-                Text(if (p != null && !p.watched && p.position > 30) "Resume ${formatTime(p.position)}" else if (d.kind == "live") "Watch live" else "Play", Modifier.padding(start = 4.dp))
+    val progress = if (episodes.isEmpty()) d.movieProgress else next?.progress
+    val resuming = progress != null && !progress.watched && progress.position > 30
+    Column(Modifier.padding(horizontal = Gutter, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val play = Modifier.weight(1f).heightIn(min = 52.dp)
+            when {
+                d.kind == "torrent" -> Text("Torrents aren't supported.", color = Palette.muted, modifier = Modifier.weight(1f))
+                d.movieData != null && episodes.isEmpty() -> Button(onClick = { onPlay(d.movieData!!) }, play) {
+                    Icon(Icons.Filled.PlayArrow, null)
+                    val p = d.movieProgress
+                    Text(if (resuming) "Resume" else if (d.kind == "live") "Watch live" else if (p?.watched == true) "Play again" else "Play", Modifier.padding(start = 8.dp))
+                }
+                next != null -> Button(onClick = { onPlay(next.data) }, play) {
+                    Icon(Icons.Filled.PlayArrow, null)
+                    val p = next.progress
+                    val label = episodeTitle(next.copy(name = null), episodes.indexOf(next))
+                    Text(if (resuming) "Resume $label" else if (p?.watched == true) "Replay $label" else "Play $label", Modifier.padding(start = 8.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                else -> Text("No playable video available.", color = Palette.muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
             }
-            next != null -> Button(onClick = { onPlay(next.data) }, play) {
-                Icon(Icons.Filled.PlayArrow, null)
-                val p = next.progress
-                val label = episodeTitle(next.copy(name = null), episodes.indexOf(next))
-                Text(if (p != null && !p.watched && p.position > 30) "Resume $label" else "Play $label", Modifier.padding(start = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            else -> Spacer(Modifier.weight(1f))
+            BookmarkMenu(d.bookmarked, onBookmark)
         }
-        BookmarkMenu(d.bookmarked, onBookmark)
+        if (resuming) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (progress.duration > 0) LinearProgressIndicator(
+                    progress = { (progress.position / progress.duration).toFloat().coerceIn(0f, 1f) },
+                    modifier = Modifier.weight(1f).height(4.dp),
+                    trackColor = Palette.surface3,
+                    drawStopIndicator = {},
+                )
+                Text(remainingLabel(progress.position, progress.duration) ?: "At ${formatTime(progress.position)}", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+            }
+        }
     }
 }
 
@@ -374,23 +486,33 @@ private fun EpisodesHeader(
     seasons: List<Int?>,
     season: Int?,
     filter: String,
-    total: Int,
-    shown: Int,
+    episodes: List<Episode>,
     canJump: Boolean,
     onDub: (String) -> Unit,
     onSeason: (Int?) -> Unit,
     onFilter: (String) -> Unit,
     onJump: () -> Unit,
 ) {
-    Column(Modifier.padding(horizontal = Gutter).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val total = episodes.size
+    val watched = episodes.count { it.progress?.watched == true }
+    Column(Modifier.padding(horizontal = Gutter).padding(top = 24.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        HorizontalDivider(Modifier.padding(bottom = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            SectionTitle("Episodes", Modifier.weight(1f))
-            if (canJump) TextButton(onClick = onJump) { Text("Jump to next") }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                SectionTitle("Episodes")
+                Text(
+                    "$total ${if (total == 1) "episode" else "episodes"}" + if (watched > 0) " · $watched watched" else "",
+                    style = MaterialTheme.typography.bodySmall, color = Palette.muted,
+                )
+            }
+            if (canJump) TextButton(onClick = { focus.clearFocus(); keyboard?.hide(); onJump() }) { Text("Jump to next") }
         }
         if (dubs.size > 1) {
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                dubs.forEachIndexed { i, x ->
-                    SegmentedButton(x == dub, { onDub(x) }, SegmentedButtonDefaults.itemShape(i, dubs.size)) { Text(x) }
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(dubs) { x ->
+                    FilterChip(x == dub, { onDub(x) }, label = { Text(x) }, modifier = Modifier.heightIn(min = 48.dp))
                 }
             }
         }
@@ -405,14 +527,66 @@ private fun EpisodesHeader(
         if (total > 20) {
             OutlinedTextField(
                 filter, onFilter,
-                placeholder = { Text("Find an episode") },
+                label = { Text("Find an episode") },
+                leadingIcon = { Icon(Icons.Filled.Search, null) },
+                trailingIcon = {
+                    if (filter.isNotEmpty()) IconButton(onClick = { onFilter("") }) {
+                        Icon(Icons.Filled.Close, "Clear episode search")
+                    }
+                },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { focus.clearFocus(); keyboard?.hide() }),
                 shape = MaterialTheme.shapes.medium,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        if (filter.isNotBlank() && shown == 0) {
-            Text("No episode matches “$filter”.", color = Palette.muted, modifier = Modifier.padding(vertical = 8.dp))
+    }
+}
+
+@Composable
+private fun EpisodePagination(page: Int, pageCount: Int, onPage: (Int) -> Unit) {
+    var choosingPage by remember(pageCount) { mutableStateOf(false) }
+    val menuScroll = rememberScrollState()
+    val density = LocalDensity.current
+    LaunchedEffect(choosingPage, page) {
+        if (choosingPage) menuScroll.scrollTo(with(density) { (48.dp * page).roundToPx() })
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        TextButton(onClick = { onPage(page - 1) }, enabled = page > 0, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text("Previous")
+        }
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            TextButton(
+                onClick = { choosingPage = true },
+                modifier = Modifier.heightIn(min = 48.dp).semantics { stateDescription = "Page ${page + 1} of $pageCount" },
+                contentPadding = PaddingValues(horizontal = 8.dp),
+            ) {
+                Text("Page ${page + 1} of $pageCount", maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Icon(Icons.Filled.ExpandMore, "Choose page", Modifier.padding(start = 4.dp).size(18.dp))
+            }
+            DropdownMenu(
+                expanded = choosingPage,
+                onDismissRequest = { choosingPage = false },
+                modifier = Modifier.heightIn(max = 320.dp).widthIn(min = 180.dp),
+                scrollState = menuScroll,
+            ) {
+                repeat(pageCount) { target ->
+                    DropdownMenuItem(
+                        text = { Text("Page ${target + 1}") },
+                        onClick = { choosingPage = false; onPage(target) },
+                        modifier = Modifier.semantics { stateDescription = if (target == page) "Current page" else "" },
+                        trailingIcon = { if (target == page) Icon(Icons.Filled.CheckCircle, "Current page", tint = Palette.accent) },
+                    )
+                }
+            }
+        }
+        TextButton(onClick = { onPage(page + 1) }, enabled = page < pageCount - 1, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text("Next")
         }
     }
 }
@@ -427,29 +601,40 @@ private fun EpisodeRow(e: Episode, index: Int, d: Details, isNext: Boolean, onPl
         e.date?.takeIf { it > 0 }?.let { DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(it)) },
         p?.takeIf { !it.watched && it.position > 30 }?.let { remainingLabel(it.position, it.duration) },
     ).joinToString(" · ")
-    Row(
-        Modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = "Play $title", onClick = onPlay).padding(start = Gutter, end = 4.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Box(Modifier.width(120.dp).aspectRatio(16f / 9f).clip(MaterialTheme.shapes.small).background(Palette.surface2)) {
-            AsyncImage(imageRequest(e.poster ?: d.background ?: d.poster, d.posterHeaders), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            if (p != null && p.duration > 0 && !p.watched) {
-                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.Black.copy(alpha = 0.5f))) {
-                    Box(Modifier.fillMaxWidth((p.position / p.duration).toFloat().coerceIn(0f, 1f)).height(3.dp).background(Palette.accent))
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 4.dp)) {
+        val thumbnailWidth = if (maxWidth < 360.dp || fontScale > 1.2f) 88.dp else 112.dp
+        Row(
+            Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium)
+                .background(if (isNext) Palette.surface2 else Color.Transparent)
+                .clickable(role = Role.Button, onClickLabel = "Play $title", onClick = onPlay)
+                .semantics { stateDescription = if (watched) "Watched" else if (p != null && p.position > 30) "In progress" else "Not watched" }
+                .padding(start = 8.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Box(Modifier.width(thumbnailWidth).aspectRatio(16f / 9f).clip(MaterialTheme.shapes.small).background(Palette.surface)) {
+                AsyncImage(imageRequest(e.poster ?: d.background ?: d.poster, d.posterHeaders), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                Box(Modifier.align(Alignment.Center).size(28.dp).background(Palette.scrim, CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.PlayArrow, null, tint = Palette.onImage, modifier = Modifier.size(20.dp))
+                }
+                if (p != null && p.duration > 0 && !p.watched) {
+                    Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.Black.copy(alpha = 0.5f))) {
+                        Box(Modifier.fillMaxWidth((p.position / p.duration).toFloat().coerceIn(0f, 1f)).height(3.dp).background(Palette.accent))
+                    }
                 }
             }
-        }
-        Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            if (isNext) Text("Up next", style = MaterialTheme.typography.labelSmall, color = Palette.accent)
-            Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, color = if (watched) Palette.muted else Palette.text)
-            if (meta.isNotEmpty()) Text(meta, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 2)
-            e.description?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (isNext) Text(if (watched) "Watch again" else if (p != null && p.position > 30) "Continue watching" else "Up next", style = MaterialTheme.typography.labelSmall, color = Palette.accent)
+                Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, color = if (watched) Palette.muted else Palette.text)
+                if (meta.isNotEmpty()) Text(meta, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 2)
+                e.description?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
             }
-        }
-        IconButton(onClick = onWatched, modifier = Modifier.semantics { stateDescription = if (watched) "Watched" else "Not watched" }) {
-            if (watched) Icon(Icons.Filled.CheckCircle, "Mark $title unwatched", tint = Palette.good)
-            else Icon(Icons.Outlined.CheckCircle, "Mark $title watched", tint = Palette.muted.copy(alpha = 0.7f))
+            IconButton(onClick = onWatched, modifier = Modifier.semantics { stateDescription = if (watched) "Watched" else "Not watched" }) {
+                if (watched) Icon(Icons.Filled.CheckCircle, "Mark $title unwatched", tint = Palette.good)
+                else Icon(Icons.Outlined.CheckCircle, "Mark $title watched", tint = Palette.muted)
+            }
         }
     }
 }
@@ -457,11 +642,15 @@ private fun EpisodeRow(e: Episode, index: Int, d: Details, isNext: Boolean, onPl
 @Composable
 private fun BookmarkMenu(current: String?, onPick: (String?) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    val label = BOOKMARK_LISTS.firstOrNull { it.first == current }?.second ?: "Save"
+    val list = BOOKMARK_LISTS.firstOrNull { it.first == current }?.second
     Box {
-        FilledTonalButton(onClick = { open = true }, Modifier.heightIn(min = 48.dp)) {
+        FilledTonalButton(
+            onClick = { open = true },
+            modifier = Modifier.heightIn(min = 52.dp).semantics { stateDescription = list?.let { "Saved to $it" } ?: "Not in your library" },
+            contentPadding = PaddingValues(horizontal = 16.dp),
+        ) {
             if (current != null) Icon(Icons.Filled.Bookmark, null, tint = Palette.accent) else Icon(Icons.Filled.BookmarkBorder, null)
-            Text(label, Modifier.padding(start = 8.dp), maxLines = 1)
+            Text(if (current != null) "Saved" else "Save", Modifier.padding(start = 8.dp), maxLines = 1)
         }
         DropdownMenu(open, { open = false }) {
             BOOKMARK_LISTS.forEach { (id, text) ->

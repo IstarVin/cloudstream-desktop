@@ -15,9 +15,13 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,6 +33,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -73,6 +78,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -92,6 +98,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import desktop.app.data.PlayerPrefs
+import desktop.app.ui.TabularNumbers
 import desktop.app.ui.Palette
 import desktop.app.ui.formatTime
 import kotlinx.coroutines.delay
@@ -151,8 +158,8 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
         }
     }
     // Controls hide themselves while playing.
-    LaunchedEffect(controls, lastInteraction, playing, sheet) {
-        if (controls && playing && sheet == null) {
+    LaunchedEffect(controls, lastInteraction, playing, sheet, scrubTarget) {
+        if (controls && playing && sheet == null && scrubTarget == null) {
             delay(3500)
             controls = false
         }
@@ -475,7 +482,7 @@ private fun Feedback(
         }
         level?.let { (brightness, value) ->
             Column(
-                Modifier.align(if (brightness) Alignment.CenterStart else Alignment.CenterEnd).padding(horizontal = 40.dp)
+                Modifier.align(if (brightness) Alignment.CenterEnd else Alignment.CenterStart).padding(horizontal = 40.dp)
                     .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(20.dp)).padding(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -513,34 +520,44 @@ private fun Controls(
     val item = s.item
     Box(
         Modifier.fillMaxSize().background(
-            Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.7f), 0.25f to Color.Transparent, 0.7f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.8f)),
+            Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.8f), 0.3f to Color.Transparent, 0.55f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.92f)),
         ),
     ) {
         // Top: back, title, source.
-        Row(Modifier.fillMaxWidth().safeDrawingPadding().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth().safeDrawingPadding().padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White) }
             Column(Modifier.weight(1f)) {
-                Text(item?.details?.name.orEmpty(), color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(item?.details?.name.orEmpty(), color = Color.White, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val sub = listOfNotNull(item?.displayLabel, s.current?.let { "${it.source} · ${it.qualityLabel}" }).joinToString("  ·  ")
-                if (sub.isNotEmpty()) Text(sub, color = Palette.muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (sub.isNotEmpty()) Text(sub, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            TextButton(onClick = onResize) {
-                Icon(Icons.Filled.AspectRatio, null, tint = Color.White)
-                Text(" $resizeLabel", color = Color.White)
+            TextButton(
+                onClick = { onInteract(); onResize() },
+                modifier = Modifier.heightIn(min = 48.dp).background(Palette.scrim, CircleShape),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                Icon(Icons.Filled.AspectRatio, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(resizeLabel, color = Color.White)
             }
         }
 
         // Center: previous, play/pause, next.
-        Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(40.dp)) {
-            RoundButton(Icons.Filled.SkipPrevious, "Previous episode", enabled = item?.hasPrev == true, size = 48) { vm.prev() }
+        if (s.status != "error") Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(40.dp)) {
+            RoundButton(Icons.Filled.SkipPrevious, "Previous episode", enabled = item?.hasPrev == true, size = 48) { onInteract(); vm.prev() }
             if (busy) {
                 Box(Modifier.size(72.dp).semantics { contentDescription = "Loading" }, contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Palette.accent)
                 }
             } else RoundButton(
                 if (s.status == "ended" && s.upNext == null) Icons.Filled.Replay else if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                if (playing) "Pause" else "Play",
+                if (s.status == "ended") "Replay" else if (playing) "Pause" else "Play",
                 size = 72,
+                prominent = true,
             ) {
                 onInteract()
                 when {
@@ -549,42 +566,83 @@ private fun Controls(
                     else -> player.play()
                 }
             }
-            RoundButton(Icons.Filled.SkipNext, "Next episode", enabled = item?.hasNext == true, size = 48) { vm.next() }
+            RoundButton(Icons.Filled.SkipNext, "Next episode", enabled = item?.hasNext == true, size = 48) { onInteract(); vm.next() }
         }
 
-        // Bottom: seekbar and actions.
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().safeDrawingPadding().padding(horizontal = 16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(formatTime(position / 1000.0), color = Color.White, style = MaterialTheme.typography.labelMedium)
-                SeekBar(position, duration, buffered, s.skips, onScrub, Modifier.weight(1f).padding(horizontal = 12.dp))
-                Text("−" + formatTime((duration - position).coerceAtLeast(0) / 1000.0), color = Color.White, style = MaterialTheme.typography.labelMedium)
+        // The timeline gets the full width; stable time labels sit above it.
+        Column(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().safeDrawingPadding()
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    formatTime(position / 1000.0), color = Color.White,
+                    style = MaterialTheme.typography.labelMedium.merge(TabularNumbers),
+                )
+                Text(
+                    "−" + formatTime((duration - position).coerceAtLeast(0) / 1000.0),
+                    color = Color.White.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.labelMedium.merge(TabularNumbers),
+                )
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                ActionButton(Icons.Filled.Lock, "Lock", onLock)
-                ActionButton(Icons.Filled.Speed, "Speed ${formatSpeed(speed)}×") { onSheet(Sheet.Speed) }
-                ActionButton(Icons.Filled.ClosedCaption, "Subtitles & audio") { onSheet(Sheet.Subtitles) }
-                ActionButton(Icons.Filled.Source, "Sources") { onSheet(Sheet.Sources) }
-                if (item != null && item.episodes.isNotEmpty()) ActionButton(Icons.AutoMirrored.Filled.PlaylistPlay, "Episodes") { onSheet(Sheet.Episodes) }
-                if (item?.hasNext == true) ActionButton(Icons.Filled.SkipNext, "Next") { vm.next() }
+            SeekBar(position, duration, buffered, s.skips, onScrub, Modifier.fillMaxWidth())
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val actionCount = 4 + (if (item != null && item.episodes.isNotEmpty()) 1 else 0) +
+                    (if (item?.hasNext == true) 1 else 0)
+                val actionWidth = (maxWidth / actionCount).coerceAtLeast(88.dp)
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                    ActionButton(Icons.Filled.Lock, "Lock", Modifier.width(actionWidth), onClick = onLock)
+                    ActionButton(Icons.Filled.Speed, "Speed ${formatSpeed(speed)}×", Modifier.width(actionWidth)) { onSheet(Sheet.Speed) }
+                    ActionButton(Icons.Filled.ClosedCaption, "Audio & subs", Modifier.width(actionWidth).semantics { contentDescription = "Subtitles & audio" }) { onSheet(Sheet.Subtitles) }
+                    ActionButton(Icons.Filled.Source, "Sources", Modifier.width(actionWidth)) { onSheet(Sheet.Sources) }
+                    if (item != null && item.episodes.isNotEmpty()) {
+                        ActionButton(Icons.AutoMirrored.Filled.PlaylistPlay, "Episodes", Modifier.width(actionWidth)) { onSheet(Sheet.Episodes) }
+                    }
+                    if (item?.hasNext == true) {
+                        ActionButton(Icons.Filled.SkipNext, "Next", Modifier.width(actionWidth)) { onInteract(); vm.next() }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun RoundButton(icon: ImageVector, label: String, enabled: Boolean = true, size: Int, onClick: () -> Unit) {
+private fun RoundButton(
+    icon: ImageVector,
+    label: String,
+    enabled: Boolean = true,
+    size: Int,
+    prominent: Boolean = false,
+    onClick: () -> Unit,
+) {
     IconButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.size(size.dp).background(Color.Black.copy(alpha = 0.35f), CircleShape),
-    ) { Icon(icon, label, tint = if (enabled) Color.White else Color.White.copy(alpha = 0.3f), modifier = Modifier.size((size * 0.6).dp)) }
+        modifier = Modifier.size(size.dp).background(
+            if (prominent) Color.White else Palette.scrim.copy(alpha = if (enabled) 0.55f else 0.25f), CircleShape,
+        ),
+    ) {
+        Icon(
+            icon, label,
+            tint = if (prominent) Palette.bg else Color.White.copy(alpha = if (enabled) 1f else 0.3f),
+            modifier = Modifier.size(if (prominent) 36.dp else 24.dp),
+        )
+    }
 }
 
 @Composable
-private fun ActionButton(icon: ImageVector, label: String, onClick: () -> Unit) {
-    TextButton(onClick = onClick) {
-        Icon(icon, null, tint = Color.White, modifier = Modifier.size(20.dp))
-        Text(" $label", color = Color.White, style = MaterialTheme.typography.labelLarge)
+private fun ActionButton(icon: ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 56.dp),
+        shape = RoundedCornerShape(8.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(icon, null, tint = Color.White, modifier = Modifier.size(22.dp))
+            Text(label, color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
@@ -592,22 +650,43 @@ private fun ActionButton(icon: ImageVector, label: String, onClick: () -> Unit) 
 @Composable
 private fun SeekBar(position: Long, duration: Long, buffered: Long, skips: List<desktop.player.SkipRange>, onScrub: (Long, Boolean) -> Unit, modifier: Modifier) {
     val max = duration.coerceAtLeast(1L).toFloat()
-    Box(modifier, contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxWidth().height(4.dp)) {
-            drawRect(Color.White.copy(alpha = 0.35f), size = size.copy(width = size.width * (buffered / max).coerceIn(0f, 1f)))
-            skips.forEach { r ->
-                val x0 = (r.start * 1000 / max).toFloat().coerceIn(0f, 1f) * size.width
-                val x1 = (r.end * 1000 / max).toFloat().coerceIn(0f, 1f) * size.width
-                drawRect(Palette.good.copy(alpha = 0.8f), topLeft = Offset(x0, 0f), size = size.copy(width = x1 - x0))
+    // Keep Material's touch, keyboard and accessibility behavior with a quieter video timeline.
+    Slider(
+        value = if (duration > 0) position.toFloat().coerceIn(0f, max) else 0f,
+        onValueChange = { onScrub(it.toLong(), false) },
+        onValueChangeFinished = { onScrub(position, true) },
+        valueRange = 0f..max,
+        enabled = duration > 0,
+        modifier = modifier.heightIn(min = 48.dp).semantics { contentDescription = "Playback position" },
+        thumb = {
+            // Slider measures this slot at its touch-target height. Center the visible dot inside it.
+            Box(Modifier.width(12.dp).heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(12.dp).background(if (duration > 0) Palette.accent else Color.White.copy(alpha = 0.4f), CircleShape))
             }
-        }
-        Slider(
-            value = position.toFloat().coerceIn(0f, max),
-            onValueChange = { onScrub(it.toLong(), false) },
-            onValueChangeFinished = { onScrub(position, true) },
-            valueRange = 0f..max,
-            enabled = duration > 0,
-            colors = SliderDefaults.colors(thumbColor = Palette.accent, activeTrackColor = Palette.accent, inactiveTrackColor = Color.White.copy(alpha = 0.2f)),
-        )
-    }
+        },
+        track = { state ->
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Canvas(Modifier.fillMaxWidth().height(4.dp)) {
+                    val center = size.height / 2
+                    fun segment(start: Float, end: Float, color: Color) {
+                        if (end > start) drawLine(
+                            color, Offset(start * size.width, center), Offset(end * size.width, center),
+                            strokeWidth = size.height, cap = StrokeCap.Round,
+                        )
+                    }
+                    segment(0f, 1f, Color.White.copy(alpha = 0.25f))
+                    segment(0f, if (duration > 0) (buffered / max).coerceIn(0f, 1f) else 0f, Color.White.copy(alpha = 0.45f))
+                    segment(0f, (state.value / max).coerceIn(0f, 1f), Palette.accent)
+                    skips.filter { duration > 0 }.forEach { range ->
+                        segment(
+                            (range.start * 1000 / max).toFloat().coerceIn(0f, 1f),
+                            (range.end * 1000 / max).toFloat().coerceIn(0f, 1f),
+                            Palette.good.copy(alpha = 0.85f),
+                        )
+                    }
+                }
+            }
+        },
+        colors = SliderDefaults.colors(thumbColor = Palette.accent, activeTrackColor = Palette.accent),
+    )
 }

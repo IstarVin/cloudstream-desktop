@@ -47,7 +47,7 @@ fun Modifier.playerGestures(handler: GestureHandler, locked: Boolean, swipeSeek:
         val edge = 48.dp.toPx()
         val doubleTap = viewConfiguration.doubleTapTimeoutMillis
         var lastTapAt = 0L
-        var multiTapping = false
+        var lastTapSide = 0
         var pendingTap: Job? = null
 
         coroutineScope {
@@ -94,18 +94,14 @@ fun Modifier.playerGestures(handler: GestureHandler, locked: Boolean, swipeSeek:
                 val released = up
                 if (released != null) {
                     val now = released.uptimeMillis
-                    val quick = now - lastTapAt < doubleTap
+                    val quick = lastTapAt > 0L && now - lastTapAt < doubleTap && side == lastTapSide
                     lastTapAt = now
-                    if (!locked && side != 0 && (quick || multiTapping)) {
+                    lastTapSide = side
+                    if (!locked && side != 0 && quick) {
                         pendingTap?.cancel()
-                        multiTapping = true
                         handler.onMultiTap(side)
-                        pendingTap = launch {
-                            delay(doubleTap)
-                            multiTapping = false
-                        }
                     } else if (side == 0 || locked) {
-                        multiTapping = false
+                        pendingTap?.cancel()
                         handler.onTap()
                     } else {
                         // Wait out the double-tap window before treating it as a single tap.
@@ -118,40 +114,52 @@ fun Modifier.playerGestures(handler: GestureHandler, locked: Boolean, swipeSeek:
                     return@awaitEachGesture
                 }
 
+                // A drag or hold must not also fire a delayed single tap.
+                pendingTap?.cancel()
+                lastTapAt = 0L
                 when (mode ?: if (locked) Mode.Ignore else Mode.Hold) {
                     Mode.Hold -> {
                         handler.onHoldStart()
-                        do {
-                            val ev = awaitPointerEvent()
-                            ev.changes.forEach { it.consume() }
-                        } while (ev.changes.any { it.pressed })
-                        handler.onHoldEnd()
+                        try {
+                            do {
+                                val ev = awaitPointerEvent()
+                                ev.changes.forEach { it.consume() }
+                            } while (ev.changes.any { it.pressed })
+                        } finally {
+                            handler.onHoldEnd()
+                        }
                     }
                     Mode.Seek -> {
                         handler.onSeekStart()
-                        do {
-                            val ev = awaitPointerEvent()
-                            val c = ev.changes.firstOrNull { it.id == down.id }
-                            if (c != null) {
-                                handler.onSeek((c.position.x - start.x) / w)
-                                c.consume()
-                            }
-                        } while (ev.changes.any { it.pressed })
-                        handler.onSeekEnd()
+                        try {
+                            do {
+                                val ev = awaitPointerEvent()
+                                val c = ev.changes.firstOrNull { it.id == down.id }
+                                if (c != null) {
+                                    handler.onSeek((c.position.x - start.x) / w)
+                                    c.consume()
+                                }
+                            } while (ev.changes.any { it.pressed })
+                        } finally {
+                            handler.onSeekEnd()
+                        }
                     }
                     Mode.Vertical -> {
                         handler.onVerticalStart(start.x < w / 2)
                         var last = start.y
-                        do {
-                            val ev = awaitPointerEvent()
-                            val c = ev.changes.firstOrNull { it.id == down.id }
-                            if (c != null) {
-                                handler.onVertical((last - c.position.y) / (h * 0.8f))
-                                last = c.position.y
-                                c.consume()
-                            }
-                        } while (ev.changes.any { it.pressed })
-                        handler.onVerticalEnd()
+                        try {
+                            do {
+                                val ev = awaitPointerEvent()
+                                val c = ev.changes.firstOrNull { it.id == down.id }
+                                if (c != null) {
+                                    handler.onVertical((last - c.position.y) / (h * 0.8f))
+                                    last = c.position.y
+                                    c.consume()
+                                }
+                            } while (ev.changes.any { it.pressed })
+                        } finally {
+                            handler.onVerticalEnd()
+                        }
                     }
                     Mode.Pinch -> {
                         var initial = 0f

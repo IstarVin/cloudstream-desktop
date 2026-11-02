@@ -1,6 +1,8 @@
 package desktop.app.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,7 +10,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -18,20 +19,40 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SmartDisplay
+import androidx.compose.material.icons.filled.Theaters
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,20 +67,30 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.SubcomposeAsyncImage
 import desktop.api.ProviderDto
 
 @Composable
-private fun SourceIcon(provider: ProviderDto?) {
+private fun SourceIcon(provider: ProviderDto?, size: Dp = 40.dp) {
     Box(
-        Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh),
+        Modifier.size(size).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh),
         contentAlignment = Alignment.Center,
     ) {
         val fallback: @Composable () -> Unit = {
@@ -69,7 +100,7 @@ private fun SourceIcon(provider: ProviderDto?) {
         if (request == null) fallback() else SubcomposeAsyncImage(
             model = request,
             contentDescription = null,
-            modifier = Modifier.size(32.dp),
+            modifier = Modifier.size(size - 8.dp),
             loading = { fallback() },
             error = { fallback() },
         )
@@ -112,98 +143,154 @@ fun ProviderPicker(
     onManage: () -> Unit,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
-    val filters = remember(providers) { ContentTypes.groups.filter { g -> providers.any { ContentTypes.matches(it.types, g.id) } } }
+    // Keep persisted selections visible even if the installed sources have changed.
+    val filters = remember(providers, categories) {
+        ContentTypes.groups.filter { g -> g.id in categories || providers.any { ContentTypes.matches(it.types, g.id) } }
+    }
     val shown = remember(providers, categories, query) { filterSources(providers, categories, query) }
     val listState = rememberLazyListState()
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val hasFilters = categories.isNotEmpty() || query.isNotBlank()
+    val resetFilters = { query = ""; onCategories(emptySet()) }
     LaunchedEffect(query, categories) { listState.scrollToItem(0) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        // A scroll/fling at either list boundary must not drag or settle the sheet.
+        // Close, system Back, and the scrim remain available for dismissal.
+        sheetGesturesEnabled = false,
+        dragHandle = null,
         sheetMaxWidth = 640.dp,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        containerColor = MaterialTheme.colorScheme.surface,
     ) {
-        Column(Modifier.fillMaxHeight(0.92f)) {
+        Column(Modifier.fillMaxWidth().heightIn(max = 720.dp)) {
             Row(
-                Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 8.dp),
+                Modifier.fillMaxWidth().padding(start = 20.dp, top = 12.dp, end = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Choose a source", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
                 IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, "Close source picker") }
             }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Icons.Filled.Search, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                Text("Find a source", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+            }
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                label = { Text("Find a source") },
                 placeholder = { Text("Name, plugin or language") },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 trailingIcon = {
-                    if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Close, "Clear search") }
+                    if (query.isNotEmpty()) IconButton(onClick = { query = "" }) {
+                        Icon(Icons.Filled.Cancel, "Clear search", modifier = Modifier.size(20.dp))
+                    }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    keyboard?.hide()
+                    focusManager.clearFocus()
+                }),
+                shape = MaterialTheme.shapes.large,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
+                ),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                    .semantics { contentDescription = "Find a source by name, plugin or language" },
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(20.dp))
             LazyColumn(
                 state = listState,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier.weight(1f, fill = false).fillMaxWidth().selectableGroup(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 24.dp),
             ) {
                 item(key = "filters") {
                     Column(Modifier.padding(horizontal = 8.dp)) {
                         if (filters.isNotEmpty()) {
-                            Text("Content types", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(bottom = 4.dp),
+                            ) {
+                                Icon(Icons.Filled.Layers, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                                Text("Content types", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(0.dp),
+                            ) {
                                 filters.forEach { group ->
                                     val active = group.id in categories
+                                    // Material keeps a 48dp touch target around the compact chip.
+                                    // The label and width stay stable when selection changes.
                                     FilterChip(
                                         selected = active,
                                         onClick = { onCategories(if (active) categories - group.id else categories + group.id) },
-                                        label = { Text(group.label) },
-                                        leadingIcon = if (active) ({ Icon(Icons.Filled.Check, null, Modifier.size(16.dp)) }) else null,
-                                        modifier = Modifier.heightIn(min = 48.dp),
+                                        label = { Text(group.label, style = MaterialTheme.typography.labelMedium) },
+                                        leadingIcon = { Icon(contentTypeIcon(group.id), null, modifier = Modifier.size(16.dp)) },
+                                        shape = MaterialTheme.shapes.large,
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                            labelColor = MaterialTheme.colorScheme.onSurface,
+                                            iconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                            selectedLabelColor = MaterialTheme.colorScheme.onSurface,
+                                            selectedLeadingIconColor = MaterialTheme.colorScheme.primary,
+                                        ),
+                                        border = FilterChipDefaults.filterChipBorder(
+                                            enabled = true,
+                                            selected = active,
+                                            borderColor = MaterialTheme.colorScheme.outlineVariant,
+                                            selectedBorderColor = MaterialTheme.colorScheme.primary,
+                                            selectedBorderWidth = 1.dp,
+                                        ),
                                     )
                                 }
                             }
-                            Text("Select multiple. Leave empty to show every source.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(12.dp))
-                        }
-                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "${shown.size} ${if (shown.size == 1) "source" else "sources"}${if (categories.isEmpty()) " available" else " matching"}",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (categories.isNotEmpty() || query.isNotBlank()) TextButton(onClick = { query = ""; onCategories(emptySet()) }) { Text("Reset filters") }
+                            Row(
+                                Modifier.padding(top = 8.dp, bottom = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(Icons.Filled.Info, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                                Text("Select multiple. Leave empty to show every source.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Spacer(Modifier.height(8.dp))
-                    }
-                }
-                items(shown, key = { it.name }) { provider ->
-                    val active = provider.name == selected
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                            .background(if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)
-                            .selectable(selected = active, role = Role.RadioButton, onClick = { onPick(provider.name) })
-                            .padding(horizontal = 12.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        SourceIcon(provider)
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(provider.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(top = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(Icons.Filled.Groups, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             Text(
-                                "${sourceLanguage(provider.lang)} · ${ContentTypes.labels(provider.types)}",
+                                "${shown.size} ${if (shown.size == 1) "source" else "sources"}${if (categories.isEmpty() && query.isBlank()) " available" else " matching"}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 3,
-                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
                             )
+                            if (hasFilters) TextButton(onClick = resetFilters, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                                Icon(Icons.Filled.RestartAlt, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.size(6.dp))
+                                Text("Reset filters", style = MaterialTheme.typography.labelMedium)
+                            }
                         }
-                        if (active) Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    }
+                }
+                items(shown, key = { it.name }, contentType = { "source" }) { provider ->
+                    SourceRow(provider, selected = provider.name == selected) {
+                        keyboard?.hide()
+                        onPick(provider.name)
                     }
                 }
                 if (shown.isEmpty()) item(key = "empty") {
@@ -217,9 +304,76 @@ fun ProviderPicker(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         if (providers.isEmpty()) TextButton(onClick = onManage) { Text("Manage plugins") }
+                        else TextButton(onClick = resetFilters) { Text("Reset filters") }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun SourceRow(provider: ProviderDto, selected: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+        shape = MaterialTheme.shapes.large,
+        color = colors.surfaceContainerHigh,
+        border = BorderStroke(1.dp, if (selected) colors.primary else colors.outlineVariant),
+    ) {
+        Row(
+            Modifier.background(
+                Brush.horizontalGradient(
+                    if (selected) listOf(
+                        colors.primary.copy(alpha = 0.16f).compositeOver(colors.surfaceContainerLow),
+                        colors.primary.copy(alpha = 0.04f).compositeOver(colors.surfaceContainerLow),
+                    ) else listOf(colors.surfaceContainerHigh, colors.surfaceContainerLow),
+                ),
+            ).padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SourceIcon(provider, size = 48.dp)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    provider.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "${sourceLanguage(provider.lang)} · ${ContentTypes.labels(provider.types)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            // Reserve the selection indicator's space so long names wrap consistently.
+            Box(
+                Modifier.size(20.dp)
+                    .background(if (selected) colors.primary else Color.Transparent, CircleShape)
+                    .then(if (selected) Modifier else Modifier.border(1.5.dp, colors.outline, CircleShape)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (selected) Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+private fun contentTypeIcon(id: String): ImageVector = when (id) {
+    "anime" -> Icons.Filled.PlayArrow
+    "movies" -> Icons.Filled.Movie
+    "series" -> Icons.Filled.Tv
+    "drama" -> Icons.Filled.Theaters
+    "cartoons" -> Icons.Filled.SmartDisplay
+    "documentaries" -> Icons.Filled.VideoLibrary
+    "live" -> Icons.AutoMirrored.Filled.TrendingUp
+    "torrent" -> Icons.Filled.Download
+    "adult" -> Icons.Filled.Person
+    else -> Icons.Filled.LiveTv
 }

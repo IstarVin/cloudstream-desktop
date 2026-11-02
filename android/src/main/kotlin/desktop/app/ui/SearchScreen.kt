@@ -143,7 +143,11 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
         OutlinedTextField(
             query, { query = it },
             placeholder = { Text("Search movies, series, anime…") },
-            leadingIcon = { Icon(Icons.Filled.Search, null) },
+            leadingIcon = {
+                IconButton(onClick = { run(query) }, enabled = query.isNotBlank()) {
+                    Icon(Icons.Filled.Search, "Search")
+                }
+            },
             trailingIcon = {
                 if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Clear, "Clear search text") }
             },
@@ -231,7 +235,7 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
                     Row(Modifier.fillMaxWidth().padding(start = Gutter, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                             Text(provider)
-                            Text(error, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 2)
+                            Text(error, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                         }
                         IconButton(onClick = { vm.search(vm.lastQuery, only = provider.takeUnless { it == "Search" }) }, enabled = !searching) { Icon(Icons.Filled.Refresh, "Retry $provider") }
                     }

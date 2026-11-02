@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import desktop.api.HomePage
 import desktop.api.HomeRow
 import desktop.app.app
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** Merges a home section's pages into rows, dropping repeats (`web/src/lib/home.ts`). */
@@ -45,6 +46,9 @@ object HomePages {
         }
         return rows.values.toList()
     }
+
+    /** Keep a missing collection empty instead of substituting an unrelated row. */
+    fun rowItems(rows: List<HomeRow>, name: String) = rows.firstOrNull { it.name == name }?.items.orEmpty()
 
     /** Whether to ask for another page: the provider says so and the last page added something new. */
     fun hasMore(pages: List<HomePage>): Boolean {
@@ -71,6 +75,8 @@ fun SectionScreen(provider: String, section: Int, row: String, name: String, onT
             try {
                 pages.add(api.home(provider, section, pages.size + 1))
                 error = null
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 error = e.userMessage()
             } finally {
@@ -80,7 +86,8 @@ fun SectionScreen(provider: String, section: Int, row: String, name: String, onT
     }
 
     LaunchedEffect(Unit) { if (pages.isEmpty()) more() }
-    val items = HomePages.merge(pages).firstOrNull { it.name == row }?.items ?: HomePages.merge(pages).firstOrNull()?.items.orEmpty()
+    val rows = remember(pages.toList()) { HomePages.merge(pages) }
+    val items = HomePages.rowItems(rows, row)
     val nearEnd by remember { derivedStateOf { (grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >= grid.layoutInfo.totalItemsCount - 6 } }
     LaunchedEffect(nearEnd, pages.size) { if (nearEnd && error == null) more() }
 

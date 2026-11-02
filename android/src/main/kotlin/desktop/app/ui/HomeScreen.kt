@@ -1,8 +1,9 @@
 package desktop.app.ui
 
 import android.app.Application
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -11,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +29,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,12 +41,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.SubcomposeAsyncImage
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -164,7 +173,11 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
     PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.load() }, modifier = Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
-                Row(Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     SourceSelector(
                         current = (providers as? Load.Ok)?.value?.firstOrNull { it.name == provider },
                         onClick = { picking = true },
@@ -182,17 +195,17 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
                 }
             }
             if (cont.isNotEmpty()) {
-                item { SectionTitle("Continue watching", Modifier.padding(start = Gutter, top = 16.dp, bottom = 12.dp)) }
+                item {
+                    Text(
+                        "Continue watching",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(start = Gutter, end = Gutter, top = 20.dp, bottom = 12.dp).semantics { heading() },
+                    )
+                }
                 item {
                     LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(cont, key = { it.provider + it.url }) { c ->
-                            Poster(
-                                c.title, c.poster,
-                                // The episode number and the time left; its name is on the title page.
-                                subtitle = listOfNotNull(c.episodeLabel?.substringBefore(" · "), remainingLabel(c.position, c.duration)).joinToString(" · "),
-                                progress = if (c.duration > 0) (c.position / c.duration).toFloat() else null,
-                                onClick = { onTitle(c.provider, c.url) },
-                            )
+                            ContinueWatchingCard(c, onClick = { onTitle(c.provider, c.url) })
                         }
                     }
                 }
@@ -238,6 +251,73 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
     }
 }
 
+/** Keep portrait artwork intact while making room for the episode and watch progress. */
+@Composable
+private fun ContinueWatchingCard(entry: ContinueEntry, onClick: () -> Unit) {
+    val progress = if (entry.duration.isFinite() && entry.duration > 0 && entry.position.isFinite()) {
+        (entry.position / entry.duration).toFloat().coerceIn(0f, 1f)
+    } else null
+    val remaining = if (progress != null) remainingLabel(entry.position, entry.duration) else null
+    Surface(
+        onClick = onClick,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.width(292.dp).semantics(mergeDescendants = true) {
+            progress?.let { stateDescription = "${(it * 100).toInt()}% watched" }
+        },
+    ) {
+        Row(
+            Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.width(76.dp).height(114.dp).clip(MaterialTheme.shapes.small)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                contentAlignment = Alignment.Center,
+            ) {
+                val fallback: @Composable () -> Unit = {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.VideoLibrary, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(28.dp))
+                    }
+                }
+                val request = imageRequest(entry.poster)
+                if (request == null) fallback() else SubcomposeAsyncImage(
+                    model = request,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                    loading = { fallback() },
+                    error = { fallback() },
+                )
+            }
+            Column(
+                Modifier.weight(1f).heightIn(min = 114.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(entry.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    entry.episodeLabel?.substringBefore(" · ")?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    remaining?.let {
+                        Text(it, style = MaterialTheme.typography.labelMedium.merge(TabularNumbers), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (progress != null) LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth().height(4.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        drawStopIndicator = {},
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun HomeSectionRows(vm: HomeViewModel, section: HomeSection, onTitle: (String, String) -> Unit, onMore: (String) -> Unit) {
     LaunchedEffect(section.index, vm.provider.collectAsState().value) { vm.loadSection(section.index) }
@@ -252,20 +332,24 @@ private fun HomeSectionRows(vm: HomeViewModel, section: HomeSection, onTitle: (S
             TextButton(onClick = { vm.loadSection(section.index) }) { Text("Retry") }
         }
         is Load.Ok -> page.value.rows.filter { it.items.isNotEmpty() }.forEach { row ->
-            Column(Modifier.padding(top = 16.dp)) {
+            Column(Modifier.padding(top = 24.dp)) {
                 Row(
-                    Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button, onClickLabel = "See all ${row.name}") { onMore(row.name) }.padding(horizontal = Gutter, vertical = 8.dp),
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = Gutter, end = 8.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    SectionTitle(row.name, Modifier.weight(1f))
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "See all")
+                    Text(row.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = { onMore(row.name) }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "See all ${row.name}" }) {
+                        Text("See all")
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
                 }
                 LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(row.items, key = { it.provider + it.url }) { item ->
                         Poster(
                             item.name, item.poster,
                             headers = item.posterHeaders,
-                            width = if (row.horizontal) 220.dp else 120.dp,
+                            width = if (row.horizontal) 232.dp else 128.dp,
                             aspect = if (row.horizontal) 16f / 9f else 2f / 3f,
                             subtitle = item.year?.toString(),
                             badge = item.quality,

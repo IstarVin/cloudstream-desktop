@@ -13,6 +13,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
@@ -68,7 +69,21 @@ class Engine(context: Context, http: OkHttpClient) {
         val renderers = DefaultRenderersFactory(context)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             .setEnableDecoderFallback(true)
+        // Keep recent samples for backward seeks, including the keyframe needed to decode them.
+        // Buffer ahead without delaying startup; high-bitrate streams hit the byte target sooner.
+        val loadControl = DefaultLoadControl.Builder()
+            .setBackBuffer(30_000, true)
+            .setBufferDurationsMs(
+                60_000,
+                120_000,
+                DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,
+                DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
+            )
+            .setTargetBufferBytes(128 * 1024 * 1024)
+            .setPrioritizeTimeOverSizeThresholds(false)
+            .build()
         player = ExoPlayer.Builder(context)
+            .setLoadControl(loadControl)
             .setMediaSourceFactory(sources)
             .setRenderersFactory(renderers.withAssSupport(ass))
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
