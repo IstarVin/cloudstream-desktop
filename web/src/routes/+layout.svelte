@@ -176,6 +176,7 @@
     bottom: calc(var(--nav-h) + var(--safe-b) + 16px);
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: 8px;
     z-index: 100;
     width: min(calc(100% - 32px), 420px);
@@ -187,32 +188,40 @@
   .toast {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 12px 12px 12px 16px;
-    border-radius: 14px;
-    background: var(--surface-3);
-    box-shadow: 0 10px 32px rgb(0 0 0 / 0.4);
+    gap: 10px;
+    width: fit-content;
+    max-width: 100%;
+    padding: 6px 6px 6px 14px;
+    border-radius: var(--radius);
+    background: var(--surface-2);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
     pointer-events: auto;
     animation: toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   .toast-icon {
-    display: flex;
+    display: grid;
     flex: none;
-    margin-top: 3px;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    margin-top: 8px;
+    border-radius: 50%;
+    background: var(--accent-soft);
     color: var(--accent);
   }
   .toast.error .toast-icon {
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
     color: var(--danger);
   }
   .toast p {
     flex: 1;
     min-width: 0;
     margin: 0;
-    padding: 3px 0;
+    padding: 12px 0;
     color: var(--text);
     font-size: 14px;
     font-weight: 500;
-    line-height: 1.45;
+    line-height: 20px;
     overflow-wrap: anywhere;
   }
   .toast-dismiss {
@@ -221,17 +230,22 @@
     place-items: center;
     width: 44px;
     height: 44px;
-    margin: -3px -3px -3px 0;
     padding: 0;
     border: 0;
     border-radius: 8px;
-    background: transparent;
+    background: var(--surface-3);
     color: var(--muted);
     cursor: pointer;
+    transition:
+      background-color 150ms,
+      color 150ms;
   }
   .toast-dismiss:hover {
-    background: var(--surface-2);
+    background: color-mix(in srgb, var(--text) 16%, var(--surface-2));
     color: var(--text);
+  }
+  .toast-dismiss:active {
+    background: color-mix(in srgb, var(--text) 22%, var(--surface-2));
   }
   .toast-dismiss:focus-visible {
     outline: 2px solid var(--accent);

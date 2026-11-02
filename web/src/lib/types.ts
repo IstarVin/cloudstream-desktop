@@ -13,6 +13,8 @@ export interface Provider {
 
 export interface PluginInfo {
   name: string;
+  /** Icon declared by plugins.json or the local module metadata. */
+  iconUrl?: string | null;
   version: number | null;
   description: string | null;
   status: "loaded" | "error" | "disabled" | "missing";

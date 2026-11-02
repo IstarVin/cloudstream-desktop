@@ -42,6 +42,8 @@ data class PluginDto(
     val previous: Int? = null,
     /** Labelled settings the plugin declares; the form shows any other keys below them. */
     val settingsSchema: List<SettingField> = emptyList(),
+    /** Icon declared by the plugin source; available even when the plugin is disabled. */
+    val iconUrl: String? = null,
 )
 
 @Serializable

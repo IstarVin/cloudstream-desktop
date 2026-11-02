@@ -282,6 +282,7 @@ fun Route.apiRoutes(s: Services) {
                     available = repo?.available(r.name)?.takeIf { repo.installable(r.name) }?.version,
                     previous = repo?.installed(r.name)?.previous?.firstOrNull()?.entry?.version,
                     settingsSchema = r.loaded?.settingsSchema.orEmpty(),
+                    iconUrl = r.info.iconUrl,
                 )
             })
         }
