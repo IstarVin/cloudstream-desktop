@@ -90,7 +90,7 @@ class ChromiumTest {
             } else {
                 challenges.incrementAndGet()
                 ex.respond(403, """<title>Just a moment...</title><script>document.cookie = "cf_clearance=ok; path=/"</script>""",
-                    headers = mapOf("Server" to "cloudflare"))
+                    headers = mapOf("Server" to "cloudflare", "cf-mitigated" to "challenge"))
             }
         }.use { server ->
             val host = "127.0.0.1"
@@ -113,7 +113,7 @@ class ChromiumTest {
         LocalServer { ex ->
             if ("cf_clearance=late" in ex.requestHeaders.getFirst("Cookie").orEmpty()) ex.respond(200, "welcome")
             else ex.respond(403, """<script>setTimeout(() => { document.cookie = "cf_clearance=late; path=/" }, 2500)</script>""",
-                headers = mapOf("Server" to "cloudflare"))
+                headers = mapOf("Server" to "cloudflare", "cf-mitigated" to "challenge"))
         }.use { server ->
             Clearances.hosts.remove("127.0.0.1")
             val impatient = app.baseClient.newBuilder().addInterceptor(CloudflareKiller())
@@ -127,14 +127,21 @@ class ChromiumTest {
 
     @Test
     fun anUnpassableCheckReturnsTheChallengeAndIsListed() {
-        LocalServer { ex -> ex.respond(503, "<p>checking your browser</p>", headers = mapOf("Server" to "cloudflare")) }.use { server ->
+        val requests = AtomicInteger()
+        LocalServer { ex ->
+            if (ex.requestHeaders.getFirst("X-Test-Caller") == "yes") requests.incrementAndGet()
+            ex.respond(503, "<p>checking your browser</p>", headers = mapOf("Server" to "cloudflare", "cf-mitigated" to "challenge"))
+        }.use { server ->
             Clearances.hosts.remove("127.0.0.1")
             val options = Chromium.options
             Chromium.configure(options.copy(solveTimeoutMs = 1500))
             try {
                 val client = app.baseClient.newBuilder().addInterceptor(CloudflareKiller()).build()
-                val code = client.newCall(Request.Builder().url("${server.url}/x").build()).execute().use { it.code }
-                assertEquals(503, code, "as on Android, the challenge response comes back")
+                client.newCall(Request.Builder().url("${server.url}/x").header("X-Test-Caller", "yes").build()).execute().use {
+                    assertEquals(503, it.code)
+                    assertEquals("<p>checking your browser</p>", it.body.string())
+                }
+                assertEquals(1, requests.get(), "a failed solve must not replay the caller request")
                 val check = Chromium.challenges.value.singleOrNull { it.kind == "cloudflare" }
                 assertNotNull(check)
                 assertFalse(check.solving)

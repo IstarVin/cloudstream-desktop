@@ -30,10 +30,18 @@ class CloudflareKiller : Interceptor {
         val saved = savedCookies[request.url.host]
         val response = chain.proceed(if (saved != null) withClearance(request, saved) else request)
         if (!isChallenge(response)) return response
+        // Streaming bodies cannot be replayed, and a redirected challenge belongs to the final host.
+        if (request.body?.isOneShot() == true || request.body?.isDuplex() == true) return response
+        if (response.request.url.host != request.url.host) return response
+        val cookies = try {
+            runBlocking {
+                Chromium.solveCloudflare(response.request.url.toString(), saved) { chain.call().isCanceled() }
+            }
+        } catch (e: Exception) {
+            response.close()
+            throw e
+        } ?: return response // Preserve the original status, headers and body without another network request.
         response.close()
-        val cookies = runBlocking {
-            Chromium.solveCloudflare(request.url.toString(), saved) { chain.call().isCanceled() }
-        } ?: return chain.proceed(request)
         return chain.proceed(withClearance(request, cookies))
     }
 
@@ -61,8 +69,17 @@ class CloudflareKiller : Interceptor {
                 if (split.size == 2) split[0].trim() to split[1].trim() else null
             }.toMap()
 
-        fun isChallenge(response: Response) =
-            response.code in ERROR_CODES &&
-                (response.header("Server")?.lowercase() in CLOUDFLARE_SERVERS || response.header("cf-mitigated") == "challenge")
+        fun isChallenge(response: Response): Boolean {
+            // Cloudflare's explicit signal is independent of the response status.
+            if (response.header("cf-mitigated")?.trim().equals("challenge", ignoreCase = true)) return true
+            if (response.code !in ERROR_CODES ||
+                response.header("Server")?.lowercase() !in CLOUDFLARE_SERVERS) return false
+            // Older challenges lack cf-mitigated. A CDN server header alone also occurs on origin errors.
+            val type = response.header("Content-Type").orEmpty()
+            if (type.isNotEmpty() && !type.contains("text/html", ignoreCase = true)) return false
+            val html = response.peekBody(64 * 1024).string()
+            return listOf("/cdn-cgi/challenge-platform/", "_cf_chl_opt", "cf-chl-", "challenge-form")
+                .any { html.contains(it, ignoreCase = true) }
+        }
     }
 }
