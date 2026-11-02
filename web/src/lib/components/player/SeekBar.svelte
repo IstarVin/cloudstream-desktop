@@ -139,8 +139,24 @@
     width: 100%;
     height: 100%;
     margin: 0;
+    padding: 0;
     opacity: 0;
     cursor: pointer;
+    appearance: none;
+    background: transparent;
+  }
+  /* The native thumb insets the value range by half its width; without one, the pointer maps to
+     the full track and lines up with the thumb drawn above. */
+  input::-webkit-slider-thumb {
+    appearance: none;
+    width: 0;
+    height: 0;
+    border: 0;
+  }
+  input::-moz-range-thumb {
+    width: 0;
+    height: 0;
+    border: 0;
   }
   input:disabled {
     cursor: default;

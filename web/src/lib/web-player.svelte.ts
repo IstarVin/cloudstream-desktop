@@ -75,6 +75,10 @@ type Status = "resolving" | "loading" | "playing" | "error" | "ended";
  */
 class WebPlayer {
   open = $state(false);
+  /** Shrunk to a floating window so the rest of the app can be used while it plays. */
+  minimized = $state(false);
+  /** A swipe-seek is under way: the video is held paused until the finger lifts. */
+  scrubbing = $state(false);
   item = $state<Item | null>(null);
   status = $state<Status>("resolving");
   message = $state<string | null>(null);
@@ -126,6 +130,9 @@ class WebPlayer {
   private countdown: ReturnType<typeof setInterval> | undefined;
   private prefetch: (() => void) | null | undefined;
   private videoWaiters: ((v: HTMLVideoElement) => void)[] = [];
+  private resumeAfterScrub = false;
+  /** Called once a forced save (pause, close, end) has reached the server, so screens can refetch progress. */
+  onProgressSaved: (() => void) | null = null;
 
   get profile() {
     const s = this.settings;
@@ -194,6 +201,8 @@ class WebPlayer {
         this.buffering = true;
         break;
       case "pause":
+        // A swipe-seek holds the video still; that isn't the viewer pausing.
+        if (this.scrubbing) break;
         this.paused = true;
         this.saveProgress(true);
         break;
@@ -222,6 +231,7 @@ class WebPlayer {
     subs: string[] = [],
   ) {
     this.open = true;
+    this.minimized = false;
     this.status = "resolving";
     this.message = "Loading…";
     try {
@@ -629,7 +639,10 @@ class WebPlayer {
     const now = Date.now();
     if (!force && now - this.lastSaved < 5000) return;
     this.lastSaved = now;
-    api.progress(req).catch(() => {});
+    api.progress(req).then(
+      () => force && this.onProgressSaved?.(),
+      () => {},
+    );
   }
 
   /** The page is closing: a request that outlives it. */
@@ -652,7 +665,10 @@ class WebPlayer {
         duration: dur,
         label: this.label,
       })
-      .catch(() => {});
+      .then(
+        () => this.onProgressSaved?.(),
+        () => {},
+      );
     this.status = "ended";
     if (this.settings?.autoplay_next && this.hasNext) {
       clearInterval(this.countdown);
@@ -706,6 +722,8 @@ class WebPlayer {
     this.reset();
     this.session++;
     this.open = false;
+    this.minimized = false;
+    this.scrubbing = false;
     this.item = null;
     this.current = null;
     if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
@@ -763,6 +781,23 @@ class WebPlayer {
 
   seekBy(seconds: number) {
     if (this.video) this.seekTo(this.video.currentTime + seconds);
+  }
+
+  /** A swipe-seek starts: hold the video still so the sound doesn't run on under the finger. */
+  beginScrub() {
+    const v = this.video;
+    if (!v || this.scrubbing) return;
+    this.scrubbing = true;
+    this.resumeAfterScrub = !v.paused;
+    v.pause();
+  }
+
+  /** The finger lifted: carry on playing if it was playing before. */
+  endScrub() {
+    if (!this.scrubbing) return;
+    this.scrubbing = false;
+    if (this.resumeAfterScrub) void this.video?.play();
+    this.resumeAfterScrub = false;
   }
 
   setRate(rate: number) {

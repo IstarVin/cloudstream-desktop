@@ -6,8 +6,6 @@
   import LoadingSkeleton from "#lib/components/LoadingSkeleton.svelte";
   import Poster from "#lib/components/Poster.svelte";
   import ProviderPicker from "#lib/components/ProviderPicker.svelte";
-  import { matchesContentType } from "#lib/content-types";
-  import { homeFilter } from "#lib/view-state";
 
   const providers = createQuery(() => ({
     queryKey: ["providers"],
@@ -23,9 +21,7 @@
 
   const withHome = $derived((providers.data ?? []).filter((p) => p.hasMainPage));
   let chosen = $state<string | null>(read());
-  let contentType = $state(homeFilter.contentType);
-  const matching = $derived(withHome.filter((p) => matchesContentType(p.types, contentType)));
-  const current = $derived(matching.find((p) => p.name === chosen) ?? matching[0]);
+  const current = $derived(withHome.find((p) => p.name === chosen) ?? withHome[0]);
 
   function read() {
     try {
@@ -41,16 +37,6 @@
     } catch {
       // Private mode: the choice just isn't remembered.
     }
-  }
-
-  function filter(type: string) {
-    contentType = type;
-    homeFilter.contentType = type;
-    // Keep the selected source when it supports the filter; otherwise switch to a compatible one.
-    const next =
-      withHome.find((p) => p.name === chosen && matchesContentType(p.types, type)) ??
-      withHome.find((p) => matchesContentType(p.types, type));
-    if (next) choose(next.name);
   }
 
   const sections = createQuery(() => ({
@@ -106,19 +92,7 @@
       >
     </div>
   {:else}
-    <ProviderPicker
-      providers={withHome}
-      {current}
-      {contentType}
-      onchoose={choose}
-      onfilter={filter}
-    />
-    {#if !current}
-      <div class="empty">
-        <p>No sources available for this content type.</p>
-        <button class="btn" onclick={() => filter("all")}>Show all sources</button>
-      </div>
-    {/if}
+    <ProviderPicker providers={withHome} {current} onchoose={choose} />
 
     {#if continueQ.data?.length}
       <h2 class="section-title">Continue watching</h2>

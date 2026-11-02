@@ -1,29 +1,34 @@
 <script lang="ts">
   import {
-    ArrowLeft,
     Captions,
+    ChevronDown,
     FastForward,
     Gauge,
     Layers,
     ListVideo,
     Maximize,
     Minimize,
+    MoveHorizontal,
     Pause,
     PictureInPicture2,
     Play,
     RefreshCw,
+    RectangleHorizontal,
     RotateCcw,
-    Scan,
     SkipBack,
     SkipForward,
     Sun,
     Volume2,
     VolumeX,
+    X,
+    ZoomIn,
   } from "@lucide/svelte";
-  import { untrack } from "svelte";
+  import { useQueryClient } from "@tanstack/svelte-query";
+  import { onDestroy, tick, untrack } from "svelte";
   import { formatTime } from "../../api";
   import { playerGestures } from "../../player/gestures";
-  import { prefs, type ResizeMode } from "../../player/prefs.svelte";
+  import { player } from "../../player.svelte";
+  import { loadLocal, prefs, saveLocal, type ResizeMode } from "../../player/prefs.svelte";
   import { scrubPosition, skipName } from "../../player/rules";
   import { sources } from "../../sources.svelte";
   import { webPlayer } from "../../web-player.svelte";
@@ -31,6 +36,15 @@
   import SeekBar from "./SeekBar.svelte";
 
   const p = webPlayer;
+  const client = useQueryClient();
+
+  // Watch progress shown on the title and home screens is only fetched on load, so refetch it once a save lands.
+  p.onProgressSaved = () => {
+    client.invalidateQueries({ queryKey: ["continue"] });
+    client.invalidateQueries({ queryKey: ["history"] });
+    client.invalidateQueries({ queryKey: ["details"] });
+  };
+  onDestroy(() => (p.onProgressSaved = null));
   const pref = $derived(prefs.value);
 
   let root = $state<HTMLDivElement | null>(null);
@@ -63,11 +77,12 @@
     if (pref.resizeMode === "zoom") return `scale(${Math.max(w / vw, h / vh) / fit})`;
     return `scale(${w / (vw * fit)}, ${h / (vh * fit)})`;
   });
-  const RESIZE: { mode: ResizeMode; label: string }[] = [
-    { mode: "fit", label: "Fit" },
-    { mode: "fill", label: "Stretch" },
-    { mode: "zoom", label: "Zoom" },
-  ];
+  const RESIZE = [
+    { mode: "fit", label: "Fit", icon: RectangleHorizontal },
+    { mode: "fill", label: "Stretch", icon: MoveHorizontal },
+    { mode: "zoom", label: "Zoom", icon: ZoomIn },
+  ] satisfies { mode: ResizeMode; label: string; icon: unknown }[];
+  const resize = $derived(RESIZE.find((r) => r.mode === pref.resizeMode) ?? RESIZE[0]);
 
   const busy = $derived(p.status === "resolving" || p.status === "loading" || p.buffering);
   const subtitleLine = $derived(
@@ -91,6 +106,8 @@
     }, 3500);
   }
   $effect(() => {
+    // Holding the video still for a swipe-seek isn't a pause worth showing the controls for.
+    if (p.scrubbing) return;
     if (p.paused || panel || p.status !== "playing") {
       controls = true;
       clearTimeout(hideTimer);
@@ -167,7 +184,10 @@
     },
     scrub(fraction, done) {
       if (p.duration <= 0) return;
-      if (scrubTarget == null) scrubFrom = p.position;
+      if (scrubTarget == null) {
+        scrubFrom = p.position;
+        p.beginScrub();
+      }
       const target = scrubPosition(scrubFrom, fraction, p.duration);
       scrubTarget = target;
       // Seek along the way now and then, so the picture follows the finger.
@@ -176,7 +196,10 @@
         lastScrubSeek = now;
         p.seekTo(target);
       }
-      if (done) scrubTarget = null;
+      if (done) {
+        scrubTarget = null;
+        p.endScrub();
+      }
     },
     vertical(side, delta, done) {
       if (done) return;
@@ -229,8 +252,122 @@
     p.close();
   }
 
+  /** Shrinks the player to a floating window that keeps playing while the app is used. */
+  function minimize() {
+    void setMinimized(true);
+  }
+
+  let morph: Animation | undefined;
+  let morphing = $state(false);
+
+  /** Glides the box from where it was ([first]) to where it is now ([last]). */
+  function glide(el: HTMLElement, first: DOMRect, last: DOMRect, from: number, to: number) {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const frame = (r: DOMRect, radius: number) => ({
+      top: `${r.top}px`,
+      left: `${r.left}px`,
+      width: `${r.width}px`,
+      height: `${r.height}px`,
+      right: "auto",
+      bottom: "auto",
+      borderRadius: `${radius}px`,
+    });
+    morphing = true;
+    const run = el.animate([frame(first, from), frame(last, to)], {
+      duration: 300,
+      easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+    });
+    morph = run;
+    const done = () => {
+      if (morph === run) morphing = false;
+    };
+    run.finished.then(done, done);
+  }
+
+  /** Flips between the full screen and the floating window, gliding the box from one to the other. */
+  async function setMinimized(next: boolean) {
+    if (!root || p.minimized === next) return;
+    if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
+    const el = root;
+    const first = el.getBoundingClientRect();
+    morph?.cancel();
+    panel = null;
+    p.minimized = next;
+    await tick();
+    glide(el, first, el.getBoundingClientRect(), next ? 0 : 12, next ? 12 : 0);
+  }
+
+  // ---- the floating window: drag it, and it settles against the nearest side edge ------------------------------
+
+  const DOCK_KEY = "player-mini";
+  const EDGE_GAP = 12;
+  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
+
+  /** Which side edge the window sits on, and how far it has been lifted off the bottom. */
+  let dock = $state<{ side: "left" | "right"; lift: number }>(
+    loadLocal(DOCK_KEY, { side: "right", lift: 0 }),
+  );
+  let drag = $state<{ x: number; y: number } | null>(null);
+  let grab: { px: number; py: number; rect: DOMRect; moved: boolean } | null = null;
+  let swallowClick = false;
+
+  function dragDown(e: PointerEvent) {
+    if (e.button !== 0 || !root) return;
+    morph?.cancel();
+    morphing = false;
+    grab = { px: e.clientX, py: e.clientY, rect: root.getBoundingClientRect(), moved: false };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function dragMove(e: PointerEvent) {
+    const g = grab;
+    if (!g) return;
+    const dx = e.clientX - g.px;
+    const dy = e.clientY - g.py;
+    if (!g.moved && Math.hypot(dx, dy) < 6) return;
+    g.moved = true;
+    // Stay on screen while dragging.
+    drag = {
+      x: clamp(dx, -g.rect.left, innerWidth - g.rect.right),
+      y: clamp(dy, -g.rect.top, innerHeight - g.rect.bottom),
+    };
+  }
+
+  async function dragUp() {
+    const g = grab;
+    grab = null;
+    if (!g?.moved || !root) return;
+    swallowClick = true;
+    setTimeout(() => (swallowClick = false), 50);
+    const el = root;
+    const first = el.getBoundingClientRect();
+    const side = first.left + first.width / 2 < innerWidth / 2 ? "left" : "right";
+    // Settle on the nearer edge, keeping the height it was dropped at (between the tab bar and the top).
+    drag = null;
+    dock = { side, lift: 0 };
+    await tick();
+    const rest = el.getBoundingClientRect();
+    const lift = clamp(rest.bottom - first.bottom, 0, rest.bottom - rest.height - EDGE_GAP);
+    dock = { side, lift };
+    saveLocal(DOCK_KEY, dock);
+    await tick();
+    glide(el, first, el.getBoundingClientRect(), 12, 12);
+  }
+
+  /** A shorter screen can leave the window above the top edge; bring it back down. */
+  function fitDock() {
+    if (!p.minimized || !root) return;
+    const over = EDGE_GAP - root.getBoundingClientRect().top;
+    if (over > 0 && dock.lift > 0) dock = { ...dock, lift: Math.max(0, dock.lift - over) };
+  }
+
+  function expand() {
+    if (swallowClick) return;
+    void setMinimized(false);
+  }
+
   function onKey(e: KeyboardEvent) {
-    if (!p.open || sources.open || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!p.open || p.minimized || sources.open || e.ctrlKey || e.metaKey || e.altKey) return;
     const t = e.target as HTMLElement | null;
     if (t?.closest("input, select, textarea, [contenteditable]")) return;
     const handled = () => {
@@ -281,7 +418,7 @@
         return handled();
       case "Escape":
         if (panel) panel = null;
-        else if (!document.fullscreenElement) close();
+        else if (!document.fullscreenElement) minimize();
         return handled();
     }
     if (/^[0-9]$/.test(e.key) && p.duration > 0) {
@@ -340,12 +477,22 @@
   });
 </script>
 
-<svelte:window onkeydown={onKey} onpagehide={() => p.saveOnExit()} />
+<svelte:window onkeydown={onKey} onpagehide={() => p.saveOnExit()} onresize={fitDock} />
 <svelte:document onfullscreenchange={() => (fullscreen = !!document.fullscreenElement)} />
 
 {#if p.open}
   <div
-    class={["player", { idle: !controls }]}
+    class={[
+      "player",
+      {
+        idle: !controls,
+        mini: p.minimized,
+        left: p.minimized && dock.side === "left",
+        dragging: !!drag,
+        morphing,
+        "above-bar": player.active,
+      },
+    ]}
     bind:this={root}
     role="region"
     aria-label="Video player"
@@ -353,6 +500,8 @@
     bind:clientWidth={box.w}
     bind:clientHeight={box.h}
     style:--sub-scale={pref.subtitleScale}
+    style:--lift="{dock.lift}px"
+    style:transform={drag ? `translate(${drag.x}px, ${drag.y}px)` : null}
   >
     <div
       class="stage"
@@ -389,7 +538,7 @@
       aria-live="off"
     ></div>
 
-    <div class="touch" {@attach gestures}></div>
+    {#if !p.minimized}<div class="touch" {@attach gestures}></div>{/if}
 
     {#if busy && p.status !== "error"}
       <div class="center-status" aria-live="polite">
@@ -398,211 +547,257 @@
       </div>
     {/if}
 
-    {#if p.status === "error"}
-      <div class="card error" role="alert">
-        <p>{p.message ?? "Couldn't play this episode"}</p>
-        <div class="row">
-          <button class="btn" onclick={openSources}
-            ><Layers size={18} strokeWidth={1.8} aria-hidden="true" /> Sources</button
-          >
-          <button class="btn" onclick={() => p.retry()}
-            ><RefreshCw size={18} strokeWidth={1.8} aria-hidden="true" /> Retry</button
-          >
-        </div>
-      </div>
-    {/if}
-
-    {#if holding}
-      <div class="pill top">{pref.holdSpeed}× <FastForward size={16} aria-hidden="true" /></div>
-    {/if}
-    {#if scrubTarget != null}
-      <div class="pill mid">
-        {formatTime(scrubTarget)}
-        <small
-          >{scrubTarget >= scrubFrom ? "+" : "−"}{formatTime(
-            Math.abs(scrubTarget - scrubFrom),
-          )}</small
-        >
-      </div>
-    {/if}
-    {#if tapSeek}
-      <div class={["tap-seek", tapSeek.side < 0 ? "left" : "right"]}>
-        {tapSeek.side < 0 ? "−" : "+"}{tapSeek.seconds}s
-      </div>
-    {/if}
-    {#if level}
-      <div class="pill level">
-        {#if level.kind === "volume"}<Volume2 size={18} aria-hidden="true" />{:else}<Sun
-            size={18}
-            aria-hidden="true"
-          />{/if}
-        <span class="meter"><span style:width="{level.value * 100}%"></span></span>
-      </div>
-    {/if}
-
-    {#if p.skip}
-      <button class="skip-btn" onclick={() => p.skipNow()}
-        ><FastForward size={16} strokeWidth={1.8} aria-hidden="true" /> Skip {skipName(
-          p.skip,
-        )}</button
+    {#if p.minimized}
+      <button
+        class="mini-hit"
+        onclick={expand}
+        onpointerdown={dragDown}
+        onpointermove={dragMove}
+        onpointerup={dragUp}
+        onpointercancel={dragUp}
+        aria-label="Expand player"
+      ></button>
+      <button class="mini-close" onclick={close} aria-label="Close player"
+        ><X size={18} strokeWidth={2} aria-hidden="true" /></button
       >
-    {/if}
-
-    {#if p.upNext != null}
-      <div class="card up-next">
-        <small>Up next in {p.upNext}</small>
-        <b>{p.item?.episodes[(p.item?.index ?? 0) + 1]?.name ?? "Next episode"}</b>
-        <div class="row">
-          <button class="btn primary" onclick={() => p.next()}>Play now</button>
-          <button class="btn" onclick={() => p.cancelUpNext()}>Cancel</button>
-        </div>
-      </div>
-    {/if}
-
-    <div class="chrome" class:shown={controls} inert={!controls}>
-      <div class="top">
-        <button class="icon" onclick={close} aria-label="Close player"
-          ><ArrowLeft size={22} strokeWidth={1.8} aria-hidden="true" /></button
-        >
-        <div class="titles">
+      <div class="mini-bar">
+        <div class="mini-text">
           <div class="title">{p.item?.details.name ?? ""}</div>
-          {#if subtitleLine}<div class="sub">{subtitleLine}</div>{/if}
+          <div class="sub">{p.status === "error" ? (p.message ?? "Couldn't play") : p.label}</div>
         </div>
         <button
           class="icon"
-          onclick={cycleResize}
-          aria-label={`Resize: ${RESIZE.find((r) => r.mode === pref.resizeMode)?.label}`}
-          title={RESIZE.find((r) => r.mode === pref.resizeMode)?.label}
-          ><Scan size={20} strokeWidth={1.8} aria-hidden="true" /></button
-        >
-        {#if "pictureInPictureEnabled" in document && document.pictureInPictureEnabled}
-          <button class="icon" onclick={togglePip} aria-label="Picture in picture"
-            ><PictureInPicture2 size={20} strokeWidth={1.8} aria-hidden="true" /></button
-          >
-        {/if}
-        <button
-          class="icon"
-          onclick={toggleFullscreen}
-          aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
-          >{#if fullscreen}<Minimize
-              size={20}
-              strokeWidth={1.8}
-              aria-hidden="true"
-            />{:else}<Maximize size={20} strokeWidth={1.8} aria-hidden="true" />{/if}</button
-        >
-      </div>
-
-      <div class="middle">
-        <button
-          class="icon mid"
-          onclick={() => p.prev()}
-          disabled={!p.hasPrev}
-          aria-label="Previous episode"
-          ><SkipBack size={26} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /></button
-        >
-        <button
-          class="icon play"
           onclick={() => p.toggle()}
           disabled={p.status === "resolving" || p.status === "error"}
           aria-label={p.status === "ended" ? "Replay" : p.paused ? "Play" : "Pause"}
         >
-          {#if p.status === "ended"}<RotateCcw
-              size={32}
-              strokeWidth={2}
-              aria-hidden="true"
-            />{:else if p.paused}<Play
-              size={34}
+          {#if p.status === "ended"}<RotateCcw size={20} strokeWidth={2} aria-hidden="true" />
+          {:else if p.paused}<Play
+              size={20}
               fill="currentColor"
               strokeWidth={1.8}
               aria-hidden="true"
             />{:else}<Pause
-              size={34}
+              size={20}
               fill="currentColor"
               strokeWidth={1.8}
               aria-hidden="true"
             />{/if}
         </button>
-        <button
-          class="icon mid"
-          onclick={() => p.next()}
-          disabled={!p.hasNext}
-          aria-label="Next episode"
-          ><SkipForward
-            size={26}
-            fill="currentColor"
-            strokeWidth={1.8}
-            aria-hidden="true"
-          /></button
-        >
       </div>
-
-      <div class="bottom">
-        <div class="times">
-          <span>{formatTime(p.position)}</span>
-          <span>−{formatTime(Math.max(0, p.duration - p.position))}</span>
+      <div class="mini-line">
+        <div style:width="{p.duration > 0 ? (p.position / p.duration) * 100 : 0}%"></div>
+      </div>
+    {:else}
+      {#if p.status === "error"}
+        <div class="card error" role="alert">
+          <p>{p.message ?? "Couldn't play this episode"}</p>
+          <div class="row">
+            <button class="btn" onclick={openSources}
+              ><Layers size={18} strokeWidth={1.8} aria-hidden="true" /> Sources</button
+            >
+            <button class="btn" onclick={() => p.retry()}
+              ><RefreshCw size={18} strokeWidth={1.8} aria-hidden="true" /> Retry</button
+            >
+          </div>
         </div>
-        <SeekBar
-          position={p.position}
-          duration={p.duration}
-          buffered={p.buffered}
-          skips={p.skips}
-          onseek={(t) => p.seekTo(t)}
-        />
-        <div class="actions">
+      {/if}
+
+      {#if holding}
+        <div class="pill top">{pref.holdSpeed}× <FastForward size={16} aria-hidden="true" /></div>
+      {/if}
+      {#if scrubTarget != null}
+        <div class="pill mid">
+          {formatTime(scrubTarget)}
+          <small
+            >{scrubTarget >= scrubFrom ? "+" : "−"}{formatTime(
+              Math.abs(scrubTarget - scrubFrom),
+            )}</small
+          >
+        </div>
+      {/if}
+      {#if tapSeek}
+        <div class={["tap-seek", tapSeek.side < 0 ? "left" : "right"]}>
+          {tapSeek.side < 0 ? "−" : "+"}{tapSeek.seconds}s
+        </div>
+      {/if}
+      {#if level}
+        <div class="pill level">
+          {#if level.kind === "volume"}<Volume2 size={18} aria-hidden="true" />{:else}<Sun
+              size={18}
+              aria-hidden="true"
+            />{/if}
+          <span class="meter"><span style:width="{level.value * 100}%"></span></span>
+        </div>
+      {/if}
+
+      {#if p.skip}
+        <button class="skip-btn" onclick={() => p.skipNow()}
+          ><FastForward size={16} strokeWidth={1.8} aria-hidden="true" /> Skip {skipName(
+            p.skip,
+          )}</button
+        >
+      {/if}
+
+      {#if p.upNext != null}
+        <div class="card up-next">
+          <small>Up next in {p.upNext}</small>
+          <b>{p.item?.episodes[(p.item?.index ?? 0) + 1]?.name ?? "Next episode"}</b>
+          <div class="row">
+            <button class="btn primary" onclick={() => p.next()}>Play now</button>
+            <button class="btn" onclick={() => p.cancelUpNext()}>Cancel</button>
+          </div>
+        </div>
+      {/if}
+
+      <div class="chrome" class:shown={controls} inert={!controls}>
+        <div class="top">
+          <button class="icon" onclick={minimize} aria-label="Minimize player" title="Minimize"
+            ><ChevronDown size={26} strokeWidth={1.8} aria-hidden="true" /></button
+          >
+          <div class="titles">
+            <div class="title">{p.item?.details.name ?? ""}</div>
+            {#if subtitleLine}<div class="sub">{subtitleLine}</div>{/if}
+          </div>
+          <button
+            class="action size"
+            onclick={cycleResize}
+            aria-label={`Video size: ${resize.label}. Change`}
+            title="Video size"
+            ><resize.icon size={19} strokeWidth={1.8} aria-hidden="true" /><span
+              >{resize.label}</span
+            ></button
+          >
+          {#if "pictureInPictureEnabled" in document && document.pictureInPictureEnabled}
+            <button class="icon" onclick={togglePip} aria-label="Picture in picture"
+              ><PictureInPicture2 size={20} strokeWidth={1.8} aria-hidden="true" /></button
+            >
+          {/if}
           <button
             class="icon"
-            onclick={() => video && (video.muted = !video.muted)}
-            aria-label={pref.muted ? "Unmute" : "Mute"}
-            >{#if pref.muted || pref.volume === 0}<VolumeX
+            onclick={toggleFullscreen}
+            aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+            >{#if fullscreen}<Minimize
                 size={20}
                 strokeWidth={1.8}
                 aria-hidden="true"
-              />{:else}<Volume2 size={20} strokeWidth={1.8} aria-hidden="true" />{/if}</button
+              />{:else}<Maximize size={20} strokeWidth={1.8} aria-hidden="true" />{/if}</button
           >
-          <input
-            class="volume"
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={pref.muted ? 0 : pref.volume}
-            aria-label="Volume"
-            oninput={(e) => setVolume(Number(e.currentTarget.value))}
-            onkeydown={(e) => e.stopPropagation()}
+        </div>
+
+        <div class="middle">
+          <button
+            class="icon mid"
+            onclick={() => p.prev()}
+            disabled={!p.hasPrev}
+            aria-label="Previous episode"
+            ><SkipBack size={26} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /></button
+          >
+          <button
+            class="icon play"
+            onclick={() => p.toggle()}
+            disabled={p.status === "resolving" || p.status === "error"}
+            aria-label={p.status === "ended" ? "Replay" : p.paused ? "Play" : "Pause"}
+          >
+            {#if p.status === "ended"}<RotateCcw
+                size={32}
+                strokeWidth={2}
+                aria-hidden="true"
+              />{:else if p.paused}<Play
+                size={34}
+                fill="currentColor"
+                strokeWidth={1.8}
+                aria-hidden="true"
+              />{:else}<Pause
+                size={34}
+                fill="currentColor"
+                strokeWidth={1.8}
+                aria-hidden="true"
+              />{/if}
+          </button>
+          <button
+            class="icon mid"
+            onclick={() => p.next()}
+            disabled={!p.hasNext}
+            aria-label="Next episode"
+            ><SkipForward
+              size={26}
+              fill="currentColor"
+              strokeWidth={1.8}
+              aria-hidden="true"
+            /></button
+          >
+        </div>
+
+        <div class="bottom">
+          <div class="times">
+            <span>{formatTime(p.position)}</span>
+            <span>−{formatTime(Math.max(0, p.duration - p.position))}</span>
+          </div>
+          <SeekBar
+            position={p.position}
+            duration={p.duration}
+            buffered={p.buffered}
+            skips={p.skips}
+            onseek={(t) => p.seekTo(t)}
           />
-          <span class="spacer"></span>
-          <button class="action" onclick={() => (panel = panel === "speed" ? null : "speed")}
-            ><Gauge size={19} strokeWidth={1.8} aria-hidden="true" /><span
-              >{p.rate === 1 ? "Speed" : `${p.rate}×`}</span
-            ></button
-          >
-          <button class="action" onclick={() => (panel = panel === "tracks" ? null : "tracks")}
-            ><Captions size={19} strokeWidth={1.8} aria-hidden="true" /><span>Audio &amp; subs</span
-            ></button
-          >
-          <button class="action" onclick={openSources}
-            ><Layers size={19} strokeWidth={1.8} aria-hidden="true" /><span>Sources</span></button
-          >
-          {#if (p.item?.episodes.length ?? 0) > 1}
+          <div class="actions">
             <button
-              class="action"
-              onclick={() => (panel = panel === "episodes" ? null : "episodes")}
-              ><ListVideo size={19} strokeWidth={1.8} aria-hidden="true" /><span>Episodes</span
+              class="icon"
+              onclick={() => video && (video.muted = !video.muted)}
+              aria-label={pref.muted ? "Unmute" : "Mute"}
+              >{#if pref.muted || pref.volume === 0}<VolumeX
+                  size={20}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />{:else}<Volume2 size={20} strokeWidth={1.8} aria-hidden="true" />{/if}</button
+            >
+            <input
+              class="volume"
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={pref.muted ? 0 : pref.volume}
+              aria-label="Volume"
+              oninput={(e) => setVolume(Number(e.currentTarget.value))}
+              onkeydown={(e) => e.stopPropagation()}
+            />
+            <span class="spacer"></span>
+            <button class="action" onclick={() => (panel = panel === "speed" ? null : "speed")}
+              ><Gauge size={19} strokeWidth={1.8} aria-hidden="true" /><span
+                >{p.rate === 1 ? "Speed" : `${p.rate}×`}</span
               ></button
             >
-          {/if}
-          {#if p.hasNext}
-            <button class="action" onclick={() => p.next()}
-              ><SkipForward size={19} strokeWidth={1.8} aria-hidden="true" /><span>Next</span
+            <button class="action" onclick={() => (panel = panel === "tracks" ? null : "tracks")}
+              ><Captions size={19} strokeWidth={1.8} aria-hidden="true" /><span
+                >Audio &amp; subs</span
               ></button
             >
-          {/if}
+            <button class="action" onclick={openSources}
+              ><Layers size={19} strokeWidth={1.8} aria-hidden="true" /><span>Sources</span></button
+            >
+            {#if (p.item?.episodes.length ?? 0) > 1}
+              <button
+                class="action"
+                onclick={() => (panel = panel === "episodes" ? null : "episodes")}
+                ><ListVideo size={19} strokeWidth={1.8} aria-hidden="true" /><span>Episodes</span
+                ></button
+              >
+            {/if}
+            {#if p.hasNext}
+              <button class="action" onclick={() => p.next()}
+                ><SkipForward size={19} strokeWidth={1.8} aria-hidden="true" /><span>Next</span
+                ></button
+              >
+            {/if}
+          </div>
         </div>
       </div>
-    </div>
 
-    {#if panel}
-      <PlayerPanel {panel} onclose={() => (panel = null)} />
+      {#if panel}
+        <PlayerPanel {panel} onclose={() => (panel = null)} />
+      {/if}
     {/if}
   </div>
 {/if}
@@ -627,6 +822,10 @@
     inset: 0;
     transform-origin: center;
     transition: transform 200ms ease;
+  }
+  /* The box is changing size every frame; the picture must keep up, not trail behind. */
+  .player.morphing .stage {
+    transition: none;
   }
   video {
     width: 100%;
@@ -941,8 +1140,126 @@
     font-weight: 700;
   }
 
+  /* Minimised: a floating window above the tab bar, so the app stays usable underneath. */
+  .player.mini {
+    inset: auto 12px calc(var(--nav-h) + var(--safe-b) + 12px + var(--lift, 0px)) auto;
+    width: min(320px, calc(100vw - 24px));
+    aspect-ratio: 16 / 9;
+    border-radius: 12px;
+    box-shadow:
+      0 0 0 1px var(--line),
+      0 12px 32px rgb(0 0 0 / 0.55);
+    cursor: default;
+  }
+  .player.mini.above-bar {
+    bottom: calc(var(--nav-h) + var(--bar-h) + var(--safe-b) + 20px + var(--lift, 0px));
+  }
+  .player.mini.left {
+    left: 12px;
+    right: auto;
+  }
+  .player.mini.dragging {
+    cursor: grabbing;
+  }
+  .player.mini .subs {
+    bottom: 22%;
+    font-size: calc(var(--sub-scale) * 11px);
+    transition: none;
+  }
+  .player.mini .center-status span {
+    display: none;
+  }
+  .player.mini .spinner.big {
+    width: 28px;
+    height: 28px;
+    border-width: 2px;
+  }
+  .mini-hit {
+    position: absolute;
+    inset: 0;
+    cursor: grab;
+    touch-action: none;
+  }
+  .player.dragging .mini-hit {
+    cursor: grabbing;
+  }
+  .mini-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    color: #fff;
+    background: rgb(0 0 0 / 0.55);
+    backdrop-filter: blur(6px);
+    transition: background-color 150ms ease;
+  }
+  .mini-close:hover {
+    background: rgb(0 0 0 / 0.8);
+  }
+  .mini-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 3px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 14px 4px 0 10px;
+    background: linear-gradient(to top, rgb(0 0 0 / 0.8), transparent);
+    pointer-events: none;
+  }
+  .mini-bar > * {
+    pointer-events: auto;
+  }
+  .mini-text {
+    flex: 1;
+    min-width: 0;
+    pointer-events: none;
+  }
+  .mini-text .title {
+    font-size: 13px;
+  }
+  .mini-text .sub {
+    font-size: 11.5px;
+  }
+  .mini-bar .icon {
+    width: 40px;
+    height: 40px;
+  }
+  .mini-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 3px;
+    background: rgb(255 255 255 / 0.25);
+    pointer-events: none;
+  }
+  .mini-line > div {
+    height: 100%;
+    background: var(--accent);
+  }
+
+  @media (min-width: 900px) {
+    .player.mini {
+      right: 20px;
+      bottom: calc(20px + var(--lift, 0px));
+      width: 360px;
+    }
+    .player.mini.left {
+      left: 20px;
+      right: auto;
+    }
+    .player.mini.above-bar {
+      bottom: calc(var(--bar-h) + 28px + var(--lift, 0px));
+    }
+  }
   @media (max-width: 700px) {
-    .action span {
+    .action:not(.size) span {
       display: none;
     }
     .volume {
