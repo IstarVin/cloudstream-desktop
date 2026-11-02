@@ -6,6 +6,8 @@
   import SourcesSheet from "#lib/components/SourcesSheet.svelte";
   import { player } from "#lib/player.svelte";
   import { toasts } from "#lib/toast.svelte";
+  import { rememberTab, restoreScroll, saveScroll, tabUrl } from "#lib/view-state";
+  import { beforeNavigate, afterNavigate } from "$app/navigation";
   import { page } from "$app/state";
   import {
     CircleAlert,
@@ -42,8 +44,20 @@
     { href: "/library", label: "Library", icon: Library },
     { href: "/settings", label: "Settings", icon: Settings2 },
   ];
-  const isActive = (href: string) =>
-    href === "/" ? page.url.pathname === "/" : page.url.pathname.startsWith(href);
+
+  // Native-app feel: every screen keeps its scroll position, and a tab reopens on the screen you left.
+  if (typeof history !== "undefined") history.scrollRestoration = "manual";
+  beforeNavigate(({ from }) => {
+    if (from) saveScroll(from.url);
+  });
+  afterNavigate(({ to }) => {
+    if (!to) return;
+    const tab = nav.find((n) => isActive(n.href, to.url.pathname));
+    if (tab) rememberTab(tab.href, to.url);
+    restoreScroll(to.url);
+  });
+  const isActive = (href: string, path = page.url.pathname) =>
+    href === "/" ? path === "/" : path.startsWith(href);
 </script>
 
 {#if authed === false}
@@ -62,7 +76,7 @@
         {#each nav as n (n.href)}
           <a
             class={["nav-link", { active: isActive(n.href) }]}
-            href={n.href}
+            href={isActive(n.href) ? n.href : tabUrl(n.href)}
             aria-current={isActive(n.href) ? "page" : undefined}
           >
             <n.icon size={22} strokeWidth={1.8} aria-hidden="true" />

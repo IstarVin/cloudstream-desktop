@@ -7,6 +7,7 @@
   import Poster from "#lib/components/Poster.svelte";
   import ProviderPicker from "#lib/components/ProviderPicker.svelte";
   import { matchesContentType } from "#lib/content-types";
+  import { homeFilter } from "#lib/view-state";
 
   const providers = createQuery(() => ({
     queryKey: ["providers"],
@@ -22,7 +23,7 @@
 
   const withHome = $derived((providers.data ?? []).filter((p) => p.hasMainPage));
   let chosen = $state<string | null>(read());
-  let contentType = $state("all");
+  let contentType = $state(homeFilter.contentType);
   const matching = $derived(withHome.filter((p) => matchesContentType(p.types, contentType)));
   const current = $derived(matching.find((p) => p.name === chosen) ?? matching[0]);
 
@@ -44,6 +45,7 @@
 
   function filter(type: string) {
     contentType = type;
+    homeFilter.contentType = type;
     // Keep the selected source when it supports the filter; otherwise switch to a compatible one.
     const next =
       withHome.find((p) => p.name === chosen && matchesContentType(p.types, type)) ??

@@ -119,7 +119,10 @@ select {
   accent-color: var(--accent);
   font-weight: 500;
   line-height: 1.3;
-  transition: background-color 150ms, border-color 150ms, box-shadow 150ms;
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
 }
 
 /* The library picker supplies its own icon and chevron. */

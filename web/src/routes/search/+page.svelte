@@ -1,19 +1,17 @@
 <script lang="ts">
   import { streamSearch } from "#lib/api";
   import Poster from "#lib/components/Poster.svelte";
+  import { searchState } from "#lib/search-state.svelte";
   import type { SearchItem } from "#lib/types";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { RefreshCw, Search } from "@lucide/svelte";
   import { untrack } from "svelte";
 
-  let query = $derived(page.url.searchParams.get("q") ?? "");
-  let results = $state<{ provider: string; items: SearchItem[] }[]>([]);
-  let errors = $state<{ provider: string; error: string }[]>([]);
-  let searching = $state(false);
-  let type = $state<string | null>(null);
-  let stop: (() => void) | null = null;
+  const st = searchState;
   const provider = $derived(page.url.searchParams.get("provider") || "");
+  // The URL holds the submitted query; the input keeps its own draft across navigation.
+  const urlQuery = () => page.url.searchParams.get("q") ?? "";
 
   const TYPE_GROUPS: Record<string, string[]> = {
     Movies: ["Movie", "AnimeMovie"],
@@ -21,38 +19,17 @@
     Anime: ["Anime", "OVA", "AnimeMovie"],
     Live: ["Live"],
   };
-  const matches = (i: SearchItem) => !type || TYPE_GROUPS[type].includes(i.type ?? "");
+  const matches = (i: SearchItem) => !st.type || TYPE_GROUPS[st.type].includes(i.type ?? "");
   const visible = $derived(
-    results.map((r) => ({ ...r, items: r.items.filter(matches) })).filter((r) => r.items.length),
+    st.results.map((r) => ({ ...r, items: r.items.filter(matches) })).filter((r) => r.items.length),
   );
   const resultCount = $derived(visible.reduce((total, group) => total + group.items.length, 0));
-  const submittedQuery = $derived((page.url.searchParams.get("q") ?? "").trim());
+  const submittedQuery = $derived(urlQuery().trim());
 
-  function run(q: string, source: string) {
-    stop?.();
-    results = [];
-    errors = [];
-    searching = false;
-    if (!q.trim()) return;
-    searching = true;
-    stop = streamSearch(
-      q.trim(),
-      {
-        results: (provider, items) => {
-          if (items.length) results.push({ provider, items });
-        },
-        error: (provider, error) => errors.push({ provider, error }),
-        done: () => (searching = false),
-      },
-      source || undefined,
-    );
-  }
-
-  // The URL holds the query (so back/forward and reloads work); changing it starts the search.
   function submit(e: SubmitEvent) {
     e.preventDefault();
-    const q = query.trim();
-    if (page.url.searchParams.get("q") === q) run(q, provider);
+    const q = st.draft.trim();
+    if (urlQuery() === q) st.run(q, provider, true);
     else {
       const params = new URLSearchParams();
       if (provider) params.set("provider", provider);
@@ -62,10 +39,11 @@
   }
 
   $effect(() => {
-    const q = page.url.searchParams.get("q") ?? "";
+    const q = urlQuery();
     const source = provider;
-    untrack(() => run(q, source));
-    return () => stop?.();
+    untrack(() => {
+      if (st.run(q, source)) st.draft = q;
+    });
   });
 </script>
 
@@ -81,11 +59,16 @@
     <input
       type="search"
       placeholder={provider ? `Search ${provider}` : "Search every provider"}
-      bind:value={query}
+      bind:value={st.draft}
       enterkeyhint="search"
       aria-label="Search"
     />
-    <button class="search-submit" type="submit" disabled={!query.trim()} aria-label="Submit search">
+    <button
+      class="search-submit"
+      type="submit"
+      disabled={!st.draft.trim()}
+      aria-label="Submit search"
+    >
       <Search size={18} strokeWidth={1.8} aria-hidden="true" />
       <span>Search</span>
     </button>
@@ -94,25 +77,25 @@
   <div class="scroll-x filters" role="group" aria-label="Filter search results">
     <button
       class="chip"
-      class:on={type === null}
-      aria-pressed={type === null}
-      onclick={() => (type = null)}>All</button
+      class:on={st.type === null}
+      aria-pressed={st.type === null}
+      onclick={() => (st.type = null)}>All</button
     >
     {#each Object.keys(TYPE_GROUPS) as t (t)}
       <button
         class="chip"
-        class:on={type === t}
-        aria-pressed={type === t}
-        onclick={() => (type = type === t ? null : t)}>{t}</button
+        class:on={st.type === t}
+        aria-pressed={st.type === t}
+        onclick={() => (st.type = st.type === t ? null : t)}>{t}</button
       >
     {/each}
   </div>
 
   <div class="search-status" role="status" aria-atomic="true">
     {#if submittedQuery}
-      {#if searching}<span class="spinner" aria-hidden="true"></span>{/if}
+      {#if st.searching}<span class="spinner" aria-hidden="true"></span>{/if}
       <span
-        >{searching
+        >{st.searching
           ? `Searching for “${submittedQuery}”…`
           : `${resultCount} ${resultCount === 1 ? "result" : "results"} for “${submittedQuery}”`}</span
       >
@@ -136,7 +119,7 @@
     </div>
   {/each}
 
-  {#if !searching && !page.url.searchParams.get("q")}
+  {#if !st.searching && !page.url.searchParams.get("q")}
     <div class="empty search-empty">
       <Search size={36} strokeWidth={1.8} aria-hidden="true" />
       <h2>What are you in the mood for?</h2>
@@ -144,36 +127,36 @@
     </div>
   {/if}
 
-  {#if !searching && submittedQuery && !visible.length}
+  {#if !st.searching && submittedQuery && !visible.length}
     <div class="empty search-empty">
       <Search size={32} strokeWidth={1.8} aria-hidden="true" />
       <h2>
-        {errors.length && !results.length ? "Search couldn’t finish" : "No matching titles"}
+        {st.errors.length && !st.results.length ? "Search couldn’t finish" : "No matching titles"}
       </h2>
       <p>
-        {type && results.length
+        {st.type && st.results.length
           ? `Try another content type or show all results.`
-          : errors.length && !results.length
+          : st.errors.length && !st.results.length
             ? "A provider couldn’t be reached. Try your search again."
             : "Try a different title or check the spelling."}
       </p>
-      {#if type}
-        <button class="btn" onclick={() => (type = null)}>Show all results</button>
-      {:else if errors.length}
-        <button class="btn" onclick={() => run(submittedQuery, provider)}
+      {#if st.type}
+        <button class="btn" onclick={() => (st.type = null)}>Show all results</button>
+      {:else if st.errors.length}
+        <button class="btn" onclick={() => st.run(submittedQuery, provider, true)}
           ><RefreshCw size={16} aria-hidden="true" /> Try again</button
         >
       {/if}
     </div>
   {/if}
 
-  {#if errors.length && !searching}
+  {#if st.errors.length && !st.searching}
     <details class="errors">
       <summary
-        >{errors.length}
-        {errors.length === 1 ? "provider" : "providers"} failed</summary
+        >{st.errors.length}
+        {st.errors.length === 1 ? "provider" : "providers"} failed</summary
       >
-      {#each errors as e (e.provider)}<div>
+      {#each st.errors as e (e.provider)}<div>
           <b>{e.provider}</b>: {e.error}
         </div>{/each}
     </details>
