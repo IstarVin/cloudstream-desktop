@@ -1,6 +1,5 @@
 package desktop.plugins
 
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -10,23 +9,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.LoggerFactory
 import java.lang.reflect.Modifier
-
-/** One labelled setting a plugin declares, rendered by the web UI's plugin settings form. */
-@Serializable
-data class SettingField(
-    /** The preference file; null means the plugin's first one. */
-    val file: String? = null,
-    val key: String,
-    /** string | secret | boolean | int | choice */
-    val type: String = "string",
-    val label: String,
-    val help: String? = null,
-    val default: String? = null,
-    val options: List<SettingOption> = emptyList(),
-)
-
-@Serializable
-data class SettingOption(val value: String, val label: String)
 
 /**
  * Reads a plugin's settings schema: a `const val SETTINGS_SCHEMA` JSON string on its `Plugin` class (a public static

@@ -6,6 +6,7 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":shared"))
     implementation(project(":compat:android-shim"))
     implementation(project(":compat:webview-cdp"))
     implementation(libs.cloudstream.library)

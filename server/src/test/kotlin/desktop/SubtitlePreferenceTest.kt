@@ -24,9 +24,9 @@ class SubtitlePreferenceTest {
     fun waitsForMatchingSubtitlesAndFallsBackAfterResolution() {
         val other = sub("1", "English (AnimeX)")
         val matching = sub("2", "English (Reanime)")
-        assertEquals(emptyList(), SubtitlePreference.order(listOf(other), "Reanime HD-1", "", false))
-        assertEquals(listOf(matching), SubtitlePreference.order(listOf(other, matching), "Reanime HD-1", "", false))
-        assertEquals(listOf(matching, other), SubtitlePreference.order(listOf(other, matching), "Reanime HD-1", "", true))
-        assertEquals(listOf(other), SubtitlePreference.order(listOf(other), "Reanime HD-1", "", true))
+        assertEquals(emptyList(), SubtitlePreference.order(listOf(other), "Reanime HD-1", "", false) { it.sub.lang })
+        assertEquals(listOf(matching), SubtitlePreference.order(listOf(other, matching), "Reanime HD-1", "", false) { it.sub.lang })
+        assertEquals(listOf(matching, other), SubtitlePreference.order(listOf(other, matching), "Reanime HD-1", "", true) { it.sub.lang })
+        assertEquals(listOf(other), SubtitlePreference.order(listOf(other), "Reanime HD-1", "", true) { it.sub.lang })
     }
 }

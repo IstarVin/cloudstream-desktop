@@ -30,11 +30,25 @@ Source priority in Settings and the Sources sheet provides seven named profiles 
 with optional filters for failed or negative-priority links. A combined priority of 10 starts auto-play immediately.
 See [source profiles](docs/SOURCE_PROFILES.md) for behavior and settings API details.
 
+## Android app
+
+`android/` is a phone client that plays on the phone with ExoPlayer instead of controlling mpv: the same home,
+search, title, library and settings pages, plus libass subtitles, a source picker and touch gestures. Plugins still run
+on the desktop, so the server must be running and reachable on the LAN.
+
+```bash
+./gradlew :android:assembleDebug   # android/build/outputs/apk/debug/android-debug.apk; needs ANDROID_HOME or local.properties
+```
+
+Open the app and scan the code from Settings → Pair a phone on the desktop, or enter the address and token by hand. The
+module is only part of the build when an Android SDK is found, so server-only checkouts build as before.
+
 ## Develop
 
 | What | Command |
 | --- | --- |
-| Server tests | `./gradlew :server:test` (the Chromium tests skip when it isn't installed) |
+| Server tests | `./gradlew :shared:test :server:test` (the Chromium tests skip when it isn't installed) |
+| Android build and lint | `./gradlew :android:assembleDebug :android:lintDebug` |
 | Phase 0 check from the CLI | `./gradlew :server:run --args="spike Dulo dune"` |
 | Web UI with hot reload | `cd web && vp dev` (proxies `/api` to a running server) |
 | Web checks and tests | `cd web && vp check && vpr check && vp test` |
@@ -48,6 +62,9 @@ aren't marked `isCrossPlatform`.
 ## Layout
 
 - `server/`: Ktor app (plugin host, API, mpv manager, HLS proxy, SQLite).
+- `shared/`: API shapes and playback rules (ranking, source profiles, auto-play, subtitles, skips) shared by the server
+  and the Android app.
+- `android/`: the Android app (Compose, Media3 ExoPlayer, libass).
 - `compat/android-shim/`: `Context`, JSON-backed `SharedPreferences`, `Log`, `Base64`, `Uri`, `Dispatchers.Main`,
   `Plugin`, `CloudStreamApp`, `DataStore`, and empty fragment classes the verifier needs for converted plugins'
   settings sheets.

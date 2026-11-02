@@ -7,9 +7,12 @@ import desktop.compat.DesktopContext
 import desktop.compat.PrefsCodec
 import desktop.config.Settings
 import desktop.db.Store
+import desktop.links.ClientStreams
 import desktop.links.LinkService
 import desktop.links.StreamProxy
 import desktop.player.Playback
+import desktop.player.SkipTimes
+import desktop.player.Watched
 import desktop.plugins.DevSource
 import desktop.plugins.PluginHost
 import desktop.plugins.RepoSource
@@ -64,6 +67,8 @@ class Services(
     val scope: CoroutineScope,
     val port: Int,
     val devPath: File,
+    val clientStreams: ClientStreams,
+    val skipTimes: SkipTimes,
 )
 
 @Serializable
@@ -71,20 +76,6 @@ data class EnabledRequest(val enabled: Boolean)
 
 @Serializable
 data class RebuildRequest(val modules: List<String>? = null)
-
-@Serializable
-data class WatchedRequest(val provider: String, val url: String, val data: String, val watched: Boolean)
-
-@Serializable
-data class StatusDto(
-    val building: Boolean,
-    val plugins: Int,
-    val loaded: Int,
-    val providers: Int,
-    val mpvRunning: Boolean,
-    val authed: Boolean,
-    val loopback: Boolean,
-)
 
 private val sseJson = Json { encodeDefaults = true }
 
@@ -121,7 +112,7 @@ fun Route.apiRoutes(s: Services) {
 
     route("/api") {
         get("/auth/status") {
-            call.respond(mapOf("authed" to s.auth.isAuthorized(call), "loopback" to s.auth.isLoopback(call)))
+            call.respond(AuthStatus(s.auth.isAuthorized(call), s.auth.isLoopback(call)))
         }
         get("/auth/pairing") {
             if (!s.auth.isLoopback(call)) return@get call.respond(HttpStatusCode.Forbidden, mapOf("error" to "Only from the desktop"))
@@ -219,9 +210,45 @@ fun Route.apiRoutes(s: Services) {
         }
         get("/continue") { call.respond(s.store.continueWatching()) }
         post("/progress") {
-            val req = call.receive<WatchedRequest>()
-            s.store.setWatched(req.provider, req.url, req.data, req.watched)
+            val req = call.receive<ProgressRequest>()
+            val position = req.position
+            val duration = req.duration ?: 0.0
+            if (position == null) {
+                s.store.setWatched(req.provider, req.url, req.data, req.watched)
+            } else {
+                if (s.store.progress(req.provider, req.data) == null) {
+                    // The first save of a title played elsewhere puts it in the history, as starting it in mpv does.
+                    val d = s.catalog.details(req.provider, req.url)
+                    s.store.touchHistory(d.provider, d.url, d.name, d.poster, d.type, d.nsfw)
+                }
+                s.store.saveProgress(req.provider, req.url, req.data, req.label, position, duration, req.watched || Watched.watched(position, duration))
+            }
             call.respond(mapOf("ok" to true))
+        }
+        get("/resume") { call.respond(ResumeDto(s.store.resumePosition(call.param("provider"), call.param("data")))) }
+
+        // ---- a client's own player (the Android app) ---------------------------------------------------------------
+        get("/stream") {
+            val direct = call.request.queryParameters["direct"] == "1"
+            call.respond(s.clientStreams.stream(call.param("link"), direct, s.settings.bool(Settings.PROXY_ALL)))
+        }
+        get("/subtitle") {
+            val (format, bytes) = s.clientStreams.subtitle(call.param("id"))
+            call.respondBytes(bytes, ContentType.parse(format.mime + "; charset=utf-8"))
+        }
+        post("/links/report") {
+            val req = call.receive<LinkReport>()
+            val link = s.links.link(req.link) ?: throw ClientStreams.Gone("Unknown link")
+            s.store.recordLink(link.provider, link.link.source, req.success)
+            call.respond(mapOf("ok" to true))
+        }
+        get("/skips") {
+            val q = call.request.queryParameters
+            val episode = q["episode"]?.toIntOrNull() ?: throw IllegalArgumentException("Missing parameter episode")
+            val duration = q["duration"]?.toDoubleOrNull() ?: 0.0
+            val ranges = if (s.settings.string(Settings.SKIP_SEGMENTS) == "off") emptyList()
+                else s.skipTimes.forEpisode(q["malId"]?.toIntOrNull(), q["aniListId"]?.toIntOrNull(), episode, duration)
+            call.respond(ranges)
         }
         get("/bookmarks") { call.respond(s.store.bookmarks(s.settings.showNsfw)) }
         post("/bookmarks") {

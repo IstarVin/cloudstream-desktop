@@ -6,10 +6,10 @@ import com.lagradost.cloudstream3.utils.CLEARKEY_UUID
 import com.lagradost.cloudstream3.utils.DrmExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import com.lagradost.cloudstream3.utils.Qualities
 import desktop.api.LinkDto
 import desktop.api.Mapper
 import desktop.api.SubtitleDto
+import desktop.api.SubtitleFormat
 import desktop.api.describe
 import desktop.db.LinkStat
 import desktop.db.Store
@@ -86,26 +86,8 @@ object ClearKey {
     }
 }
 
-/**
- * Playable links first, then the profile's source + quality priority. Quality ("Auto" just under 1080p), success
- * history and arrival order break ties. The web UI's sources
- * sheet sorts the same way (`web/src/lib/ranking.ts`); `testdata/ranking-cases.json` keeps the two in step.
- */
-object LinkRanking {
-    fun quality(q: Int) = if (q == Qualities.Unknown.value) 1079 else q
-
-    val comparator: Comparator<LinkDto> = compareByDescending<LinkDto> { it.playable }
-        .thenByDescending { quality(it.quality) }
-        .thenByDescending { it.score }
-        .thenBy { it.order }
-
-    fun comparator(profile: SourceProfile): Comparator<LinkDto> = compareByDescending<LinkDto> { it.playable }
-        .thenByDescending { profile.priority(it) }
-        .then(comparator)
-}
-
 class ResolvedSubtitle(val id: String, val sub: SubtitleFile) {
-    fun dto() = SubtitleDto(id, sub.lang, sub.url)
+    fun dto() = SubtitleDto(id, sub.lang, sub.url, SubtitleFormat.fromUrl(sub.url)?.extension)
 }
 
 /** The links of one `loadLinks(data)` call, filling in as the callbacks fire. */

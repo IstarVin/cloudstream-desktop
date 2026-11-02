@@ -12,6 +12,7 @@ import desktop.config.Config
 import desktop.config.Settings
 import desktop.db.Database
 import desktop.db.Store
+import desktop.links.ClientStreams
 import desktop.links.LinkService
 import desktop.links.StreamProxy
 import desktop.player.MpvManager
@@ -43,9 +44,11 @@ fun serve(config: Config, db: Database, settings: Settings, host: PluginHost, sc
     val links = LinkService(scope, store, host)
     val proxy = StreamProxy()
     val mpv = MpvManager(config, settings)
-    val playback = Playback(scope, host, catalog, links, proxy, mpv, store, settings, config.bindPort, SkipTimes(db))
+    val skipTimes = SkipTimes(db)
+    val playback = Playback(scope, host, catalog, links, proxy, mpv, store, settings, config.bindPort, skipTimes)
     val auth = Auth()
-    val services = Services(host, catalog, links, proxy, playback, store, settings, auth, scope, config.bindPort, config.devPath)
+    val services = Services(host, catalog, links, proxy, playback, store, settings, auth, scope, config.bindPort, config.devPath,
+        ClientStreams(links, proxy), skipTimes)
 
     // Plugins build and load in the background; the UI shows progress through /api/status.
     scope.launch { host.start(scope) }
@@ -60,6 +63,7 @@ fun serve(config: Config, db: Database, settings: Settings, host: PluginHost, sc
         install(Auth.plugin(auth))
         install(StatusPages) {
             exception<NotFound> { call, e -> call.respond(HttpStatusCode.NotFound, mapOf("error" to e.message)) }
+            exception<ClientStreams.Gone> { call, e -> call.respond(HttpStatusCode.Gone, mapOf("error" to e.message)) }
             exception<IllegalArgumentException> { call, e -> call.respond(HttpStatusCode.BadRequest, mapOf("error" to e.message)) }
             exception<BadRequestException> { call, e -> call.respond(HttpStatusCode.BadRequest, mapOf("error" to (e.cause?.message ?: e.message))) }
             exception<NoDisplayException> { call, e -> call.respond(HttpStatusCode.ServiceUnavailable, mapOf("error" to e.message)) }

@@ -1,16 +1,17 @@
 package desktop.player
 
-import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import desktop.api.Catalog
 import desktop.api.Details
 import desktop.api.Episode
+import desktop.api.Labels
 import desktop.api.LinkDto
 import desktop.api.Mapper
 import desktop.api.PlayRequest
 import desktop.api.PlayerCommand
 import desktop.config.Settings
 import desktop.db.Store
+import desktop.links.LinkHeaders
 import desktop.links.LinkService
 import desktop.links.LinkSet
 import desktop.links.ResolvedLink
@@ -99,37 +100,9 @@ class Item(
     val hasPrev get() = index > 0
 
     val label: String?
-        get() {
-            val e = episode ?: return null
-            val num = listOfNotNull(e.season?.let { "S$it" }, e.episode?.let { "E$it" }).joinToString("")
-            return listOf(num, e.name.orEmpty()).filter { it.isNotBlank() }.joinToString(": ").ifBlank { "Episode ${index + 1}" }
-        }
+        get() = episode?.let { Labels.episode(it, index) }
 
     fun at(i: Int) = Item(details, episodes, i, episodes[i].data)
-}
-
-/** When auto-play picks a link: once enough have arrived, or a while after the first, or right away on fallback. */
-object AutoPlay {
-    fun ready(fallback: Boolean, done: Boolean, candidates: Int, minLinks: Int, firstLinkAt: Long?, waitMs: Long, now: Long, bestPriority: Int = 0): Boolean =
-        fallback || done || bestPriority >= SourceProfile.AUTO_PLAY_PRIORITY || candidates >= minLinks || (firstLinkAt != null && now - firstLinkAt >= waitMs)
-}
-
-/** Source labels are supplied by some aggregate providers as a suffix, e.g. "English (Reanime)". */
-object SubtitlePreference {
-    private val sourceLabel = Regex("[\\(\\[]([^()\\[\\]]+)[)\\]]\\s*$")
-
-    fun matchesSource(language: String, source: String, name: String): Boolean {
-        val label = sourceLabel.find(language)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() } ?: return false
-        return listOf(source, name).any { value ->
-            value.equals(label, ignoreCase = true) ||
-                (value.startsWith(label, ignoreCase = true) && value.getOrNull(label.length)?.isLetterOrDigit() == false)
-        }
-    }
-
-    fun order(subtitles: List<ResolvedSubtitle>, source: String, name: String, done: Boolean): List<ResolvedSubtitle> {
-        val matching = subtitles.filter { matchesSource(it.sub.lang, source, name) }
-        return if (done) matching + subtitles.filterNot { it in matching } else matching
-    }
 }
 
 private class Session(val item: Item, val set: LinkSet, val generation: Int, var startAt: Double?) {
@@ -288,10 +261,10 @@ class Playback(
         s.skipped.clear()
         s.skipsRequested = false
         val l = link.link
-        val headers = l.headers.toMutableMap()
-        val ua = headers.keys.firstOrNull { it.equals("User-Agent", true) }?.let(headers::remove) ?: USER_AGENT
-        val referer = l.referer.takeIf { it.isNotBlank() } ?: headers.keys.firstOrNull { it.equals("Referer", true) }?.let(headers::remove)
-        headers.keys.filter { it.equals("Referer", true) }.forEach(headers::remove)
+        val lh = LinkHeaders.of(l)
+        val headers = lh.extra
+        val ua = lh.userAgent
+        val referer = lh.referer
         // mpv splits header lists on commas, and ffmpeg cuts URLs at 4096 bytes; anything it can't express goes
         // through the proxy.
         val needsProxy = link.proxied || headers.values.any { ',' in it } || l.url.length > 4000 || settings.bool(Settings.PROXY_ALL)
@@ -299,8 +272,7 @@ class Playback(
         val url = if (l.source in debugFailSources) {
             "http://127.0.0.1:9/debug-failed-source"
         } else if (needsProxy) {
-            val all = l.headers + listOfNotNull(referer?.let { "Referer" to it }, "User-Agent" to ua)
-            val path = proxy.register(l.url, all, link.interceptor)
+            val path = proxy.register(l.url, lh.all, link.interceptor)
             if (l.type == ExtractorLinkType.M3U8) {
                 sampleAesKey = runCatching { proxy.sampleAesKey(path) }.onFailure { log.info("Couldn't read {}'s playlists ahead: {}", l.source, it.toString()) }.getOrNull()
             }
@@ -375,7 +347,7 @@ class Playback(
             sub.id in s.chosenSubs || prefs.any { p -> sub.sub.lang.lowercase().startsWith(p) || sub.sub.langTag?.lowercase() == p }
         }
         val link = s.link?.link ?: return
-        val auto = SubtitlePreference.order(wanted.filter { it.id !in s.chosenSubs }, link.source, link.name, s.set.done).take(3)
+        val auto = SubtitlePreference.order(wanted.filter { it.id !in s.chosenSubs }, link.source, link.name, s.set.done) { it.sub.lang }.take(3)
         // Without an explicit choice, turn the first preferred-language subtitle on, except for dubs.
         val select = if (s.subtitleSelectionMade) null else s.chosenSubs.firstOrNull()
             ?: auto.firstOrNull()?.id?.takeIf { s.item.episode?.dub != "Dubbed" }

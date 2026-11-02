@@ -3,7 +3,7 @@ package desktop.api
 import desktop.plugins.SettingField
 import kotlinx.serialization.Serializable
 
-// Stable shapes for the web UI and the mpv script. Nothing here mirrors Cloudstream's classes directly, so a library
+// Stable shapes for the web UI, the mpv script and the Android app. Nothing here mirrors Cloudstream's classes directly, so a library
 // update can't change what the UI sees.
 
 @Serializable
@@ -184,7 +184,13 @@ data class LinkDto(
 )
 
 @Serializable
-data class SubtitleDto(val id: String, val lang: String, val url: String)
+data class SubtitleDto(
+    val id: String,
+    val lang: String,
+    val url: String,
+    /** ass | vtt | srt | ttml, from the URL; null when it doesn't say (`/api/subtitle` sniffs the content). */
+    val format: String? = null,
+)
 
 @Serializable
 data class LinkEvent(val provider: String, val data: String, val link: LinkDto? = null, val subtitle: SubtitleDto? = null)
@@ -273,3 +279,55 @@ data class PairingInfo(val url: String, val token: String, val lanUrls: List<Str
 
 @Serializable
 data class SearchResults(val provider: String, val items: List<SearchItem>)
+
+@Serializable
+data class StatusDto(
+    val building: Boolean,
+    val plugins: Int,
+    val loaded: Int,
+    val providers: Int,
+    val mpvRunning: Boolean,
+    val authed: Boolean,
+    val loopback: Boolean,
+)
+
+@Serializable
+data class AuthStatus(val authed: Boolean, val loopback: Boolean)
+
+/**
+ * Marks an episode watched or not, or (with [position]) saves how far a client's own player got. Saving a position
+ * also records the title in the history, as playing it in mpv does.
+ */
+@Serializable
+data class ProgressRequest(
+    val provider: String,
+    val url: String,
+    val data: String,
+    val watched: Boolean = false,
+    val position: Double? = null,
+    val duration: Double? = null,
+    val label: String? = null,
+)
+
+@Serializable
+data class ResumeDto(val position: Double?)
+
+/** A link a client played (or failed to), for its source's success history. */
+@Serializable
+data class LinkReport(val link: String, val success: Boolean)
+
+/** A ClearKey content key, as the 32-hex-digit key id and key. */
+@Serializable
+data class ClearKeyDto(val kid: String?, val key: String)
+
+/** What a client's own player opens for a link: usually a server proxy path, relative to the server root. */
+@Serializable
+data class StreamDto(
+    val url: String,
+    /** VIDEO | M3U8 | DASH */
+    val type: String,
+    /** Request headers the player must send; empty for proxied URLs (the proxy adds them). */
+    val headers: Map<String, String> = emptyMap(),
+    val proxied: Boolean,
+    val clearKey: ClearKeyDto? = null,
+)

@@ -329,6 +329,14 @@ Work, in priority order:
 | GET/POST | `/api/history`, `/api/bookmarks`, `/api/progress` | Persistence. |
 | GET/PUT | `/api/settings`, `/api/plugins/{name}/settings` | App and per-plugin settings. |
 | GET | `/proxy/{token}/…` | Header-injecting stream proxy (§4.4). |
+| GET | `/api/stream?link=&direct=` | For a client's own player (§4.9): a link as a proxy path (or its URL and headers), its type and ClearKey key. 410 once the link set expired. |
+| GET | `/api/subtitle?id=` | A subtitle fetched with its headers and served with a sniffed type (`text/x-ssa`, `text/vtt`, `application/x-subrip`, TTML). |
+| GET | `/api/resume?provider=&data=` | Where to resume an episode. |
+| POST | `/api/links/report` | `{link, success}`: a client's player records a link's result in the source's history. |
+| GET | `/api/skips?malId=&aniListId=&episode=&duration=` | AniSkip ranges for an episode, without an mpv session. |
+
+`POST /api/progress` also takes `{position, duration, label}` from a client's player; the first save puts the title in
+the history.
 
 History never records NSFW content. `GET /api/history` and `GET /api/continue` always exclude NSFW entries,
 including older saved entries, regardless of the `show_nsfw` setting.
@@ -437,6 +445,21 @@ integration can follow if uosc is installed.
 The server stays the source of truth. The script sends intents and displays what the server tells it, so the browser
 and the player can't disagree.
 
+### 4.9 Android app (`android/`)
+
+A second client that plays on the phone instead of driving mpv. It talks to the same `/api` with the pairing token as
+a Bearer header (scanned from the QR), so plugins, links, history, progress and source profiles stay on the desktop.
+
+- **Streams** go through `/proxy` by default, which covers interceptors, Cloudflare cookies and the plugin-local servers
+  on the desktop's loopback. "Direct links" (a phone setting) plays a link's own URL when nothing needs the proxy.
+- **Session rules** run on the phone with the server's code from `:shared`: `LinkRanking`, `SourceProfile`, `AutoPlay`,
+  `SubtitlePreference`, the watched/prefetch fractions, and `SkipRule`. Fallback to the next link, next-episode
+  prefetch, auto-next and the skip prompt behave as with mpv.
+- **Player:** Media3 ExoPlayer (HLS, DASH incl. multi-period, ClearKey via a local license) with libass
+  (`io.github.peerless2012:ass-media`) rendering ASS/SSA in an OpenGL overlay, side-loaded or inside MKV. A
+  Cloudstream-style panel picks sources and subtitles together. Gestures: hold for 2×, horizontal scrub seek with live
+  keyframe preview, double-tap ±10 s (accumulating), brightness/volume swipes, pinch to zoom, lock.
+
 ---
 
 ## 5. Repository layout (this repo)
@@ -450,6 +473,8 @@ cloudstream-desktop/
 ├── compat/
 │   ├── android-shim/       # Context, SharedPreferences, Log, Base64 stubs (tier B)
 │   └── webview-cdp/        # WebViewResolver + CloudflareKiller over Chromium CDP (tier C)
+├── shared/                 # API DTOs and playback rules used by the server and the Android app
+├── android/                # Android app: Compose UI + Media3 ExoPlayer (included when an Android SDK is found)
 ├── web/                    # Vite+ (vp) + Svelte 5/SvelteKit SPA → `vp build` into server resources
 ├── mpv/
 │   ├── cloudstream.lua

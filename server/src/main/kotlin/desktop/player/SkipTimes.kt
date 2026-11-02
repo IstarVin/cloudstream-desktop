@@ -3,7 +3,6 @@ package desktop.player
 import desktop.db.Database
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -22,26 +21,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
-
-/** A part of an episode the player can skip: an opening, ending or recap. */
-@Serializable
-data class SkipRange(
-    /** op | ed | recap */
-    val type: String,
-    val start: Double,
-    val end: Double,
-) {
-    val label get() = when (type) { "op" -> "Opening"; "ed" -> "Ending"; else -> "Recap" }
-}
-
-/** Which range the position is in, and when auto-skip seeks past one (once per range per file). */
-object SkipRule {
-    /** The range [pos] is inside, ignoring its last second so a seek to the end doesn't count. */
-    fun current(ranges: List<SkipRange>, pos: Double): SkipRange? = ranges.firstOrNull { pos >= it.start && pos < it.end - 1 }
-
-    /** The range auto mode should skip now, or null; [skipped] holds the ranges already skipped in this file. */
-    fun autoSkip(ranges: List<SkipRange>, pos: Double, skipped: Set<SkipRange>): SkipRange? = current(ranges, pos)?.takeIf { it !in skipped }
-}
 
 /**
  * Opening/ending times from AniSkip (api.aniskip.com), by MyAnimeList id and episode number. Results are cached in
