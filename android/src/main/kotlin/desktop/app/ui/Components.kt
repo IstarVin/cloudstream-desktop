@@ -1,15 +1,20 @@
 package desktop.app.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -17,6 +22,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -48,6 +54,9 @@ import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import desktop.app.app
+import desktop.app.data.ApiException
+import java.io.IOException
+import java.net.SocketTimeoutException
 
 fun formatTime(seconds: Double): String {
     if (seconds.isNaN() || seconds < 0) return "0:00"
@@ -56,6 +65,13 @@ fun formatTime(seconds: Double): String {
     val m = (s % 3600) / 60
     val sec = s % 60
     return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
+}
+
+/** "18 min left" for something part-watched; null when there's nothing meaningful to say. */
+fun remainingLabel(position: Double, duration: Double): String? {
+    if (duration <= 0 || position < 0 || position >= duration) return null
+    val minutes = Math.ceil((duration - position) / 60).toInt()
+    return if (minutes >= 60) "${minutes / 60} h ${minutes % 60} min left" else "$minutes min left"
 }
 
 /** A poster URL: server-relative ones (proxied images) resolve against the paired server. */
@@ -85,14 +101,15 @@ fun Poster(
 ) {
     Column(
         modifier.then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())
-            .clip(RoundedCornerShape(10.dp))
+            .clip(MaterialTheme.shapes.medium)
             .clickable(role = Role.Button, onClickLabel = "Open $title", onClick = onClick)
             .semantics(mergeDescendants = true) {
                 progress?.takeIf { it.isFinite() }?.let { stateDescription = "${(it.coerceIn(0f, 1f) * 100).toInt()}% watched" }
             },
     ) {
         Box(
-            Modifier.fillMaxWidth().aspectRatio(aspect).clip(RoundedCornerShape(10.dp)).background(Palette.surface2),
+            Modifier.fillMaxWidth().aspectRatio(aspect).clip(MaterialTheme.shapes.medium).background(Palette.surface2)
+                .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), MaterialTheme.shapes.medium),
         ) {
             val request = imageRequest(poster, headers)
             if (request != null) {
@@ -110,7 +127,7 @@ fun Poster(
                     style = MaterialTheme.typography.labelSmall,
                     color = Palette.accentInk,
                     modifier = Modifier.align(Alignment.TopStart).padding(6.dp)
-                        .background(Palette.accent, RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
+                        .background(Palette.accent, MaterialTheme.shapes.extraSmall).padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
             if (progress != null && progress > 0f) {
@@ -124,10 +141,10 @@ fun Poster(
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp),
+            modifier = Modifier.padding(top = 8.dp),
         )
         if (!subtitle.isNullOrBlank()) {
-            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = Palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -155,9 +172,16 @@ fun ErrorBox(message: String, modifier: Modifier = Modifier, onRetry: (() -> Uni
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(Icons.Outlined.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(28.dp))
+        val offline = message == UNREACHABLE
+        Icon(if (offline) Icons.Outlined.CloudOff else Icons.Outlined.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(28.dp))
+        Text(
+            if (offline) "Desktop unreachable" else "Something went wrong",
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.semantics { heading() },
+        )
         Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 440.dp))
-        if (onRetry != null) Button(onClick = onRetry) { Text("Retry") }
+        if (onRetry != null) Button(onClick = onRetry) { Text("Try again") }
     }
 }
 
@@ -166,14 +190,16 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier) {
     Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = modifier.semantics { heading() })
 }
 
+/** The title of a top-level screen: one compact row, so the content starts near the top of the screen. */
 @Composable
-fun ScreenHeading(title: String, modifier: Modifier = Modifier) {
-    Text(
-        title,
-        style = MaterialTheme.typography.headlineMedium,
-        fontWeight = FontWeight.Bold,
-        modifier = modifier.padding(horizontal = 20.dp, vertical = 16.dp).semantics { heading() },
-    )
+fun ScreenHeading(title: String, modifier: Modifier = Modifier, actions: @Composable RowScope.() -> Unit = {}) {
+    Row(
+        modifier.heightIn(min = 56.dp).padding(start = 16.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
+        actions()
+    }
 }
 
 @Composable
@@ -206,7 +232,7 @@ fun PosterPlaceholders() {
     ) {
         items(8) {
             Column(Modifier.width(120.dp)) {
-                Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)).background(Palette.surface2))
+                Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp)).background(Palette.surface2))
                 Spacer(Modifier.height(8.dp))
                 Box(Modifier.fillMaxWidth(0.8f).height(12.dp).clip(RoundedCornerShape(4.dp)).background(Palette.surface2))
             }
@@ -214,9 +240,12 @@ fun PosterPlaceholders() {
     }
 }
 
+/** The gutter every top-level screen shares. */
+val Gutter = 16.dp
+
 @Composable
 fun CatalogLoading() {
-    Column(Modifier.padding(20.dp).clearAndSetSemantics { contentDescription = "Loading titles" }, verticalArrangement = Arrangement.spacedBy(28.dp)) {
+    Column(Modifier.padding(Gutter).clearAndSetSemantics { contentDescription = "Loading titles" }, verticalArrangement = Arrangement.spacedBy(28.dp)) {
         repeat(2) {
             Column {
                 Box(Modifier.width(140.dp).height(20.dp).clip(RoundedCornerShape(4.dp)).background(Palette.surface2))
@@ -233,4 +262,27 @@ sealed interface Load<out T> {
     data class Failed(val message: String) : Load<Nothing>
 }
 
-fun Throwable.userMessage(): String = message?.takeIf { it.isNotBlank() } ?: javaClass.simpleName
+const val UNREACHABLE = "Make sure Cloudstream Desktop is running and this phone is on the same network."
+
+/** What to tell the person: network failures name the likely cause instead of an OkHttp socket message. */
+fun Throwable.userMessage(): String = when (this) {
+    is ApiException -> message.orEmpty()
+    is SocketTimeoutException -> "The desktop took too long to answer. Try again in a moment."
+    // Refused, unknown host, no route, a dropped connection: the server isn't there or went away mid-answer.
+    is IOException -> UNREACHABLE
+    else -> message?.takeIf { it.isNotBlank() } ?: javaClass.simpleName
+}
+
+/** A title page while it loads: the hero and the shape of what follows, not a lone spinner. */
+@Composable
+fun TitleLoading(modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = "Loading title" }) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Palette.surface2))
+        Column(Modifier.padding(Gutter), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(24.dp)).background(Palette.surface2))
+            Box(Modifier.fillMaxWidth().height(14.dp).clip(RoundedCornerShape(4.dp)).background(Palette.surface2))
+            Box(Modifier.fillMaxWidth(0.9f).height(14.dp).clip(RoundedCornerShape(4.dp)).background(Palette.surface2))
+            Box(Modifier.fillMaxWidth(0.6f).height(14.dp).clip(RoundedCornerShape(4.dp)).background(Palette.surface2))
+        }
+    }
+}

@@ -99,7 +99,7 @@ private fun Choice(title: String, detail: String? = null, selected: Boolean, bad
                         modifier = Modifier.background(color.copy(alpha = 0.15f), RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp))
                 }
             }
-            if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         if (selected) Icon(Icons.Filled.Check, null, tint = Palette.accent)
     }

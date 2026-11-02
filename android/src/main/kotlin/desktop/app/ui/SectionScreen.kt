@@ -96,7 +96,7 @@ fun SectionScreen(provider: String, section: Int, row: String, name: String, onT
             GridCells.Adaptive(100.dp),
             state = grid,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = padding.calculateTopPadding() + 8.dp, bottom = 24.dp),
+            contentPadding = PaddingValues(start = Gutter, end = Gutter, top = padding.calculateTopPadding() + 8.dp, bottom = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {

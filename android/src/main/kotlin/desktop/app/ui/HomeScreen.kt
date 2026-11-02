@@ -12,13 +12,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,10 +37,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -159,34 +164,32 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
     PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.load() }, modifier = Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
-                Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Home", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f).semantics { heading() })
-                        TextButton(onClick = onManage) { Text("Manage plugins") }
-                    }
+                Row(Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     SourceSelector(
                         current = (providers as? Load.Ok)?.value?.firstOrNull { it.name == provider },
                         onClick = { picking = true },
+                        modifier = Modifier.weight(1f, fill = false).widthIn(max = 480.dp),
                     )
+                    IconButton(onClick = onManage) { Icon(Icons.Outlined.Extension, "Manage plugins") }
                 }
             }
             status?.takeIf { it.building }?.let { s ->
                 item {
-                    Text(
-                        "Loading plugins… ${s.loaded} of ${s.plugins} ready",
-                        color = Palette.muted,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                    )
+                    Column(Modifier.padding(horizontal = Gutter, vertical = 4.dp).semantics { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Loading plugins… ${s.loaded} of ${s.plugins} ready", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                        LinearProgressIndicator(progress = { if (s.plugins > 0) s.loaded / s.plugins.toFloat() else 0f }, modifier = Modifier.fillMaxWidth())
+                    }
                 }
             }
             if (cont.isNotEmpty()) {
-                item { SectionTitle("Continue watching", Modifier.padding(start = 20.dp, top = 20.dp, bottom = 12.dp)) }
+                item { SectionTitle("Continue watching", Modifier.padding(start = Gutter, top = 16.dp, bottom = 12.dp)) }
                 item {
-                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(cont, key = { it.provider + it.url }) { c ->
                             Poster(
                                 c.title, c.poster,
-                                subtitle = c.episodeLabel,
+                                // The episode number and the time left; its name is on the title page.
+                                subtitle = listOfNotNull(c.episodeLabel?.substringBefore(" · "), remainingLabel(c.position, c.duration)).joinToString(" · "),
                                 progress = if (c.duration > 0) (c.position / c.duration).toFloat() else null,
                                 onClick = { onTitle(c.provider, c.url) },
                             )
@@ -239,25 +242,25 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
 private fun HomeSectionRows(vm: HomeViewModel, section: HomeSection, onTitle: (String, String) -> Unit, onMore: (String) -> Unit) {
     LaunchedEffect(section.index, vm.provider.collectAsState().value) { vm.loadSection(section.index) }
     when (val page = vm.pages[section.index]) {
-        null, Load.Loading -> Column(Modifier.padding(20.dp)) {
+        null, Load.Loading -> Column(Modifier.padding(Gutter)) {
             SectionTitle(section.name)
             PosterPlaceholders()
         }
-        is Load.Failed -> Column(Modifier.padding(20.dp)) {
+        is Load.Failed -> Column(Modifier.padding(Gutter)) {
             SectionTitle(section.name)
             Text(page.message, color = Palette.muted, style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { vm.loadSection(section.index) }) { Text("Retry") }
         }
         is Load.Ok -> page.value.rows.filter { it.items.isNotEmpty() }.forEach { row ->
-            Column(Modifier.padding(top = 20.dp)) {
+            Column(Modifier.padding(top = 16.dp)) {
                 Row(
-                    Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button, onClickLabel = "See all ${row.name}") { onMore(row.name) }.padding(horizontal = 20.dp, vertical = 8.dp),
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button, onClickLabel = "See all ${row.name}") { onMore(row.name) }.padding(horizontal = Gutter, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     SectionTitle(row.name, Modifier.weight(1f))
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "See all")
                 }
-                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(row.items, key = { it.provider + it.url }) { item ->
                         Poster(
                             item.name, item.poster,

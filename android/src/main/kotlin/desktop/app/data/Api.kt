@@ -11,6 +11,8 @@ import desktop.api.HomeSection
 import desktop.api.LinkDto
 import desktop.api.LinkReport
 import desktop.api.PluginDto
+import desktop.api.PluginSettingsDto
+import desktop.api.PluginSourceDto
 import desktop.api.ProgressRequest
 import desktop.api.ProviderDto
 import desktop.api.ResumeDto
@@ -18,6 +20,7 @@ import desktop.api.SearchResults
 import desktop.api.StatusDto
 import desktop.api.StreamDto
 import desktop.api.SubtitleDto
+import desktop.api.UpdateResult
 import desktop.player.SkipRange
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -225,6 +228,26 @@ class Api(initial: ServerConfig?) {
     suspend fun setPluginEnabled(name: String, enabled: Boolean) {
         send("PUT", "/api/plugins/${enc(name)}/enabled", JsonObject(mapOf("enabled" to JsonPrimitive(enabled))))
     }
+
+    suspend fun pluginSource(): PluginSourceDto = get("/api/plugins/source")
+
+    private suspend fun post(path: String, payload: String = "{}"): String =
+        call(Request.Builder().url(url(path)).post(body(payload)).build())
+
+    suspend fun checkPluginUpdates(): PluginSourceDto = json.decodeFromString(post("/api/plugins/check-updates"))
+
+    /** Updates the named plugins (null: every one with an update); returns the ones that failed, with why. */
+    suspend fun updatePlugins(modules: List<String>? = null): UpdateResult {
+        val body = JsonObject(if (modules == null) emptyMap() else mapOf("modules" to kotlinx.serialization.json.JsonArray(modules.map(::JsonPrimitive))))
+        return json.decodeFromString(post("/api/plugins/update", body.toString()))
+    }
+
+    suspend fun rollbackPlugin(name: String): PluginSourceDto = json.decodeFromString(post("/api/plugins/${enc(name)}/rollback"))
+
+    suspend fun pluginSettings(name: String): PluginSettingsDto = get("/api/plugins/${enc(name)}/settings")
+
+    suspend fun savePluginSettings(name: String, settings: PluginSettingsDto): PluginSettingsDto =
+        json.decodeFromString(call(Request.Builder().url(url("/api/plugins/${enc(name)}/settings")).put(body(json.encodeToString(settings))).build()))
 
     private fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 }

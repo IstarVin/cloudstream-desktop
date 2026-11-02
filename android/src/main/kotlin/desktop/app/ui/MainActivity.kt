@@ -3,9 +3,21 @@ package desktop.app.ui
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -17,6 +29,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
@@ -36,12 +49,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -144,7 +160,11 @@ private fun MainScaffold(onUnpair: () -> Unit) {
             if (wide) NavigationRail(
                 modifier = Modifier.fillMaxHeight().verticalScroll(rememberScrollState()),
                 containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                header = { Icon(Icons.Filled.VideoLibrary, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 16.dp).size(28.dp)) },
+                header = {
+                    Box(Modifier.padding(vertical = 16.dp).size(40.dp).clip(MaterialTheme.shapes.medium).background(Palette.accent), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.PlayArrow, null, tint = Palette.accentInk, modifier = Modifier.size(24.dp))
+                    }
+                },
             ) {
                 tabs.forEach { tab ->
                     NavigationRailItem(
@@ -155,7 +175,21 @@ private fun MainScaffold(onUnpair: () -> Unit) {
                     )
                 }
             }
-            NavHost(nav, startDestination = HomeRoute, modifier = Modifier.weight(1f).fillMaxHeight()) {
+            // Tabs fade through; opening a title or a collection pushes along the x axis (Material motion), and Back reverses it.
+            val pushes = { d: NavDestination? -> d?.hasRoute<TitleRoute>() == true || d?.hasRoute<SectionRoute>() == true }
+            NavHost(
+                nav, startDestination = HomeRoute, modifier = Modifier.weight(1f).fillMaxHeight(),
+                enterTransition = {
+                    fadeIn(tween(210, delayMillis = 90, easing = LinearOutSlowInEasing)) +
+                        if (pushes(targetState.destination)) slideInHorizontally(tween(300, easing = FastOutSlowInEasing)) { it / 10 } else EnterTransition.None
+                },
+                exitTransition = { fadeOut(tween(90, easing = FastOutLinearInEasing)) },
+                popEnterTransition = { fadeIn(tween(210, delayMillis = 90, easing = LinearOutSlowInEasing)) },
+                popExitTransition = {
+                    fadeOut(tween(90, easing = FastOutLinearInEasing)) +
+                        if (pushes(initialState.destination)) slideOutHorizontally(tween(300, easing = FastOutSlowInEasing)) { it / 10 } else ExitTransition.None
+                },
+            ) {
                 composable<HomeRoute> {
                     HomeScreen(
                         onTitle = toTitle,

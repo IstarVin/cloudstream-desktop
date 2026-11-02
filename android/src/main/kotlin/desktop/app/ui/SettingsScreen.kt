@@ -2,6 +2,7 @@ package desktop.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,8 +19,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,18 +49,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import desktop.api.PluginDto
 import desktop.api.Quality
+import desktop.api.StatusDto
 import desktop.app.app
 import desktop.app.data.PlayerPrefs
 import desktop.app.data.ServerSettings
 import desktop.app.data.json
 import desktop.player.SourceProfile
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlin.math.roundToInt
 
 private val QUALITY_LABELS = mapOf(
     Quality.Unknown to "Auto / unknown", Quality.P144 to "144p", Quality.P240 to "240p", Quality.P360 to "360p",
@@ -73,65 +77,51 @@ fun SettingsScreen(onUnpair: () -> Unit) {
     val prefs = context.app.prefs
     val scope = rememberCoroutineScope()
     var settings by remember { mutableStateOf<Load<ServerSettings>>(Load.Loading) }
-    var plugins by remember { mutableStateOf<Load<List<PluginDto>>>(Load.Loading) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var status by remember { mutableStateOf<Load<StatusDto>>(Load.Loading) }
+    var confirmUnpair by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val player by prefs.player.collectAsState(PlayerPrefs())
+    fun tell(message: String) { scope.launch { snackbar.showSnackbar(message) } }
+    val plugins = remember { PluginsController(api, scope, ::tell) }
 
     fun reload() = scope.launch {
         if (settings is Load.Failed) settings = Load.Loading
-        if (plugins is Load.Failed) plugins = Load.Loading
+        status = Load.Loading
         launch { settings = runCatching { Load.Ok(api.settings()) }.getOrElse { Load.Failed(it.userMessage()) } }
-        launch { plugins = runCatching { Load.Ok(api.plugins()) }.getOrElse { Load.Failed(it.userMessage()) } }
+        launch { status = runCatching { Load.Ok(api.status()) }.getOrElse { Load.Failed(it.userMessage()) } }
+        launch { plugins.load() }
     }
     LaunchedEffect(Unit) { reload() }
-    LaunchedEffect(error) {
-        error?.let { snackbar.showSnackbar("Couldn't save changes: $it"); error = null }
-    }
 
-    fun save(vararg values: Pair<String, kotlinx.serialization.json.JsonElement>) = scope.launch {
+    fun save(vararg values: Pair<String, JsonElement>) = scope.launch {
         try {
             settings = Load.Ok(api.updateSettings(JsonObject(values.toMap())))
-            error = null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            error = e.userMessage()
+            tell("Couldn't save changes: ${e.userMessage()}")
         }
     }
     fun updatePlayer(change: (PlayerPrefs) -> PlayerPrefs) = scope.launch { prefs.updatePlayer(change) }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+    Scaffold(snackbarHost = { SnackbarHost(snackbar) }, containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally) {
             ScreenHeading("Settings", Modifier.widthIn(max = 840.dp).fillMaxWidth())
-            LazyColumn(Modifier.weight(1f).widthIn(max = 840.dp).fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                item { Header("Player (this phone)") }
-                item { SwitchRow("Swipe left/right to seek", player.swipeSeek) { v -> updatePlayer { it.copy(swipeSeek = v) } } }
-                item { SwitchRow("Swipe on the left for brightness", player.brightnessGesture) { v -> updatePlayer { it.copy(brightnessGesture = v) } } }
-                item { SwitchRow("Swipe on the right for volume", player.volumeGesture) { v -> updatePlayer { it.copy(volumeGesture = v) } } }
-                item { ChoiceRow("Double-tap seeks", listOf(5, 10, 15, 30), player.seekStep, { "${it}s" }) { v -> updatePlayer { it.copy(seekStep = v) } } }
-                item { ChoiceRow("Hold to speed up", listOf(1.5f, 2f, 3f), player.holdSpeed, { "${it}×" }) { v -> updatePlayer { it.copy(holdSpeed = v) } } }
-                item {
-                    Column {
-                        Text("Subtitle size ${"%.0f".format(player.subtitleScale * 100)}%")
-                        Slider(player.subtitleScale, { v -> updatePlayer { it.copy(subtitleScale = v) } }, valueRange = 0.6f..2f, steps = 13)
-                    }
-                }
-                item { SwitchRow("Subtitles on a dark box (SRT/VTT)", player.subtitleBackground) { v -> updatePlayer { it.copy(subtitleBackground = v) } } }
-                item { SwitchRow("Picture-in-picture when leaving", player.pictureInPicture) { v -> updatePlayer { it.copy(pictureInPicture = v) } } }
-                item {
-                    SwitchRow(
-                        "Direct links when possible",
-                        player.directLinks,
-                        help = "Fetch video straight from its host instead of through the desktop. Links that need the desktop still go through it.",
-                    ) { v -> updatePlayer { it.copy(directLinks = v) } }
-                }
+            LazyColumn(
+                Modifier.weight(1f).widthIn(max = 840.dp).fillMaxWidth(),
+                contentPadding = PaddingValues(start = Gutter, end = Gutter, bottom = 32.dp),
+            ) {
+                item { Header("Desktop", first = true) }
+                item { DesktopStatus(api.server?.baseUrl.orEmpty(), status, onRetry = { reload() }) }
+                item { OutlinedButton(onClick = { confirmUnpair = true }, Modifier.heightIn(min = 48.dp)) { Text("Unpair this phone") } }
 
                 when (val s = settings) {
                     Load.Loading -> item { Loading() }
                     is Load.Failed -> item { ErrorBox(s.message, onRetry = { reload() }) }
                     is Load.Ok -> {
                         val v = s.value
-                        item { Header("Playback (shared with the desktop)") }
-                        item { SwitchRow("Auto-play the best link", v.autoplayBest) { save("autoplay_best" to JsonPrimitive(it)) } }
+                        item { Header("Playback") }
+                        item { SwitchRow("Auto-play the best link", v.autoplayBest, help = "Shared with the desktop") { save("autoplay_best" to JsonPrimitive(it)) } }
                         item { SwitchRow("Play the next episode automatically", v.autoplayNext) { save("autoplay_next" to JsonPrimitive(it)) } }
                         item {
                             ChoiceRow("Openings and endings", listOf("prompt", "auto", "off"), v.skipSegments,
@@ -148,49 +138,88 @@ fun SettingsScreen(onUnpair: () -> Unit) {
                 }
 
                 item { Header("Plugins") }
-                when (val loaded = plugins) {
-                    Load.Loading -> item { Loading() }
-                    is Load.Failed -> item { ErrorBox(loaded.message, onRetry = { reload() }) }
-                    is Load.Ok -> {
-                        if (loaded.value.isEmpty()) item { Text("No plugins installed. Add a repository in the desktop settings to get started.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 12.dp)) }
-                        items(loaded.value, key = { it.name }) { p ->
-                            SwitchRow(
-                                p.name, p.enabled,
-                                help = listOfNotNull(p.version?.let { "v$it" }, p.status.lowercase(), p.error).joinToString(" · "),
-                            ) { enabled ->
-                                scope.launch {
-                                    runCatching { api.setPluginEnabled(p.name, enabled) }.onFailure { error = it.userMessage() }
-                                    plugins = runCatching { Load.Ok(api.plugins()) }.getOrDefault(plugins)
-                                }
-                            }
-                        }
+                pluginItems(plugins, onRetry = { reload() })
+
+                item { Header("Player on this phone") }
+                item { SwitchRow("Swipe left or right to seek", player.swipeSeek) { v -> updatePlayer { it.copy(swipeSeek = v) } } }
+                item { SwitchRow("Swipe the left edge for brightness", player.brightnessGesture) { v -> updatePlayer { it.copy(brightnessGesture = v) } } }
+                item { SwitchRow("Swipe the right edge for volume", player.volumeGesture) { v -> updatePlayer { it.copy(volumeGesture = v) } } }
+                item { ChoiceRow("Double-tap seeks", listOf(5, 10, 15, 30), player.seekStep, { "${it}s" }) { v -> updatePlayer { it.copy(seekStep = v) } } }
+                item { ChoiceRow("Hold to speed up", listOf(1.5f, 2f, 3f), player.holdSpeed, { "${it}×" }) { v -> updatePlayer { it.copy(holdSpeed = v) } } }
+                item {
+                    Column(Modifier.padding(vertical = 8.dp)) {
+                        Text("Subtitle size ${(player.subtitleScale * 100).roundToInt()}%")
+                        Slider(
+                            player.subtitleScale,
+                            { v -> updatePlayer { it.copy(subtitleScale = (v * 20).roundToInt() / 20f) } },
+                            valueRange = 0.6f..2f,
+                        )
                     }
                 }
-
-                item { Header("Desktop") }
-                item { Text(api.server?.baseUrl.orEmpty(), color = Palette.muted) }
-                item { OutlinedButton(onClick = onUnpair) { Text("Unpair") } }
+                item { SwitchRow("Subtitles on a dark box (SRT and VTT)", player.subtitleBackground) { v -> updatePlayer { it.copy(subtitleBackground = v) } } }
+                item { SwitchRow("Picture-in-picture when leaving", player.pictureInPicture) { v -> updatePlayer { it.copy(pictureInPicture = v) } } }
+                item {
+                    SwitchRow(
+                        "Direct links when possible",
+                        player.directLinks,
+                        help = "Fetch video straight from its host instead of through the desktop. Links that need the desktop still go through it.",
+                    ) { v -> updatePlayer { it.copy(directLinks = v) } }
+                }
             }
+        }
+    }
+
+    PluginSheet(plugins, api, ::tell)
+
+    if (confirmUnpair) {
+        AlertDialog(
+            onDismissRequest = { confirmUnpair = false },
+            title = { Text("Unpair this phone?") },
+            text = { Text("You'll need to scan the pairing code on the desktop again to reconnect. Your history and library stay on the desktop.") },
+            confirmButton = { TextButton(onClick = { confirmUnpair = false; onUnpair() }) { Text("Unpair") } },
+            dismissButton = { TextButton(onClick = { confirmUnpair = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+private fun DesktopStatus(address: String, status: Load<StatusDto>, onRetry: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(address, style = MaterialTheme.typography.bodyLarge)
+        when (status) {
+            Load.Loading -> Text("Checking connection…", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+            is Load.Failed -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Not reachable. ${status.message}", style = MaterialTheme.typography.bodySmall, color = Palette.danger, modifier = Modifier.weight(1f, fill = false))
+                TextButton(onClick = onRetry) { Text("Retry") }
+            }
+            is Load.Ok -> Text(
+                "Connected · ${status.value.loaded} of ${status.value.plugins} plugins loaded" + if (status.value.building) " (still building)" else "",
+                style = MaterialTheme.typography.bodySmall,
+                color = Palette.good,
+            )
         }
     }
 }
 
+/** A section title: a label in the accent colour over a gap, so sections group the rows below without boxes. */
 @Composable
-private fun Header(text: String) {
-    Column(Modifier.padding(top = 24.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-    }
+internal fun Header(text: String, first: Boolean = false) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = if (first) 8.dp else 28.dp, bottom = 4.dp).semantics { heading() },
+    )
 }
 
 @Composable
-private fun SwitchRow(label: String, checked: Boolean, help: String? = null, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(label: String, checked: Boolean, help: String? = null, onChange: (Boolean) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 64.dp).toggleable(value = checked, role = Role.Switch, onValueChange = onChange).padding(vertical = 12.dp),
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(value = checked, role = Role.Switch, onValueChange = onChange).padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(label)
             if (!help.isNullOrBlank()) Text(help, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
         }
@@ -199,8 +228,8 @@ private fun SwitchRow(label: String, checked: Boolean, help: String? = null, onC
 }
 
 @Composable
-private fun <T> ChoiceRow(label: String, options: List<T>, value: T, text: (T) -> String, onChange: (T) -> Unit) {
-    Column(Modifier.padding(vertical = 6.dp)) {
+internal fun <T> ChoiceRow(label: String, options: List<T>, value: T, text: (T) -> String, onChange: (T) -> Unit) {
+    Column(Modifier.padding(vertical = 8.dp)) {
         Text(label)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
             items(options) { o -> FilterChip(o == value, { onChange(o) }, label = { Text(text(o)) }, modifier = Modifier.heightIn(min = 48.dp)) }

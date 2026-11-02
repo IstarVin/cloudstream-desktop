@@ -1,9 +1,16 @@
 package desktop.app.ui
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /** The web UI's palette (`web/src/app.css`). */
 object Palette {
@@ -17,6 +24,10 @@ object Palette {
     val accentInk = Color(0xFF1D0E05)
     val good = Color(0xFF53D3A3)
     val danger = Color(0xFFFF6170)
+
+    /** Text and icons over artwork: the image behind them is unknown, so they never take the theme's text role. */
+    val onImage = Color.White
+    val scrim = Color.Black.copy(alpha = 0.55f)
 }
 
 private val colors = darkColorScheme(
@@ -44,7 +55,36 @@ private val colors = darkColorScheme(
     error = Palette.danger,
 )
 
+private val base = Typography()
+
+// A product scale on one family: tighter steps than Material's defaults, and nothing under 12sp, so metadata under
+// posters and episodes stays readable at the system font size.
+private val type = Typography(
+    headlineMedium = base.headlineMedium.copy(fontSize = 26.sp, lineHeight = 32.sp, fontWeight = FontWeight.SemiBold),
+    headlineSmall = base.headlineSmall.copy(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
+    titleLarge = base.titleLarge.copy(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold),
+    titleMedium = base.titleMedium.copy(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold),
+    titleSmall = base.titleSmall.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
+    bodyLarge = base.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp),
+    bodyMedium = base.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp),
+    bodySmall = base.bodySmall.copy(fontSize = 13.sp, lineHeight = 18.sp),
+    labelLarge = base.labelLarge.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
+    labelMedium = base.labelMedium.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
+    labelSmall = base.labelSmall.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
+)
+
+private val shapes = Shapes(
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp),
+    extraLarge = RoundedCornerShape(24.dp),
+)
+
+/** Tabular figures for numbers that change in place (times, counts, priorities). */
+val TabularNumbers = TextStyle(fontFeatureSettings = "tnum")
+
 @Composable
 fun AppTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = colors, content = content)
+    MaterialTheme(colorScheme = colors, typography = type, shapes = shapes, content = content)
 }

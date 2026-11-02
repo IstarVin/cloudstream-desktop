@@ -72,6 +72,7 @@ class Prefs(private val context: Context) {
         val directLinks = booleanPreferencesKey("direct_links")
         val resizeMode = intPreferencesKey("resize_mode")
         val pip = booleanPreferencesKey("pip")
+        val recentSearches = stringPreferencesKey("recent_searches")
     }
 
     suspend fun server(): ServerConfig? =
@@ -91,6 +92,13 @@ class Prefs(private val context: Context) {
         it[K.homeCategories] = ids
         it.remove(K.homeType)
     }
+
+    /** The last few searches, newest first. */
+    val recentSearches: Flow<List<String>> = context.store.data.map { RecentSearches.decode(it[K.recentSearches]) }
+    suspend fun addRecentSearch(query: String) = context.store.edit {
+        it[K.recentSearches] = RecentSearches.encode(RecentSearches.add(RecentSearches.decode(it[K.recentSearches]), query))
+    }
+    suspend fun clearRecentSearches() = context.store.edit { it.remove(K.recentSearches) }
 
     val player: Flow<PlayerPrefs> = context.store.data.map { p -> p.toPlayerPrefs() }
 
@@ -127,4 +135,18 @@ class Prefs(private val context: Context) {
             p[K.pip] = n.pictureInPicture
         }
     }
+}
+
+/** Recent searches, kept newest first without repeats (ignoring case) and capped. */
+object RecentSearches {
+    const val MAX = 8
+
+    fun add(list: List<String>, query: String): List<String> {
+        val q = query.trim()
+        if (q.isEmpty()) return list
+        return (listOf(q) + list.filterNot { it.equals(q, ignoreCase = true) }).take(MAX)
+    }
+
+    fun encode(list: List<String>): String = list.joinToString("\n")
+    fun decode(raw: String?): List<String> = raw?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
 }

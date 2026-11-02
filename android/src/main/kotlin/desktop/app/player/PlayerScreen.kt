@@ -77,6 +77,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -313,11 +315,17 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
 
         // Loading, resolving and errors.
         val busy = s.status == "resolving" || s.status == "loading" || buffering
+        val controlsShown = controls && !locked && !inPip
         if (busy && scrubTarget == null) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(color = Palette.accent)
+                // With the controls up the spinner takes the play button's place (see Controls); the message sits below the row.
+                if (!controlsShown) CircularProgressIndicator(color = Palette.accent)
                 if (!inPip && s.status != "playing") s.message?.let {
-                    Text(it, color = Color.White, modifier = Modifier.padding(top = 12.dp).background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 6.dp))
+                    Text(
+                        it, color = Color.White,
+                        modifier = Modifier.padding(top = if (controlsShown) 120.dp else 12.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
                 }
             }
         }
@@ -341,6 +349,7 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
             AnimatedVisibility(controls && !locked, enter = fadeIn(), exit = fadeOut()) {
                 Controls(
                     vm, s,
+                    busy = busy && scrubTarget == null,
                     position = scrubTarget ?: position, duration = duration, buffered = buffered, playing = playing, speed = speed,
                     resizeLabel = RESIZE_MODES[resizeIndex].second,
                     onBack = onBack,
@@ -486,6 +495,7 @@ fun formatSpeed(speed: Float) = if (speed % 1f == 0f) "%.0f".format(speed) else 
 private fun Controls(
     vm: PlayerViewModel,
     s: Session,
+    busy: Boolean,
     position: Long,
     duration: Long,
     buffered: Long,
@@ -523,7 +533,11 @@ private fun Controls(
         // Center: previous, play/pause, next.
         Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(40.dp)) {
             RoundButton(Icons.Filled.SkipPrevious, "Previous episode", enabled = item?.hasPrev == true, size = 48) { vm.prev() }
-            RoundButton(
+            if (busy) {
+                Box(Modifier.size(72.dp).semantics { contentDescription = "Loading" }, contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Palette.accent)
+                }
+            } else RoundButton(
                 if (s.status == "ended" && s.upNext == null) Icons.Filled.Replay else if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 if (playing) "Pause" else "Play",
                 size = 72,

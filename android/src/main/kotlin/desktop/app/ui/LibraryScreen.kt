@@ -1,7 +1,10 @@
 package desktop.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -20,10 +23,9 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.SnackbarHost
@@ -42,7 +44,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import desktop.api.Bookmark
@@ -105,7 +106,7 @@ fun LibraryScreen(onTitle: (String, String) -> Unit, onBrowse: () -> Unit) {
                 LazyVerticalGrid(
                     GridCells.Adaptive(100.dp),
                     state = if (tab == 0) historyGrid else bookmarkGrid,
-                    contentPadding = PaddingValues(20.dp),
+                    contentPadding = PaddingValues(Gutter),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.fillMaxSize(),
@@ -130,12 +131,16 @@ fun LibraryScreen(onTitle: (String, String) -> Unit, onBrowse: () -> Unit) {
                         items(h.value, key = { it.provider + it.url }) { e ->
                             Box {
                                 Poster(e.title, e.poster, width = null, subtitle = e.provider, onClick = { onTitle(e.provider, e.url) })
-                                FilledIconButton(
+                                // A 48dp target with a smaller disc, so a grid of posters isn't a grid of dark circles.
+                                IconButton(
                                     onClick = { changeHistory { api.forget(e.provider, e.url) } },
                                     enabled = !changingHistory,
-                                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.Black.copy(alpha = 0.72f), contentColor = Color.White),
-                                    modifier = Modifier.align(Alignment.TopEnd).padding(2.dp),
-                                ) { Icon(Icons.Filled.Close, "Forget ${e.title}") }
+                                    modifier = Modifier.align(Alignment.TopEnd),
+                                ) {
+                                    Box(Modifier.size(28.dp).background(Palette.scrim, CircleShape), contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Filled.Close, "Forget ${e.title}", tint = Palette.onImage, modifier = Modifier.size(16.dp))
+                                    }
+                                }
                             }
                         }
                     }

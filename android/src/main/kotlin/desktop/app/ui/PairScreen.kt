@@ -10,6 +10,26 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +39,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -39,7 +58,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -58,8 +76,9 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var scanning by remember { mutableStateOf(false) }
-    var address by remember { mutableStateOf("") }
-    var token by remember { mutableStateOf("") }
+    var manual by rememberSaveable { mutableStateOf(false) }
+    var address by rememberSaveable { mutableStateOf("") }
+    var token by rememberSaveable { mutableStateOf("") }
     var checking by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf(message) }
 
@@ -75,62 +94,117 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
                 val status = context.app.api.authStatus(config)
                 if (status.authed) onPaired(config) else error = "The desktop refused this token. Scan the code again."
             } catch (e: Exception) {
-                error = "Couldn't reach ${config.baseUrl}: ${e.userMessage()}"
+                error = "Couldn't reach ${config.baseUrl}. ${e.userMessage()}"
             } finally {
                 checking = false
                 scanning = false
             }
         }
     }
+    val canConnect = !checking && address.isNotBlank() && (token.isNotBlank() || "token=" in address)
+    fun connect() { if (canConnect) tryPair(ServerConfig.parse(address, token)) }
 
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) scanning = true else error = "Camera permission is needed to scan; type the address instead."
+        if (granted) scanning = true else {
+            manual = true
+            error = "Camera permission is needed to scan. You can type the address instead."
+        }
     }
 
-    Column(
-        Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text("Cloudstream", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text(
-            "Pair with Cloudstream Desktop on your network. On the desktop, open Settings → Pair a phone and scan the code.",
-            color = Palette.muted,
-        )
-        if (scanning) {
-            QrScanner(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(16.dp))) { text ->
-                if (!checking) tryPair(ServerConfig.parse(text))
+    BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
+        val wide = maxWidth >= 720.dp
+        val intro: @Composable () -> Unit = {
+            Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                Box(
+                    Modifier.size(56.dp).clip(MaterialTheme.shapes.large).background(Palette.accent),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Filled.PlayArrow, null, tint = Palette.accentInk, modifier = Modifier.size(32.dp)) }
+                Text("Cloudstream", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
+                Text(
+                    "Watch on your phone, with the sources and library from your desktop. Both need to be on the same network.",
+                    color = Palette.muted,
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PairStep(1, "On the desktop, open Settings and find Pair a phone.")
+                    PairStep(2, "Scan the code it shows with this phone.")
+                }
             }
-            OutlinedButton(onClick = { scanning = false }) { Text("Cancel") }
-        } else {
-            Button(
-                onClick = {
-                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) scanning = true
-                    else permission.launch(Manifest.permission.CAMERA)
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Scan pairing code") }
         }
-        Text("Or enter it by hand", style = MaterialTheme.typography.titleSmall)
-        OutlinedTextField(
-            address, { address = it },
-            label = { Text("Address") },
-            placeholder = { Text("192.168.1.10:6969") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            token, { token = it },
-            label = { Text("Token") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Button(
-            onClick = { tryPair(ServerConfig.parse(address, token)) },
-            enabled = !checking && address.isNotBlank() && (token.isNotBlank() || "token=" in address),
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(if (checking) "Connecting…" else "Connect") }
-        error?.let { Text(it, color = Palette.danger) }
+        val form: @Composable () -> Unit = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (scanning) {
+                    QrScanner(Modifier.fillMaxWidth().aspectRatio(1f).clip(MaterialTheme.shapes.extraLarge)) { text ->
+                        if (!checking) tryPair(ServerConfig.parse(text))
+                    }
+                    Text("Point the camera at the code on your desktop.", color = Palette.muted, style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = { scanning = false }, Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Cancel") }
+                } else {
+                    Button(
+                        onClick = {
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) scanning = true
+                            else permission.launch(Manifest.permission.CAMERA)
+                        },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                    ) {
+                        Icon(Icons.Filled.QrCodeScanner, null)
+                        Text("Scan pairing code", Modifier.padding(start = 8.dp))
+                    }
+                    TextButton(onClick = { manual = !manual }, Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)) {
+                        Text(if (manual) "Hide manual entry" else "Enter the address instead")
+                    }
+                    if (manual) {
+                        OutlinedTextField(
+                            address, { address = it },
+                            label = { Text("Desktop address") },
+                            placeholder = { Text("192.168.1.10:6969") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OutlinedTextField(
+                            token, { token = it },
+                            label = { Text("Token") },
+                            supportingText = { Text("Shown under the code in the desktop's settings.") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { connect() }),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Button(onClick = ::connect, enabled = canConnect, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                            Text(if (checking) "Connecting…" else "Connect")
+                        }
+                    }
+                }
+                if (checking) LinearProgressIndicator(Modifier.fillMaxWidth())
+                error?.let {
+                    Row(Modifier.semantics { liveRegion = LiveRegionMode.Assertive }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Outlined.ErrorOutline, null, tint = Palette.danger, modifier = Modifier.size(20.dp))
+                        Text(it, color = Palette.danger, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
+        if (wide) {
+            Row(Modifier.fillMaxSize().padding(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { intro() }
+                Box(Modifier.weight(1f).verticalScroll(rememberScrollState())) { form() }
+            }
+        } else {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Gutter + 8.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
+                intro()
+                form()
+            }
+        }
+    }
+}
+
+@Composable
+private fun PairStep(number: Int, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.size(28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
+            Text("$number", style = MaterialTheme.typography.labelLarge)
+        }
+        Text(text)
     }
 }
 
