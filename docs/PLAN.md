@@ -750,8 +750,17 @@ unchanged in both modes, with no upstream change, as the `CookieManager` shim al
   - Convert the key from base64url (or hex) to hex, and pass the per-file option
     `demuxer-lavf-o=cenc_decryption_key=<hex>` (`ClearKey.hexKey`, `ResolvedLink.clearKey`).
   - Mark these links "ClearKey" on the sheet.
-  - Widevine stays out of scope. Multi-key feeds stay disabled. So do ClearKey links whose manifest is carried
-    inline in `extractorData` (StreamCorner's NBA replays): the desktop doesn't serve inline manifests yet.
+  - Widevine stays out of scope. Multi-key feeds stay disabled.
+  - A manifest carried inline in `extractorData` (StreamCorner's NBA replays, HLS fMP4 re-described as a DASH
+    `SegmentList`) plays when the plugin's `getVideoInterceptor` serves it at the link's URL. The link is proxied, and
+    `StreamProxy.rewriteMpd` sends its segment URLs through the proxy too, so the link's headers apply. It also gives
+    each `SegmentList` a `duration`: FFmpeg ignores the timeline there and can't seek without one.
+  - FFmpeg's DASH demuxer reads only the first `<Period>`, so a multi-period manifest (HLS discontinuities, e.g. the
+    full-game replays) is split into one manifest per period (`StreamProxy.periodPaths`) and mpv joins them as
+    `edl://`. Manifests the proxy makes answer `Range` requests, which FFmpeg uses to re-read them.
+  - Checked against a locally encrypted CENC `SegmentList` stream (video and audio, absolute URLs): decrypts with the
+    key and is garbage without it. The same stream as two periods plays end to end through the proxy and mpv, with
+    the upstream demanding a `Referer`. Not yet checked against a live NBA replay.
 
 **Done when:**
 - **Prefetch:** at 85%, the now-playing bar shows the next episode go from `resolving` to `ready` with a link count.

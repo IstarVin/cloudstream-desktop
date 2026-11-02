@@ -304,7 +304,13 @@ class Playback(
             if (l.type == ExtractorLinkType.M3U8) {
                 sampleAesKey = runCatching { proxy.sampleAesKey(path) }.onFailure { log.info("Couldn't read {}'s playlists ahead: {}", l.source, it.toString()) }.getOrNull()
             }
-            "http://127.0.0.1:$port$path"
+            // FFmpeg's DASH demuxer reads one period; mpv joins a multi-period manifest's periods itself.
+            val periods = if (link.clearKey != null) {
+                runCatching { proxy.periodPaths(path) }.onFailure { log.info("Couldn't read {}'s manifest ahead: {}", l.source, it.toString()) }.getOrNull()
+            } else null
+            if (periods != null) {
+                "edl://" + periods.joinToString(";") { "http://127.0.0.1:$port$it".let { u -> "%${u.toByteArray().size}%$u" } }
+            } else "http://127.0.0.1:$port$path"
         } else l.url
         val title = listOfNotNull(s.item.details.name, s.item.label).joinToString(" · ")
         val opts = buildMap {

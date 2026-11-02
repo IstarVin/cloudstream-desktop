@@ -37,7 +37,7 @@ class ResolvedLink(
     val order: Int,
 ) {
     /** For a ClearKey DASH link with one key, the key in hex: mpv's DASH demuxer decrypts with it. */
-    val clearKey: String? = (link as? DrmExtractorLink)?.let(ClearKey::hexKey)
+    val clearKey: String? = (link as? DrmExtractorLink)?.let { ClearKey.hexKey(it, served = interceptor != null) }
     val playable = (link !is DrmExtractorLink || clearKey != null) && link.url.startsWith("http") &&
         link.type in setOf(ExtractorLinkType.VIDEO, ExtractorLinkType.M3U8, ExtractorLinkType.DASH)
     val proxied = interceptor != null
@@ -67,10 +67,14 @@ object ClearKey {
     /**
      * The key of [link] as 32 hex digits when it's a single-key ClearKey DASH link with a real manifest URL; null
      * otherwise. Keys come as hex or base64url (the JWK form plugins use). A manifest carried inline in
-     * `extractorData` (the app serves it itself) isn't supported yet.
+     * `extractorData` (StreamCorner's NBA replays) works when the provider's video interceptor serves it at the link's
+     * URL ([served]); the proxy then hands it to mpv.
      */
-    fun hexKey(link: DrmExtractorLink): String? {
-        if (link.uuid != CLEARKEY_UUID || link.type != ExtractorLinkType.DASH || !link.extractorData.isNullOrEmpty()) return null
+    fun hexKey(link: DrmExtractorLink, served: Boolean = false): String? {
+        // `uuid` is a kotlin Uuid, CLEARKEY_UUID a java UUID: they're never equal, so compare the text.
+        if (link.uuid.toString() != CLEARKEY_UUID.toString() || link.type != ExtractorLinkType.DASH) return null
+        val inline = link.extractorData
+        if (!inline.isNullOrEmpty() && !(served && inline.startsWith("<?xml"))) return null
         return toHex(link.key ?: return null)
     }
 

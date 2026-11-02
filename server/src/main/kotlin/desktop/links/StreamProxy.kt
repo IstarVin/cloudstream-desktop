@@ -39,6 +39,8 @@ class StreamProxy {
     private class Target(val headers: Map<String, String>, val client: OkHttpClient, val created: Long) {
         val playlists = ConcurrentHashMap<String, String>()
         val aliases = ConcurrentHashMap<String, String>()
+        /** DASH manifests made here (one per period of a multi-period one), keyed by their made-up URL. */
+        val documents = ConcurrentHashMap<String, String>()
     }
 
     private val targets = ConcurrentHashMap<String, Target>()
@@ -70,6 +72,7 @@ class StreamProxy {
     suspend fun serve(call: ApplicationCall, token: String, encoded: String) {
         val target = targets[token] ?: return call.respondText("Unknown proxy token", status = HttpStatusCode.NotFound)
         val url = url(target, encoded) ?: return call.respondText("Unknown proxy alias", status = HttpStatusCode.NotFound)
+        target.documents[url]?.let { return respondDocument(call, it) }
         target.playlists[url]?.let { return call.respondText(it, ContentType.parse("application/vnd.apple.mpegurl")) }
         if (url.startsWith("data:", true)) {
             val bytes = dataUri(url) ?: return call.respondText("Malformed data URI", status = HttpStatusCode.BadRequest)
@@ -77,7 +80,8 @@ class StreamProxy {
         }
         val request = Request.Builder().url(url).apply {
             target.headers.forEach { (k, v) -> header(k, v) }
-            call.request.header(HttpHeaders.Range)?.let { header(HttpHeaders.Range, it) }
+            // A manifest is rewritten whole, so it's fetched whole; [respondDocument] answers the range.
+            if (!url.substringBefore('?').endsWith(".mpd")) call.request.header(HttpHeaders.Range)?.let { header(HttpHeaders.Range, it) }
         }.build()
 
         val res = withContext(Dispatchers.IO) { target.client.newCall(request).execute() }
@@ -94,6 +98,11 @@ class StreamProxy {
                     return
                 }
                 call.respondBytes(text.toByteArray(), ContentType.parse(type.ifEmpty { "text/plain" }), HttpStatusCode.fromValue(res.code))
+                return
+            }
+            if (res.isSuccessful && (type.contains("dash+xml", true) || url.substringBefore('?').endsWith(".mpd"))) {
+                val text = withContext(Dispatchers.IO) { body.string() }
+                respondDocument(call, rewriteMpd(text, res.request.url.toString(), token))
                 return
             }
             for (h in listOf(HttpHeaders.ContentRange, HttpHeaders.AcceptRanges)) res.header(h)?.let { call.response.header(h, it) }
@@ -134,6 +143,62 @@ class StreamProxy {
                 line.startsWith("#") -> URI_ATTR.replace(line) { m -> "URI=\"${proxied(m.groupValues[1])}\"" }
                 else -> proxied(line)
             }
+        }
+    }
+
+    /**
+     * A DASH manifest built here. FFmpeg probes a manifest, then seeks back and re-reads it with a `Range` request, so
+     * without range support it would get the document twice over.
+     */
+    private suspend fun respondDocument(call: ApplicationCall, text: String) {
+        val bytes = text.toByteArray()
+        call.response.header(HttpHeaders.AcceptRanges, "bytes")
+        val range = call.request.header(HttpHeaders.Range)?.let { RANGE.matchEntire(it.trim()) }
+        val type = ContentType.parse("application/dash+xml")
+        if (range == null) return call.respondBytes(bytes, type)
+        val from = range.groupValues[1].toInt()
+        val to = range.groupValues[2].toIntOrNull()?.coerceAtMost(bytes.size - 1) ?: (bytes.size - 1)
+        if (from > to) {
+            call.response.header(HttpHeaders.ContentRange, "bytes */${bytes.size}")
+            return call.respondBytes(ByteArray(0), type, HttpStatusCode.RequestedRangeNotSatisfiable)
+        }
+        call.response.header(HttpHeaders.ContentRange, "bytes $from-$to/${bytes.size}")
+        call.respondBytes(bytes.copyOfRange(from, to + 1), type, HttpStatusCode.PartialContent)
+    }
+
+    /**
+     * Points the explicit segment URLs of a DASH manifest (`SegmentURL@media`, `Initialization@sourceURL`) back at this
+     * proxy, so they carry the link's headers. Templates (`$Number$`) are left alone.
+     */
+    fun rewriteMpd(mpd: String, base: String, token: String): String {
+        val baseUri = URI(base)
+        return MPD_URL.replace(withSegmentDuration(mpd)) { m ->
+            val ref = m.groupValues[2].replace("&amp;", "&")
+            if ('$' in ref) return@replace m.value
+            val uri = baseUri.resolve(ref)
+            if (!uri.scheme.equals("http", true) && !uri.scheme.equals("https", true)) return@replace m.value
+            """${m.groupValues[1]}="${path(token, uri.toString()).replace("&", "&amp;")}""""
+        }
+    }
+
+    /**
+     * For a multi-period DASH manifest behind [path] (from [register]), one proxied single-period manifest per period,
+     * in order; null when it isn't one. FFmpeg's DASH demuxer plays only the first `<Period>`, so mpv joins these
+     * (`edl://`) instead.
+     */
+    suspend fun periodPaths(path: String): List<String>? = withContext(Dispatchers.IO) {
+        val (token, encoded) = path.removePrefix("/proxy/").split('/').takeIf { it.size >= 2 } ?: return@withContext null
+        val target = targets[token] ?: return@withContext null
+        val url = url(target, encoded) ?: return@withContext null
+        val request = Request.Builder().url(url).apply { target.headers.forEach { (k, v) -> header(k, v) } }.build()
+        val mpd = target.client.newCall(request).execute().use { res ->
+            res.body.string().takeIf { res.isSuccessful && it.trimStart().startsWith("<?xml") }?.let { it to res.request.url.toString() }
+        } ?: return@withContext null
+        val parts = splitPeriods(mpd.first)?.takeIf { it.size > 1 } ?: return@withContext null
+        parts.mapIndexed { i, part ->
+            val name = "mpd:///period-$i.mpd"
+            target.documents[name] = rewriteMpd(part, mpd.second, token)
+            path(token, name)
         }
     }
 
@@ -190,7 +255,41 @@ class StreamProxy {
     }
 
     companion object {
+        private val RANGE = Regex("""bytes=(\d+)-(\d*)""")
+        private val SEGMENT_LIST = Regex("""<SegmentList\b([^>]*)>(.*?)</SegmentList>""", RegexOption.DOT_MATCHES_ALL)
+        private val TIMELINE_D = Regex("""<S\b[^>]*\sd="(\d+)"""")
+
+        /**
+         * FFmpeg ignores a `SegmentTimeline` inside a `SegmentList` and can't seek without a `duration`, so mpv would
+         * read on from the start to reach a position. Gives each list the most common segment length of its timeline.
+         */
+        fun withSegmentDuration(mpd: String): String = SEGMENT_LIST.replace(mpd) { m ->
+            val attrs = m.groupValues[1]
+            val d = TIMELINE_D.findAll(m.groupValues[2]).map { it.groupValues[1] }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+            if (d == null || Regex("""\sduration=""").containsMatchIn(attrs)) m.value
+            else "<SegmentList$attrs duration=\"$d\">${m.groupValues[2]}</SegmentList>"
+        }
+
+        private val PERIOD = Regex("""<Period\b.*?</Period>""", RegexOption.DOT_MATCHES_ALL)
+        private val START = Regex("""\sstart="[^"]*"""")
+        private val DURATION = Regex("""\sduration="([^"]*)"""")
+        private val PRESENTATION = Regex("""mediaPresentationDuration="[^"]*"""")
+
+        /** [mpd] as one manifest per `<Period>`, each starting at zero; null without any. */
+        fun splitPeriods(mpd: String): List<String>? {
+            val periods = PERIOD.findAll(mpd).toList().takeIf { it.isNotEmpty() } ?: return null
+            val head = mpd.substring(0, periods.first().range.first)
+            val tail = mpd.substring(periods.last().range.last + 1)
+            return periods.map { m ->
+                val period = START.replace(m.value, "")
+                val duration = DURATION.find(period.substringBefore('>'))?.groupValues?.get(1)
+                val h = if (duration != null) PRESENTATION.replace(head, "mediaPresentationDuration=\"$duration\"") else head
+                h + period + tail
+            }
+        }
+
         private val URI_ATTR = Regex("""URI="([^"]+)"""")
+        private val MPD_URL = Regex("""\b(media|sourceURL)="([^"]+)"""")
 
         /** Leaves room under ffmpeg's 4096 for the server address, the token and the file name. */
         private const val MAX_ENCODED = 2048
