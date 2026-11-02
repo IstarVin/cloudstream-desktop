@@ -347,6 +347,11 @@ h3 {
   scroll-snap-type: x proximity;
 }
 
+.scroll-x:has(> .card) {
+  padding: 8px;
+  margin: -8px -8px 0;
+}
+
 .scroll-x::-webkit-scrollbar {
   height: 4px;
 }

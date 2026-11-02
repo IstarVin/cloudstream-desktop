@@ -80,6 +80,7 @@
     border: 1px solid var(--line);
     display: grid;
     place-items: center;
+    transition: transform 0.25s;
   }
   .horizontal .art {
     aspect-ratio: 16 / 9;
@@ -88,10 +89,19 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: transform 0.25s;
   }
-  .card:hover img {
+  .card:hover .art,
+  .card:focus-visible .art {
     transform: scale(1.04);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .art {
+      transition: none;
+    }
+    .card:hover .art,
+    .card:focus-visible .art {
+      transform: none;
+    }
   }
   .play-hint {
     position: absolute;
