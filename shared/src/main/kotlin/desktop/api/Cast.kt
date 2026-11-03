@@ -24,6 +24,8 @@ data class DeviceInfo(
     val kind: DeviceKind,
     /** Whether it accepts casts. A client can connect only to control others. */
     val receiver: Boolean,
+    /** The device that has picked this one as its player, or null when it's free. Only that device may pick it. */
+    val controller: String? = null,
 )
 
 /** A message on the /api/cast socket. The JSON carries the subtype as "type". */
@@ -33,6 +35,11 @@ sealed class CastFrame {
     @Serializable
     @SerialName("hello")
     data class Hello(val id: String, val name: String, val kind: DeviceKind, val receiver: Boolean = true) : CastFrame()
+
+    /** client → server: "I'm playing on [device]" (null: on none). Held until released, replaced, or either device drops. */
+    @Serializable
+    @SerialName("claim")
+    data class Claim(val device: String? = null) : CastFrame()
 
     /** Both ways: a receiver's player state; from the server, [device] says whose. */
     @Serializable

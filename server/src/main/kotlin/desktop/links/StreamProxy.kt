@@ -41,6 +41,9 @@ class StreamProxy {
         val aliases = ConcurrentHashMap<String, String>()
         /** DASH manifests made here (one per period of a multi-period one), keyed by their made-up URL. */
         val documents = ConcurrentHashMap<String, String>()
+        /** Subtitles read from the Matroska files fetched here, by URL; [notMatroska] for files found not to be one. */
+        val matroska = ConcurrentHashMap<String, MkvSubtitles>()
+        val notMatroska: MutableSet<String> = ConcurrentHashMap.newKeySet()
     }
 
     private val targets = ConcurrentHashMap<String, Target>()
@@ -108,6 +111,7 @@ class StreamProxy {
             }
             for (h in listOf(HttpHeaders.ContentRange, HttpHeaders.AcceptRanges)) res.header(h)?.let { call.response.header(h, it) }
             val length = body.contentLength().takeIf { it >= 0 }
+            val tap = if (res.isSuccessful) tap(target, url, res.header(HttpHeaders.ContentRange)) else null
             handedOff = true
             call.respondOutputStream(
                 contentType = runCatching { ContentType.parse(type) }.getOrDefault(ContentType.Application.OctetStream),
@@ -116,7 +120,17 @@ class StreamProxy {
             ) {
                 // mpv drops connections when it seeks or switches streams; that isn't an error.
                 try {
-                    withContext(Dispatchers.IO) { body.byteStream().use { it.copyTo(this@respondOutputStream) } }
+                    withContext(Dispatchers.IO) {
+                        body.byteStream().use { input ->
+                            val chunk = ByteArray(64 * 1024)
+                            while (true) {
+                                val n = input.read(chunk)
+                                if (n < 0) break
+                                this@respondOutputStream.write(chunk, 0, n)
+                                tap?.feed(chunk, 0, n)
+                            }
+                        }
+                    }
                 } catch (_: IOException) {
                 } finally {
                     res.close()
@@ -125,6 +139,35 @@ class StreamProxy {
         } finally {
             if (!handedOff) res.close()
         }
+    }
+
+    /**
+     * A reader for the subtitles of a Matroska file in a response starting at [contentRange]'s first byte (the file's
+     * start without one). From the start it finds out whether the file is Matroska at all; from elsewhere it reads only
+     * a file already known to be one.
+     */
+    private fun tap(target: Target, url: String, contentRange: String?): MkvTap? {
+        val start = contentRange?.let { CONTENT_RANGE.find(it) }?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+        if (start == 0L) {
+            if (url in target.notMatroska) return null
+            return MkvTap(0) { isMatroska ->
+                if (isMatroska) target.matroska.getOrPut(url) { MkvSubtitles() }
+                else { target.notMatroska.add(url); null }
+            }
+        }
+        val subs = target.matroska[url] ?: return null
+        return MkvTap(start) { subs }
+    }
+
+    /**
+     * The subtitles read so far from the file behind [path] (from [register]): null while it's unknown whether the file
+     * is Matroska, [NOT_MATROSKA] when it isn't.
+     */
+    fun embeddedSubtitles(path: String): MkvSubtitles? {
+        val (token, encoded) = path.substringAfter("/proxy/").split('/').takeIf { it.size >= 2 } ?: return NOT_MATROSKA
+        val target = targets[token] ?: return NOT_MATROSKA
+        val url = runCatching { url(target, encoded) }.getOrNull() ?: return NOT_MATROSKA
+        return target.matroska[url] ?: if (url in target.notMatroska) NOT_MATROSKA else null
     }
 
     /**
@@ -273,6 +316,10 @@ class StreamProxy {
 
     companion object {
         private const val PLAYLIST_SNIFF = 16
+
+        /** What [embeddedSubtitles] answers for a stream that isn't a Matroska file. */
+        val NOT_MATROSKA = MkvSubtitles()
+        private val CONTENT_RANGE = Regex("""bytes (\d+)-""")
 
         private val SUBTITLES_ATTR = Regex(""",SUBTITLES="[^"]*"""")
         private val TEXT_SUBTITLE = Regex("""URI="[^"?]+\.(vtt|srt)(\?[^"]*)?"""", RegexOption.IGNORE_CASE)

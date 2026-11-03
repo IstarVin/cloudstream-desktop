@@ -44,6 +44,8 @@ class DeviceHub(private val scope: CoroutineScope, private val mpv: LocalPlayer?
     private val log = LoggerFactory.getLogger(DeviceHub::class.java)
     private val sessions = ConcurrentHashMap<String, Session>()
     private val states = ConcurrentHashMap<String, PlayerState>()
+    /** Target device id → the controller that picked it. One controller per target, and one target per controller. */
+    private val claims = HashMap<String, String>()
     private val _devices = MutableStateFlow<List<DeviceInfo>>(emptyList())
     val devices: StateFlow<List<DeviceInfo>> = _devices
 
@@ -78,6 +80,11 @@ class DeviceHub(private val scope: CoroutineScope, private val mpv: LocalPlayer?
         when (frame) {
             is CastFrame.Hello -> if (frame.id == id) {
                 session.info = frame.info()
+                if (!session.info.receiver) synchronized(claims) { claims.remove(id) }
+                refresh()
+            }
+            is CastFrame.Claim -> {
+                if (!claim(id, frame.device)) session.send(CastFrame.Devices(listed())) // refused: show the truth
                 refresh()
             }
             is CastFrame.State -> {
@@ -93,6 +100,8 @@ class DeviceHub(private val scope: CoroutineScope, private val mpv: LocalPlayer?
         if (!sessions.remove(id, session)) return
         session.close()
         states.remove(id)
+        // Its own pick ends with it, and so does anyone's pick of it.
+        synchronized(claims) { claims.entries.removeIf { it.key == id || it.value == id } }
         log.info("Cast device disconnected: {}", session.info.name)
         refresh()
     }
@@ -103,7 +112,26 @@ class DeviceHub(private val scope: CoroutineScope, private val mpv: LocalPlayer?
         return states[device] ?: PlayerState()
     }
 
+    /**
+     * Gives [controller] the pick of [device], or releases its pick when [device] is null. A device already picked by
+     * another connected controller is refused (false), and a controller holds one pick at a time.
+     */
+    fun claim(controller: String, device: String?): Boolean = synchronized(claims) {
+        if (device == null) return@synchronized claims.values.removeAll { it == controller }.let { true }
+        val free = claims[device].let { it == null || it == controller || !sessions.containsKey(it) }
+        val pickable = device != controller && (device == MPV_ID && mpv?.available == true ||
+            sessions[device]?.info?.receiver == true)
+        if (!free || !pickable) return@synchronized false
+        claims.values.removeAll { it == controller }
+        claims[device] = controller
+        true
+    }
+
     suspend fun play(device: String, req: PlayRequest, from: String? = null) {
+        if (from != null) synchronized(claims) {
+            val holder = claims[device]
+            require(holder == null || holder == from || !sessions.containsKey(holder)) { "That device is being used by another device" }
+        }
         if (device == MPV_ID) return mpvOrThrow().play(req)
         target(device).send(CastFrame.Play(req, from))
     }
@@ -122,8 +150,9 @@ class DeviceHub(private val scope: CoroutineScope, private val mpv: LocalPlayer?
     private fun mpvOrThrow(): LocalPlayer = mpv?.takeIf { it.available } ?: throw NotFound("mpv isn't available on the server")
 
     private fun listed(): List<DeviceInfo> {
-        val local = mpv?.takeIf { it.available }?.let { DeviceInfo(MPV_ID, it.name, DeviceKind.MPV, receiver = true) }
-        return listOfNotNull(local) + sessions.values.map { it.info }.sortedBy { it.name.lowercase() }
+        val held = synchronized(claims) { claims.toMap() }.filterValues { sessions.containsKey(it) }
+        val local = mpv?.takeIf { it.available }?.let { DeviceInfo(MPV_ID, it.name, DeviceKind.MPV, receiver = true, controller = held[MPV_ID]) }
+        return listOfNotNull(local) + sessions.values.map { it.info.copy(controller = held[it.info.id]) }.sortedBy { it.name.lowercase() }
     }
 
     private fun refresh() {

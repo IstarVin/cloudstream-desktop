@@ -140,6 +140,9 @@ class Cast {
   /** A cast arrived before the page had a user gesture, so the browser won't start it with sound. */
   needsTap = $state(false);
 
+  /** Called when the device list changes, so the play target can claim, or give up, its device. */
+  onDevices: (() => void) | null = null;
+
   private socket: ReturnType<typeof castSocket> | null = null;
   private reporter: ReturnType<typeof setInterval> | undefined;
   private lastSent = "";
@@ -200,6 +203,17 @@ class Cast {
     this.socket?.send(this.hello());
   }
 
+  /** Tells the server which device this one is playing on (null: none), so no other device can pick it. */
+  claim(device: string | null) {
+    this.socket?.send({ type: "claim", device });
+  }
+
+  /** Whether another device has picked [id] as its player. */
+  takenByOther(id: string) {
+    const c = this.device(id)?.controller;
+    return !!c && c !== this.id;
+  }
+
   private hello(): CastFrame {
     return { type: "hello", id: this.id, name: this.name, kind: "web", receiver: this.receiver };
   }
@@ -208,6 +222,7 @@ class Cast {
     switch (f.type) {
       case "devices": {
         this.devices = f.devices;
+        this.onDevices?.();
         const ids = new Set(f.devices.map((d) => d.id));
         for (const id of Object.keys(this.states)) if (!ids.has(id)) delete this.states[id];
         break;

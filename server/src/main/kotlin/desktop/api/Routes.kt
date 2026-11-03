@@ -83,6 +83,8 @@ data class EnabledRequest(val enabled: Boolean)
 @Serializable
 data class RebuildRequest(val modules: List<String>? = null)
 
+private const val EMBEDDED_POLL_MS = 20_000L
+
 private val sseJson = Json { encodeDefaults = true }
 private val castJson = Json { encodeDefaults = true; ignoreUnknownKeys = true; explicitNulls = false }
 
@@ -278,6 +280,29 @@ fun Route.apiRoutes(s: Services) {
         get("/subtitle") {
             val (format, bytes) = s.clientStreams.subtitle(call.param("id"))
             call.respondBytes(bytes, ContentType.parse(format.mime + "; charset=utf-8"))
+        }
+        // Subtitles muxed into a Matroska stream, read from the bytes the proxy passes to the player. Long-polls: answers
+        // once there's something past `since` (cues) / `v` (version), or after a while with nothing new.
+        get("/embedded-subs") {
+            val q = call.request.queryParameters
+            val stream = call.param("stream")
+            val since = q["since"]?.toIntOrNull() ?: 0
+            val seen = q["v"]?.toIntOrNull() ?: 0
+            val knownTracks = q["tracks"]?.toIntOrNull() ?: 0
+            var subs = s.proxy.embeddedSubtitles(stream)
+            if (subs == null) {
+                // The player hasn't fetched the start of the file yet.
+                withTimeoutOrNull(EMBEDDED_POLL_MS) { while (subs == null) { delay(250); subs = s.proxy.embeddedSubtitles(stream) } }
+            }
+            val found = subs ?: return@get call.respond(EmbeddedSubsDto(null, 0, since))
+            if (found === StreamProxy.NOT_MATROSKA) return@get call.respond(EmbeddedSubsDto(false, 0, since))
+            withTimeoutOrNull(EMBEDDED_POLL_MS) { found.version.first { it > seen } }
+            val version = found.version.value
+            val (cues, next) = found.since(since)
+            val tracks = found.tracks.takeIf { it.size != knownTracks }?.map {
+                EmbeddedTrackDto(it.number, it.codec, it.ass, it.language, it.name, it.header, it.default, it.forced)
+            }
+            call.respond(EmbeddedSubsDto(true, version, next, tracks, cues.map { EmbeddedCueDto(it.track, it.startMs, it.durationMs, it.text) }))
         }
         post("/links/report") {
             val req = call.receive<LinkReport>()

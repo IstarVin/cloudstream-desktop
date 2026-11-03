@@ -7,7 +7,7 @@
   import Pairing from "#lib/components/Pairing.svelte";
   import SourcesSheet from "#lib/components/SourcesSheet.svelte";
   import WebPlayer from "#lib/components/player/WebPlayer.svelte";
-  import { playTarget } from "#lib/play-target.svelte";
+  import { bindCastDevices, playTarget } from "#lib/play-target.svelte";
   import { player } from "#lib/player.svelte";
   import { toasts } from "#lib/toast.svelte";
   import { webPlayer } from "#lib/web-player.svelte";
@@ -33,6 +33,8 @@
   const client = new QueryClient({
     defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
   });
+
+  bindCastDevices();
 
   let authed = $state<boolean | null>(null);
   api

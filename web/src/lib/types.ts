@@ -130,7 +130,11 @@ export interface Details {
   actors: { name: string; image: string | null; role: string | null }[];
   trailers: string[];
   recommendations: SearchItem[];
-  seasons: { season: number; name: string | null; displaySeason: number | null }[];
+  seasons: {
+    season: number;
+    name: string | null;
+    displaySeason: number | null;
+  }[];
   episodes: Episode[];
   movieData: string | null;
   movieProgress?: Progress | null;
@@ -251,12 +255,21 @@ export interface DeviceInfo {
   kind: DeviceKind;
   /** Accepts casts. */
   receiver: boolean;
+  /** The device that has picked this one as its player; only that device can pick it. */
+  controller?: string | null;
 }
 
 /** A message on the /api/cast socket (server/.../api/Cast.kt). */
 export type CastFrame =
-  | { type: "hello"; id: string; name: string; kind: DeviceKind; receiver: boolean }
+  | {
+      type: "hello";
+      id: string;
+      name: string;
+      kind: DeviceKind;
+      receiver: boolean;
+    }
   | { type: "state"; state: PlayerState; device?: string | null }
+  | { type: "claim"; device: string | null }
   | { type: "devices"; devices: DeviceInfo[] }
   | { type: "play"; request: PlayRequest; from?: string | null }
   | { type: "command"; cmd: string; body: PlayerCommand };
@@ -374,3 +387,31 @@ export interface Status {
 }
 
 export const BOOKMARK_LISTS = ["watching", "planned", "completed", "dropped"] as const;
+
+/** A text subtitle track muxed into a Matroska stream (see `EmbeddedTrackDto`). */
+export interface EmbeddedTrack {
+  number: number;
+  codec: string;
+  ass: boolean;
+  lang?: string | null;
+  name?: string | null;
+  header?: string | null;
+  default: boolean;
+  forced: boolean;
+}
+
+/** One block of an embedded track; times in milliseconds. */
+export interface EmbeddedCue {
+  track: number;
+  start: number;
+  duration: number;
+  text: string;
+}
+
+export interface EmbeddedSubs {
+  matroska: boolean | null;
+  version: number;
+  next: number;
+  tracks?: EmbeddedTrack[] | null;
+  cues: EmbeddedCue[];
+}

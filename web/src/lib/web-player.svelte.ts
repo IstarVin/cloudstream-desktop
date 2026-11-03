@@ -89,6 +89,8 @@ class WebPlayer {
   /** The side-loaded subtitle on screen, or null for an embedded one or none. */
   subtitle = $state<string | null>(null);
   embeddedSub = $state(-1);
+  /** The embedded subtitle's cues, when the screen draws them (MKV text tracks). */
+  embeddedTrack = $state.raw<TextTrack | null>(null);
   subtitlesOff = $state(false);
 
   audioTracks = $state<AudioTrack[]>([]);
@@ -113,8 +115,10 @@ class WebPlayer {
 
   video: HTMLVideoElement | null = null;
   private engine: Engine | null = null;
-  private jassub: { destroy(): Promise<void>; renderer: { setTrack(t: string): unknown } } | null =
-    null;
+  private jassub: {
+    destroy(): Promise<void>;
+    renderer: { setTrack(t: string): unknown };
+  } | null = null;
   private settings: Settings | null = null;
   private tried = new Set<string>();
   private chosenSubs: string[] = [];
@@ -122,6 +126,8 @@ class WebPlayer {
   private startAt: number | null = null;
   private playStartedAt: number | null = null;
   private recordedSuccess = false;
+  /** Whether an MKV's own subtitle has been considered for showing, for the current link. */
+  private embeddedPicked = false;
   private skipsRequested = false;
   private lastSaved = 0;
   private session = 0;
@@ -244,7 +250,11 @@ class WebPlayer {
         api.settings(),
       ]);
       this.settings = settings;
-      this.openItem(itemOf(details, target.data), at ?? null, { link, subs, linkId });
+      this.openItem(itemOf(details, target.data), at ?? null, {
+        link,
+        subs,
+        linkId,
+      });
     } catch (e) {
       this.status = "error";
       this.message = e instanceof Error ? e.message : String(e);
@@ -254,7 +264,12 @@ class WebPlayer {
   private openItem(
     item: Item,
     at: number | null,
-    opts: { link?: Link; linkId?: string; fresh?: boolean; subs?: string[] } = {},
+    opts: {
+      link?: Link;
+      linkId?: string;
+      fresh?: boolean;
+      subs?: string[];
+    } = {},
   ) {
     this.saveProgress(true);
     this.reset();
@@ -269,6 +284,7 @@ class WebPlayer {
     this.subtitle = null;
     this.subtitlesOff = false;
     this.embeddedSub = -1;
+    this.embeddedTrack = null;
     this.skips = [];
     this.skip = null;
     this.upNext = null;
@@ -276,7 +292,13 @@ class WebPlayer {
 
     const d = item.details;
     sources.load(
-      { provider: d.provider, url: d.url, data: item.data, title: d.name, label: this.label },
+      {
+        provider: d.provider,
+        url: d.url,
+        data: item.data,
+        title: d.name,
+        label: this.label,
+      },
       opts.fresh,
     );
     if (at == null)
@@ -324,6 +346,8 @@ class WebPlayer {
     this.levels = [];
     this.level = -1;
     this.embeddedSubs = [];
+    this.embeddedSub = -1;
+    this.embeddedTrack = null;
   }
 
   private autoPick(fallback: boolean) {
@@ -378,6 +402,7 @@ class WebPlayer {
     this.tried.add(link.id);
     this.playStartedAt = null;
     this.recordedSuccess = false;
+    this.embeddedPicked = false;
     this.current = link;
     this.status = "loading";
     this.message = `Loading ${link.source} ${link.qualityLabel}…`;
@@ -402,7 +427,9 @@ class WebPlayer {
       if (session !== this.session) return;
       if (e instanceof ApiError && e.status === 410) {
         // The server forgot these links (they expire); resolve again from where we were.
-        this.openItem(item, this.position > 5 ? this.position : at, { fresh: true });
+        this.openItem(item, this.position > 5 ? this.position : at, {
+          fresh: true,
+        });
       } else this.onLinkFailed(e instanceof Error ? e.message : String(e));
     }
   }
@@ -430,6 +457,30 @@ class WebPlayer {
     this.levels = e.levels();
     this.level = e.level();
     this.embeddedSubs = e.embeddedSubs();
+    if (e.kind === "native" && this.embeddedSubs.length && !this.embeddedPicked) {
+      this.embeddedPicked = true;
+      this.pickEmbedded();
+    }
+  }
+
+  /**
+   * An MKV's own subtitles are timed to that very file, so a preferred-language one is shown unless the viewer already
+   * chose something: a full track, or for a dub only a forced (signs and songs) one.
+   */
+  private pickEmbedded() {
+    if (
+      this.subtitle != null ||
+      this.subtitlesOff ||
+      this.embeddedSub >= 0 ||
+      this.chosenSubs.length
+    )
+      return;
+    const subs = this.embeddedSubs.filter((s) => s.lang && preferredLanguage(s.lang));
+    const pick =
+      this.episode?.dub === "Dubbed"
+        ? subs.find((s) => s.forced)
+        : (subs.find((s) => !s.forced && s.default) ?? subs.find((s) => !s.forced));
+    if (pick) this.selectEmbedded(pick.id);
   }
 
   setAudio(id: number) {
@@ -455,7 +506,9 @@ class WebPlayer {
         ? (chosen[0] ?? (this.episode?.dub !== "Dubbed" ? auto[0] : undefined))
         : undefined;
     await Promise.all([...chosen, ...auto].map((s) => this.loadSub(s).catch(() => null)));
-    if (select && this.current === link) await this.selectSubtitle(select, false);
+    // An MKV's own subtitle picked meanwhile stays, unless the viewer chose this one.
+    if (select && this.current === link && (chosen.includes(select) || this.embeddedSub < 0))
+      await this.selectSubtitle(select, false);
     else if (this.subtitle) await this.showSubtitle(this.subtitle);
   }
 
@@ -511,6 +564,7 @@ class WebPlayer {
     this.subtitlesOff = false;
     if (this.embeddedSub >= 0) {
       this.embeddedSub = -1;
+      this.embeddedTrack = null;
       this.engine?.setEmbeddedSub(-1);
     }
     await this.showSubtitle(sub.id);
@@ -532,7 +586,11 @@ class WebPlayer {
     }
     const { default: JASSUB } = await import("jassub");
     if (this.subtitle !== id) return;
-    this.jassub = new JASSUB({ video, subContent: loaded.text, queryFonts: "local" });
+    this.jassub = new JASSUB({
+      video,
+      subContent: loaded.text,
+      queryFonts: "local",
+    });
   }
 
   selectEmbedded(id: number) {
@@ -542,12 +600,14 @@ class WebPlayer {
     this.jassub = null;
     this.embeddedSub = id;
     this.engine?.setEmbeddedSub(id);
+    this.embeddedTrack = this.engine?.embeddedTextTrack?.() ?? null;
   }
 
   subtitlesOffNow() {
     this.subtitle = null;
     this.subtitlesOff = true;
     this.embeddedSub = -1;
+    this.embeddedTrack = null;
     this.engine?.setEmbeddedSub(-1);
     void this.jassub?.destroy();
     this.jassub = null;
@@ -723,7 +783,9 @@ class WebPlayer {
   retry() {
     const item = this.item;
     if (item)
-      this.openItem(item, this.position > 5 ? this.position : this.startAt, { fresh: true });
+      this.openItem(item, this.position > 5 ? this.position : this.startAt, {
+        fresh: true,
+      });
   }
 
   /** A link picked in the sources sheet: keeps the position when switching mid-episode. */

@@ -28,7 +28,7 @@
   }
 </script>
 
-{#if playTarget.options.filter((o) => !o.disabled).length > 1}
+{#if playTarget.options.some((o) => o.id !== "browser" && (!o.disabled || o.busy))}
   <button
     bind:this={button}
     class={["cast-btn", cls, { on: playTarget.remote }]}
@@ -53,13 +53,16 @@
           role="radio"
           aria-checked={playTarget.effective === target.id}
           disabled={target.disabled}
-          title={target.disabled
-            ? "mpv isn't available on the server (headless host or mpv.enabled = false)"
-            : undefined}
+          title={target.busy
+            ? "Another device is playing on this one"
+            : target.disabled
+              ? "mpv isn't available on the server (headless host or mpv.enabled = false)"
+              : undefined}
           onclick={() => pick(target.id)}
         >
           <Icon size={20} strokeWidth={1.8} aria-hidden="true" />
           <span class="name">{target.label}</span>
+          {#if target.busy}<span class="busy">In use</span>{/if}
           {#if playTarget.effective === target.id}<Check
               size={18}
               strokeWidth={2}
@@ -149,6 +152,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .busy {
+    font-size: 12px;
+    color: var(--muted);
   }
   .note {
     margin: 0;

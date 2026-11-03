@@ -448,9 +448,10 @@
   $effect(() => {
     const v = video;
     const id = p.subtitle;
+    const embedded = p.embeddedTrack;
     void p.loadedSubs.length;
     if (!v) return;
-    let active: TextTrack | null = null;
+    let active: TextTrack | null = embedded;
     for (const el of v.querySelectorAll("track")) {
       const on = el.dataset.id === id && !!el.dataset.vtt;
       el.track.mode = on ? "hidden" : "disabled";

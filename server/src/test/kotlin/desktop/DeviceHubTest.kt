@@ -171,4 +171,80 @@ class DeviceHubTest {
         val play = json.decodeFromString<CastFrame>(json.encodeToString<CastFrame>(CastFrame.Play(req)))
         assertNull((play as CastFrame.Play).from)
     }
+
+    private fun DeviceHub.controllerOf(id: String) = devices.value.first { it.id == id }.controller
+
+    @Test
+    fun `only one device can pick a target at a time`() {
+        val hub = DeviceHub(scope, FakeMpv())
+        val a = hub.connect(hello("a"))
+        val c = hub.connect(hello("c"))
+        hub.connect(hello("b"))
+        hub.receive(a, CastFrame.Claim("b"))
+        assertEquals("a", hub.controllerOf("b"))
+        hub.receive(c, CastFrame.Claim("b"))
+        assertEquals("a", hub.controllerOf("b"), "c can't take b from a")
+        // c is told the truth, so its picker greys b out.
+        assertEquals("a", generateSequence { c.next<CastFrame.Devices>() }.first { d -> d.devices.any { it.id == "b" && it.controller == "a" } }.devices.first { it.id == "b" }.controller)
+        // mpv is a target like any other.
+        hub.receive(a, CastFrame.Claim(DeviceHub.MPV_ID))
+        assertEquals("a", hub.controllerOf("mpv"))
+        assertNull(hub.controllerOf("b"), "a holds one target at a time")
+        hub.receive(c, CastFrame.Claim("b"))
+        assertEquals("c", hub.controllerOf("b"))
+        assertFailsWith<IllegalArgumentException> { runBlocking { hub.play("mpv", req, from = "c") } }
+        runBlocking { hub.play("mpv", req, from = "a") }
+    }
+
+    @Test
+    fun `a controller closing frees its target`() {
+        val hub = DeviceHub(scope, null)
+        val a = hub.connect(hello("a"))
+        val c = hub.connect(hello("c"))
+        hub.connect(hello("b"))
+        hub.receive(a, CastFrame.Claim("b"))
+        hub.disconnect(a)
+        assertNull(hub.controllerOf("b"))
+        hub.receive(c, CastFrame.Claim("b"))
+        assertEquals("c", hub.controllerOf("b"))
+    }
+
+    @Test
+    fun `a target closing frees its controller`() {
+        val hub = DeviceHub(scope, null)
+        val a = hub.connect(hello("a"))
+        val b = hub.connect(hello("b"))
+        hub.receive(a, CastFrame.Claim("b"))
+        hub.disconnect(b)
+        assertEquals(listOf("a"), hub.devices.value.map { it.id })
+        val b2 = hub.connect(hello("b"))
+        assertNull(hub.controllerOf("b"), "b comes back free")
+        hub.receive(a, CastFrame.Claim("b"))
+        assertEquals("a", hub.controllerOf("b"))
+        hub.receive(a, CastFrame.Claim(null))
+        assertNull(hub.controllerOf("b"))
+        assertTrue(b2.outgoing.isClosedForReceive.not())
+    }
+
+    @Test
+    fun `a device can't pick itself, a controller-only device, or an unknown one`() {
+        val hub = DeviceHub(scope, null)
+        val a = hub.connect(hello("a"))
+        hub.connect(hello("p", receiver = false))
+        hub.receive(a, CastFrame.Claim("a"))
+        hub.receive(a, CastFrame.Claim("p"))
+        hub.receive(a, CastFrame.Claim("nope"))
+        assertTrue(hub.devices.value.all { it.controller == null })
+    }
+
+    @Test
+    fun `reconnecting under the same id keeps the pick`() {
+        val hub = DeviceHub(scope, null)
+        val a = hub.connect(hello("a"))
+        hub.connect(hello("b"))
+        hub.receive(a, CastFrame.Claim("b"))
+        hub.connect(hello("a"))
+        hub.disconnect(a)
+        assertEquals("a", hub.controllerOf("b"))
+    }
 }

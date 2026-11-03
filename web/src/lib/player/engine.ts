@@ -1,4 +1,5 @@
-import type { Stream } from "../types";
+import type { EmbeddedTrack, Stream } from "../types";
+import { watchMkvSubs } from "./mkv-subs";
 
 export interface AudioTrack {
   id: number;
@@ -13,10 +14,14 @@ export interface Level {
   label: string;
 }
 
-/** A subtitle track inside the stream itself (HLS/DASH renditions). */
+/** A subtitle track inside the stream itself (HLS/DASH renditions, or muxed into an MKV). */
 export interface EmbeddedSub {
   id: number;
   label: string;
+  /** Language and flags, known for MKV tracks. */
+  lang?: string;
+  default?: boolean;
+  forced?: boolean;
 }
 
 export interface EngineCallbacks {
@@ -38,6 +43,8 @@ export interface Engine {
   embeddedSubs(): EmbeddedSub[];
   /** Shows an embedded subtitle, or none with -1. */
   setEmbeddedSub(id: number): void;
+  /** The embedded subtitle's text track when the player draws its cues itself (MKV text); null otherwise. */
+  embeddedTextTrack?(): TextTrack | null;
   destroy(): void;
 }
 
@@ -69,7 +76,8 @@ export async function attach(
     if (engine) return engine;
   }
   if (stream.type === "DASH") return attachDash(video, stream, startAt, cb);
-  return attachNative(video, stream.url, startAt, cb);
+  // A plain file through the proxy may be an MKV, whose own subtitles the server reads out for the browser.
+  return attachNative(video, stream.url, startAt, cb, stream.proxied && stream.type === "VIDEO");
 }
 
 /** Playback errors from the `<video>` itself; hls.js and dash.js report their own. */
@@ -87,13 +95,20 @@ function videoErrors(video: HTMLVideoElement, cb: EngineCallbacks) {
   return () => video.removeEventListener("error", onError);
 }
 
+const mkvLabel = (t: EmbeddedTrack, i: number) =>
+  [trackLabel(t.lang, t.name, `Subtitle ${i + 1}`), t.forced && "(forced)"]
+    .filter(Boolean)
+    .join(" ");
+
 function attachNative(
   video: HTMLVideoElement,
   url: string,
   startAt: number,
   cb: EngineCallbacks,
+  embedded = false,
 ): Engine {
   const off = videoErrors(video, cb);
+  const mkv = embedded ? watchMkvSubs(video, url, cb.onTracks, mkvLabel) : null;
   const seek = () => {
     if (startAt > 0) video.currentTime = startAt;
   };
@@ -106,10 +121,19 @@ function attachNative(
     levels: () => [],
     level: () => -1,
     setLevel: () => {},
-    embeddedSubs: () => [],
-    setEmbeddedSub: () => {},
+    embeddedSubs: () =>
+      (mkv?.tracks() ?? []).map((t, i) => ({
+        id: i,
+        label: mkvLabel(t, i),
+        lang: t.lang ?? undefined,
+        default: t.default,
+        forced: t.forced,
+      })),
+    setEmbeddedSub: (id) => mkv?.select(id),
+    embeddedTextTrack: () => mkv?.textTrack() ?? null,
     destroy() {
       off();
+      mkv?.destroy();
       video.removeEventListener("loadedmetadata", seek);
       video.removeAttribute("src");
       video.load();
@@ -235,7 +259,9 @@ async function attachDash(
     const kid = key.kid ?? (await manifestKid(stream.url));
     if (kid)
       player.setProtectionData({
-        "org.w3.clearkey": { clearkeys: { [hexToB64Url(kid)]: hexToB64Url(key.key) } },
+        "org.w3.clearkey": {
+          clearkeys: { [hexToB64Url(kid)]: hexToB64Url(key.key) },
+        },
       });
   }
   player.updateSettings({
@@ -279,7 +305,9 @@ async function attachDash(
     level: () => chosen,
     setLevel(id) {
       chosen = id;
-      player.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: id < 0 } } } });
+      player.updateSettings({
+        streaming: { abr: { autoSwitchBitrate: { video: id < 0 } } },
+      });
       if (id >= 0) player.setRepresentationForTypeByIndex("video", id, true);
       cb.onTracks();
     },

@@ -161,7 +161,10 @@ class ChromiumTest {
         try {
             val lock = File(profile, "SingletonLock").toPath()
             val deadline = System.currentTimeMillis() + 10_000
-            while (!java.nio.file.Files.isSymbolicLink(lock) && System.currentTimeMillis() < deadline) Thread.sleep(100)
+            // An earlier test's Chromium leaves a stale SingletonLock behind, so wait for one that names this orphan.
+            fun heldByOrphan() = runCatching { java.nio.file.Files.readSymbolicLink(lock).toString().endsWith("-${orphan.pid()}") }.getOrDefault(false)
+            while (!heldByOrphan() && System.currentTimeMillis() < deadline) Thread.sleep(100)
+            assertTrue(heldByOrphan(), "the orphan took the profile lock")
             assertTrue(orphan.isAlive, "the orphan holds the profile")
             assertEquals("about:blank", runBlocking { Chromium.withTab { it.evaluate("location.href")?.toString()?.trim('"') } })
             assertFalse(orphan.isAlive, "the orphan was stopped")

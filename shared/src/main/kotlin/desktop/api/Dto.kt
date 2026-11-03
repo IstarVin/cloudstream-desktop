@@ -333,3 +333,33 @@ data class StreamDto(
     val proxied: Boolean,
     val clearKey: ClearKeyDto? = null,
 )
+
+/** A text subtitle track muxed into a Matroska stream. [header] is the ASS script header for an ASS/SSA track. */
+@Serializable
+data class EmbeddedTrackDto(
+    val number: Long,
+    val codec: String,
+    val ass: Boolean,
+    val lang: String? = null,
+    val name: String? = null,
+    val header: String? = null,
+    val default: Boolean = false,
+    val forced: Boolean = false,
+)
+
+/** One block of an embedded track: plain or WebVTT cue text, or for ASS the event line without its times. */
+@Serializable
+data class EmbeddedCueDto(val track: Long, val start: Long, val duration: Long, val text: String)
+
+/**
+ * Embedded subtitles read so far from a proxied stream. [matroska] is null while unknown and false when the stream
+ * isn't Matroska (nothing will ever come). [tracks] is sent only when the client's count is out of date.
+ */
+@Serializable
+data class EmbeddedSubsDto(
+    val matroska: Boolean?,
+    val version: Int,
+    val next: Int,
+    val tracks: List<EmbeddedTrackDto>? = null,
+    val cues: List<EmbeddedCueDto> = emptyList(),
+)
