@@ -322,7 +322,8 @@ class Playback(
     }
 
     private suspend fun addSubtitle(ipc: MpvIpc, sub: ResolvedSubtitle, select: Boolean) {
-        val url = sub.sub.headers?.takeIf { it.isNotEmpty() }?.let { "http://127.0.0.1:$port" + proxy.register(sub.sub.url, it, null) } ?: sub.sub.url
+        // Share the client's cached fetch and provider interceptor: GoPlay subtitle URLs work only once.
+        val url = "http://127.0.0.1:$port/api/subtitle?id=${sub.id}"
         runCatching { ipc.command("sub-add", url, if (select) "select" else "auto", sub.sub.lang, sub.sub.langTag ?: "") }
             .onFailure { log.debug("sub-add {} failed: {}", sub.sub.url, it.message) }
     }

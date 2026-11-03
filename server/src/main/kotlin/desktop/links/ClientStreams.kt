@@ -11,6 +11,7 @@ import desktop.api.StreamDto
 import desktop.api.SubtitleFormat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.InetAddress
@@ -73,17 +74,27 @@ class ClientStreams(
 
     /** The subtitle's text and its format, fetched with the headers the provider gave it. */
     suspend fun subtitle(id: String): Pair<SubtitleFormat, ByteArray> {
-        val sub = links.subtitle(id)?.sub ?: throw NotFound("Unknown subtitle $id")
+        val resolved = links.subtitle(id) ?: throw NotFound("Unknown subtitle $id")
+        return readSubtitle(resolved, http())
+    }
+}
+
+/** Single-use subtitle URLs need the provider's renewal interceptor and one shared successful read. */
+internal suspend fun readSubtitle(resolved: ResolvedSubtitle, http: OkHttpClient): Pair<SubtitleFormat, ByteArray> =
+    resolved.requestLock.withLock {
+        resolved.cached?.let { return@withLock it }
+        val sub = resolved.sub
         val request = Request.Builder().url(sub.url).apply {
             header("User-Agent", USER_AGENT)
             sub.headers?.forEach { (k, v) -> header(k, v) }
         }.build()
+        val client = resolved.interceptor()?.let { http.newBuilder().addInterceptor(it).build() } ?: http
         val bytes = withContext(Dispatchers.IO) {
-            http().newCall(request).execute().use { res ->
+            client.newCall(request).execute().use { res ->
                 if (!res.isSuccessful) throw IllegalStateException("The subtitle host answered ${res.code}")
                 res.body.bytes()
             }
         }
-        return SubtitleFormat.sniff(String(bytes.copyOf(minOf(bytes.size, 1024))), sub.url) to bytes
+        (SubtitleFormat.sniff(String(bytes.copyOf(minOf(bytes.size, 1024))), sub.url) to bytes)
+            .also { resolved.cached = it }
     }
-}

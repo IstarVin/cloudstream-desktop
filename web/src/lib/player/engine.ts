@@ -1,4 +1,5 @@
 import type { EmbeddedTrack, Stream } from "../types";
+import { clearKeyHls } from "./hls-clearkey";
 import { watchMkvSubs } from "./mkv-subs";
 
 export interface AudioTrack {
@@ -156,6 +157,7 @@ async function attachHls(
   }
   const key = stream.clearKey;
   const hls = new Hls({
+    ...(key?.kid ? {} : clearKeyHls(Hls)),
     startPosition: startAt > 0 ? startAt : -1,
     backBufferLength: 30,
     maxBufferLength: 60,

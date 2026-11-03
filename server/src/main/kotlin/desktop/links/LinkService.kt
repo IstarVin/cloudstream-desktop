@@ -20,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withTimeout
 import okhttp3.Interceptor
 import org.slf4j.LoggerFactory
@@ -86,7 +87,14 @@ object ClearKey {
     }
 }
 
-class ResolvedSubtitle(val id: String, val sub: SubtitleFile) {
+class ResolvedSubtitle(
+    val id: String,
+    val sub: SubtitleFile,
+    /** Resolved lazily because a provider can emit subtitles before its video links. */
+    val interceptor: () -> Interceptor? = { null },
+) {
+    internal val requestLock = Mutex()
+    internal var cached: Pair<SubtitleFormat, ByteArray>? = null
     fun dto() = SubtitleDto(id, sub.lang, sub.url, SubtitleFormat.fromUrl(sub.url)?.extension)
 }
 
@@ -163,7 +171,7 @@ class LinkService(private val scope: CoroutineScope, private val store: Store, p
 
     private fun addSubtitle(set: LinkSet, sub: SubtitleFile) {
         if (set.subtitles.any { it.sub.url == sub.url }) return
-        val r = ResolvedSubtitle(newId("s"), sub)
+        val r = ResolvedSubtitle(newId("s"), sub) { set.links.firstOrNull { it.interceptor != null }?.interceptor }
         subtitles[r.id] = r
         set.subtitles.add(r)
         set.bump()
