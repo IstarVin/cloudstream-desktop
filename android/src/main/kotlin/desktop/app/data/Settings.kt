@@ -62,6 +62,7 @@ class Prefs(private val context: Context) {
     private object K {
         val server = stringPreferencesKey("server")
         val homeProvider = stringPreferencesKey("home_provider")
+        val settingsTab = stringPreferencesKey("settings_tab")
         val homeType = stringPreferencesKey("home_type")
         val homeCategories = stringSetPreferencesKey("home_categories")
         val seekStep = intPreferencesKey("seek_step")
@@ -105,6 +106,9 @@ class Prefs(private val context: Context) {
 
     val homeProvider: Flow<String?> = context.store.data.map { it[K.homeProvider] }
     suspend fun setHomeProvider(name: String) = context.store.edit { it[K.homeProvider] = name }
+
+    val settingsTab: Flow<String?> = context.store.data.map { it[K.settingsTab] }
+    suspend fun setSettingsTab(name: String) = context.store.edit { it[K.settingsTab] = name }
     // Preserve the old single-category preference until the user changes their selection.
     val homeCategories: Flow<Set<String>> = context.store.data.map {
         it[K.homeCategories] ?: setOfNotNull(it[K.homeType]?.takeUnless { id -> id == "all" })

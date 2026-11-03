@@ -57,6 +57,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import coil3.compose.SubcomposeAsyncImage
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -387,11 +388,19 @@ fun PluginSheet(c: PluginsController, api: Api, tell: (String) -> Unit) {
     AdaptiveSheet(
         onDismissRequest = { c.selected = null },
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        dragHandle = null,
     ) {
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = Gutter).padding(bottom = 32.dp)) {
-            Text(p.name, style = MaterialTheme.typography.titleLarge)
-            Text(pluginSummary(p).ifBlank { "Loaded" }, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
-            p.description?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = Palette.muted, modifier = Modifier.padding(top = 8.dp)) }
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(top = 16.dp, bottom = 24.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(p.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
+                    Text(pluginSummary(p).ifBlank { "Loaded" }, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                }
+                IconButton(onClick = { c.selected = null }, modifier = Modifier.tvFocusIndicator()) {
+                    Icon(Icons.Filled.Close, "Close plugin details")
+                }
+            }
+            p.description?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = Palette.muted, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)) }
             if (p.error != null) Text(p.error!!, style = MaterialTheme.typography.bodySmall, color = Palette.danger, modifier = Modifier.padding(top = 8.dp))
             SwitchRow("Enabled", p.enabled) { c.setEnabled(p, it) }
             if (repo != null && (p.hasUpdate() || p.previous != null)) {
@@ -401,7 +410,12 @@ fun PluginSheet(c: PluginsController, api: Api, tell: (String) -> Unit) {
                 }
             }
             if (p.settingsSchema.isNotEmpty()) {
-                Header("Settings")
+                HorizontalDivider(modifier = Modifier.padding(top = 8.dp, bottom = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                Text(
+                    "Settings", style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 12.dp).semantics { heading() },
+                )
                 PluginSettingsForm(p, api, tell)
             } else if (p.settingsFiles.isNotEmpty()) {
                 Text(
@@ -442,14 +456,14 @@ private fun PluginSettingsForm(p: PluginDto, api: Api, tell: (String) -> Unit) {
     when (val l = loaded) {
         Load.Loading -> Loading()
         is Load.Failed -> ErrorBox(l.message, onRetry = { loaded = Load.Loading; scope.launch { loaded = runCatching { Load.Ok(api.pluginSettings(p.name).also(::adopt)) }.getOrElse { Load.Failed(it.userMessage()) } } })
-        is Load.Ok -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        is Load.Ok -> Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             p.settingsSchema.forEach { f ->
                 val id = fieldId(f)
                 val value = values[id].orEmpty()
                 fun set(v: String) { values[id] = v; dirty = true }
                 when (f.type) {
                     "boolean" -> SwitchRow(f.label, if (value.isEmpty()) f.default == "true" else value == "true", help = f.help) { set(it.toString()) }
-                    "choice" -> Column {
+                    "choice" -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(f.label)
                         f.help?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.muted) }
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
@@ -479,7 +493,7 @@ private fun PluginSettingsForm(p: PluginDto, api: Api, tell: (String) -> Unit) {
             }
             Button(
                 enabled = dirty && !saving,
-                modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
+                modifier = Modifier.padding(top = 8.dp).fillMaxWidth().heightIn(min = 48.dp).tvFocusIndicator(),
                 onClick = {
                     saving = true
                     scope.launch {

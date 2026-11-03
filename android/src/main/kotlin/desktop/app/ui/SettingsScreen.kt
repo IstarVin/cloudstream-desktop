@@ -1,11 +1,14 @@
 package desktop.app.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -65,8 +68,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -118,7 +121,9 @@ fun SettingsScreen(onUnpair: () -> Unit) {
     var confirmUnpair by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val player by prefs.player.collectAsState(PlayerPrefs())
-    var tab by rememberSaveable { mutableStateOf(SettingsTab.Plugins) }
+    val savedTab by prefs.settingsTab.collectAsState(initial = null)
+    val tab = SettingsTab.entries.firstOrNull { it.name == savedTab } ?: SettingsTab.Plugins
+    fun selectTab(tab: SettingsTab) { scope.launch { prefs.setSettingsTab(tab.name) } }
     val phoneScroll = rememberLazyListState()
     val desktopScroll = rememberLazyListState()
     val priorityScroll = rememberLazyListState()
@@ -154,150 +159,135 @@ fun SettingsScreen(onUnpair: () -> Unit) {
     fun updatePlayer(change: (PlayerPrefs) -> PlayerPrefs) = scope.launch { prefs.updatePlayer(change) }
 
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }, containerColor = MaterialTheme.colorScheme.background) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally) {
-            Column(
-                Modifier.widthIn(max = 840.dp).fillMaxWidth().padding(horizontal = 22.dp).padding(top = if (tv) 12.dp else 24.dp, bottom = if (tv) 12.dp else 20.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text("Settings", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, fontWeight = FontWeight.Bold), modifier = Modifier.semantics { heading() })
-                Text("Make Cloudstream work your way.", style = MaterialTheme.typography.bodyMedium, color = Palette.muted)
-                Text(if (tab == SettingsTab.Priority) "Save profile changes with the Save profile button." else "Changes save automatically", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
-            }
-            LazyRow(
-                modifier = Modifier.widthIn(max = 840.dp).fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 22.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(SettingsTab.entries) { destination ->
-                    val selected = tab == destination
-                    Surface(
-                        onClick = { tab = destination },
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (selected) Palette.surface2 else Palette.surface,
-                        contentColor = if (selected) Palette.accent else Palette.muted,
-                        border = if (selected) BorderStroke(1.dp, Palette.accent.copy(alpha = 0.4f)) else null,
-                        modifier = Modifier.tvFocusIndicator().semantics { role = Role.Tab; this.selected = selected },
-                    ) {
-                        Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Icon(destination.icon, null, Modifier.size(20.dp))
-                            Text(destination.label, style = MaterialTheme.typography.labelLarge)
-                        }
-                    }
+        BoxWithConstraints(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+            val wide = maxWidth >= 760.dp
+            Column(Modifier.widthIn(max = 1120.dp).fillMaxSize()) {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+                        .padding(top = if (tv) 12.dp else 20.dp, bottom = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text("Settings", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
+                    Text("Make Cloudstream work your way.", style = MaterialTheme.typography.bodyMedium, color = Palette.muted)
                 }
-            }
-            LazyColumn(
-                Modifier.weight(1f).widthIn(max = 840.dp).fillMaxWidth(),
-                state = when (tab) {
-                    SettingsTab.Playback -> phoneScroll
-                    SettingsTab.Priority -> priorityScroll
-                    SettingsTab.Content -> contentScroll
-                    SettingsTab.Desktop -> desktopScroll
-                    SettingsTab.Plugins -> pluginsScroll
-                    SettingsTab.Browser -> browserScroll
-                },
-                contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = if (tv) 20.dp else 36.dp, bottom = 32.dp),
-            ) {
-                when (tab) {
-                    SettingsTab.Playback -> {
-                        item { SettingsSectionTitle("Playback", "Customize playback on this device and your desktop.") }
-                        item { SettingsNote("Saved on this device. Changes apply to its video player.") }
-                        item { Header("Casting", first = true) }
-                        item { CastingSettings() }
-                        if (!tv) {
-                            item { Header("Gestures") }
-                            item { SwitchRow("Swipe to seek", player.swipeSeek, help = "Swipe left or right across the video.") { v -> updatePlayer { it.copy(swipeSeek = v) } } }
-                            item { SwitchRow("Brightness gesture", player.brightnessGesture, help = "Swipe up or down on the left edge.") { v -> updatePlayer { it.copy(brightnessGesture = v) } } }
-                            item { SwitchRow("Volume gesture", player.volumeGesture, help = "Swipe up or down on the right edge.") { v -> updatePlayer { it.copy(volumeGesture = v) } } }
-                        } else item { Header("Remote") }
-                        item { ChoiceRow(if (tv) "Remote seek interval" else "Double-tap seek interval", listOf(5, 10, 15, 30), player.seekStep, { "${it}s" }) { v -> updatePlayer { it.copy(seekStep = v) } } }
-                        if (!tv) item { ChoiceRow("Hold-to-play speed", listOf(1.5f, 2f, 3f), player.holdSpeed, { "${it}×" }) { v -> updatePlayer { it.copy(holdSpeed = v) } } }
-                        item { Header("Subtitles") }
-                        item { SubtitleSize(player) { v -> updatePlayer { it.copy(subtitleScale = v) } } }
-                        item { SwitchRow("Dark subtitle background", player.subtitleBackground, help = "Applies to SRT and VTT subtitles.") { v -> updatePlayer { it.copy(subtitleBackground = v) } } }
-                        item { Header("Playback") }
-                        item { SwitchRow("Picture-in-picture", player.pictureInPicture, help = "Keep the video playing when you leave the app.") { v -> updatePlayer { it.copy(pictureInPicture = v) } } }
-                        item {
-                            SwitchRow(
-                                "Direct video links",
-                                player.directLinks,
-                                help = "Stream straight from the video host when possible. Links that need the desktop still go through it.",
-                            ) { v -> updatePlayer { it.copy(directLinks = v) } }
-                        }
-                        item { Header("Desktop playback") }
-                        when (val s = settings) {
-                            Load.Loading -> item { Loading() }
-                            is Load.Failed -> item { ErrorBox(s.message, onRetry = { reload() }) }
-                            is Load.Ok -> {
-                                val v = s.value
-                                item { SwitchRow("Auto-play the best link", v.autoplayBest) { save("autoplay_best" to JsonPrimitive(it)) } }
-                                item { SwitchRow("Auto-play next episode", v.autoplayNext) { save("autoplay_next" to JsonPrimitive(it)) } }
+                if (!wide) SettingsCategories(tab, vertical = false, onSelect = ::selectTab)
+                Row(Modifier.weight(1f).fillMaxWidth()) {
+                    if (wide) SettingsCategories(tab, vertical = true, onSelect = ::selectTab)
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxSize().testTag("settings-content"),
+                        state = when (tab) {
+                            SettingsTab.Playback -> phoneScroll
+                            SettingsTab.Priority -> priorityScroll
+                            SettingsTab.Content -> contentScroll
+                            SettingsTab.Desktop -> desktopScroll
+                            SettingsTab.Plugins -> pluginsScroll
+                            SettingsTab.Browser -> browserScroll
+                        },
+                        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 32.dp),
+                    ) {
+                        when (tab) {
+                            SettingsTab.Playback -> {
+                                item { SettingsSectionTitle("Playback", "Customize playback on this device and your desktop.") }
+                                item { SettingsNote("Saved on this device. Changes apply to its video player.") }
+                                item { Header("Casting", first = true) }
+                                item { CastingSettings() }
+                                if (!tv) {
+                                    item { Header("Gestures") }
+                                    item { SwitchRow("Swipe to seek", player.swipeSeek, help = "Swipe left or right across the video.") { v -> updatePlayer { it.copy(swipeSeek = v) } } }
+                                    item { SwitchRow("Brightness gesture", player.brightnessGesture, help = "Swipe up or down on the left edge.") { v -> updatePlayer { it.copy(brightnessGesture = v) } } }
+                                    item { SwitchRow("Volume gesture", player.volumeGesture, help = "Swipe up or down on the right edge.") { v -> updatePlayer { it.copy(volumeGesture = v) } } }
+                                } else item { Header("Remote") }
+                                item { ChoiceRow(if (tv) "Remote seek interval" else "Double-tap seek interval", listOf(5, 10, 15, 30), player.seekStep, { "${it}s" }) { v -> updatePlayer { it.copy(seekStep = v) } } }
+                                if (!tv) item { ChoiceRow("Hold-to-play speed", listOf(1.5f, 2f, 3f), player.holdSpeed, { "${it}×" }) { v -> updatePlayer { it.copy(holdSpeed = v) } } }
+                                item { Header("Subtitles") }
+                                item { SubtitleSize(player) { v -> updatePlayer { it.copy(subtitleScale = v) } } }
+                                item { SwitchRow("Dark subtitle background", player.subtitleBackground, help = "Applies to SRT and VTT subtitles.") { v -> updatePlayer { it.copy(subtitleBackground = v) } } }
+                                item { Header("Playback") }
+                                item { SwitchRow("Picture-in-picture", player.pictureInPicture, help = "Keep the video playing when you leave the app.") { v -> updatePlayer { it.copy(pictureInPicture = v) } } }
                                 item {
-                                    ChoiceRow("Openings and endings", listOf("prompt", "auto", "off"), v.skipSegments,
-                                        { mapOf("prompt" to "Offer to skip", "auto" to "Skip", "off" to "Off").getValue(it) }) { save("skip_segments" to JsonPrimitive(it)) }
+                                    SwitchRow(
+                                        "Direct video links",
+                                        player.directLinks,
+                                        help = "Stream straight from the video host when possible. Links that need the desktop still go through it.",
+                                    ) { v -> updatePlayer { it.copy(directLinks = v) } }
                                 }
-                                item { Header("Desktop mpv") }
-                                item {
-                                    SwitchRow("Send every stream through the proxy", v.proxyAll, help = "Only needed when a site rejects mpv's direct requests.") {
-                                        save("proxy_all" to JsonPrimitive(it))
+                                item { Header("Desktop playback") }
+                                when (val s = settings) {
+                                    Load.Loading -> item { Loading() }
+                                    is Load.Failed -> item { ErrorBox(s.message, onRetry = { reload() }) }
+                                    is Load.Ok -> {
+                                        val v = s.value
+                                        item { SwitchRow("Auto-play the best link", v.autoplayBest) { save("autoplay_best" to JsonPrimitive(it)) } }
+                                        item { SwitchRow("Auto-play next episode", v.autoplayNext) { save("autoplay_next" to JsonPrimitive(it)) } }
+                                        item {
+                                            ChoiceRow("Openings and endings", listOf("prompt", "auto", "off"), v.skipSegments,
+                                                { mapOf("prompt" to "Offer to skip", "auto" to "Skip", "off" to "Off").getValue(it) }) { save("skip_segments" to JsonPrimitive(it)) }
+                                        }
+                                        item { Header("Desktop mpv") }
+                                        item {
+                                            SwitchRow("Send every stream through the proxy", v.proxyAll, help = "Only needed when a site rejects mpv's direct requests.") {
+                                                save("proxy_all" to JsonPrimitive(it))
+                                            }
+                                        }
+                                        item {
+                                            TextSettingRow(
+                                                "Extra mpv options", v.mpvExtraArgs.joinToString(" "),
+                                                help = "Applied the next time mpv starts, e.g. --profile=gpu-hq --fullscreen",
+                                                placeholder = "--fullscreen",
+                                            ) { text -> save("mpv_extra_args" to JsonArray(text.split(Regex("\\s+")).filter { it.isNotBlank() }.map(::JsonPrimitive))) }
+                                        }
                                     }
                                 }
-                                item {
-                                    TextSettingRow(
-                                        "Extra mpv options", v.mpvExtraArgs.joinToString(" "),
-                                        help = "Applied the next time mpv starts, e.g. --profile=gpu-hq --fullscreen",
-                                        placeholder = "--fullscreen",
-                                    ) { text -> save("mpv_extra_args" to JsonArray(text.split(Regex("\\s+")).filter { it.isNotBlank() }.map(::JsonPrimitive))) }
-                                }
                             }
-                        }
-                    }
-                    SettingsTab.Priority, SettingsTab.Content -> {
-                        item { SettingsSectionTitle(tab.label, if (tab == SettingsTab.Priority) "Choose which sources and qualities play first." else "Choose what appears in Cloudstream.") }
-                        when (val s = settings) {
-                            Load.Loading -> item { Loading() }
-                            is Load.Failed -> item { ErrorBox(s.message, onRetry = { reload() }) }
-                            is Load.Ok -> {
-                                val v = s.value
-                                if (tab == SettingsTab.Content) {
-                                    item { SwitchRow("Show NSFW content", v.showNsfw) { save("show_nsfw" to JsonPrimitive(it)) } }
-                                } else {
-                                    item {
-                                        profileDraft?.let { draft ->
-                                            ProfileEditor(v, draft) { profiles, active ->
-                                                save("source_profiles" to json.encodeToJsonElement(profiles), "source_profile" to JsonPrimitive(active))
+                            SettingsTab.Priority, SettingsTab.Content -> {
+                                item { SettingsSectionTitle(tab.label, if (tab == SettingsTab.Priority) "Choose which sources and qualities play first." else "Choose what appears in Cloudstream.", manualSave = tab == SettingsTab.Priority) }
+                                when (val s = settings) {
+                                    Load.Loading -> item { Loading() }
+                                    is Load.Failed -> item { ErrorBox(s.message, onRetry = { reload() }) }
+                                    is Load.Ok -> {
+                                        val v = s.value
+                                        if (tab == SettingsTab.Content) {
+                                            item { SwitchRow("Show NSFW content", v.showNsfw) { save("show_nsfw" to JsonPrimitive(it)) } }
+                                        } else {
+                                            item {
+                                                profileDraft?.let { draft ->
+                                                    ProfileEditor(v, draft) { profiles, active ->
+                                                        save("source_profiles" to json.encodeToJsonElement(profiles), "source_profile" to JsonPrimitive(active))
+                                                    }
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
-                        }
-                    }
-                    SettingsTab.Desktop -> {
-                        item { SettingsSectionTitle("Connection", "Manage your paired desktop and shared settings.") }
-                        item { DesktopStatus(api.server?.baseUrl.orEmpty(), status, onRetry = { reload() }) }
-                        item {
-                            Column(Modifier.padding(top = 28.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                TextButton(
-                                    onClick = { confirmUnpair = true },
-                                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                                    modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
-                                ) { Text("Unpair this device") }
+                            SettingsTab.Desktop -> {
+                                item { SettingsSectionTitle("Connection", "Manage your paired desktop and shared settings.") }
+                                item { DesktopStatus(api.server?.baseUrl.orEmpty(), status, onRetry = { reload() }) }
+                                item {
+                                    Column(Modifier.padding(top = 28.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                        TextButton(
+                                            onClick = { confirmUnpair = true },
+                                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                            modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
+                                        ) { Text("Unpair this device") }
+                                    }
+                                }
+                            }
+                            SettingsTab.Browser -> {
+                                item { SettingsSectionTitle("Browser", "Handle sites that need a real browser on the desktop.") }
+                                when (val s = settings) {
+                                    Load.Loading -> item { Loading() }
+                                    is Load.Failed -> item { ErrorBox(s.message, onRetry = { reload() }) }
+                                    // The desktop stops a running browser, so the next request starts it in the new mode.
+                                    is Load.Ok -> item { BrowserSettings(s.value) { mode -> save("chromium_mode" to JsonPrimitive(mode)) } }
+                                }
+                            }
+                            SettingsTab.Plugins -> {
+                                item { SettingsSectionTitle("Plugins", "Manage the plugins that bring your providers to Cloudstream.") }
+                                pluginItems(plugins, onRetry = { reload() })
                             }
                         }
-                    }
-                    SettingsTab.Browser -> {
-                        item { SettingsSectionTitle("Browser", "Handle sites that need a real browser on the desktop.") }
-                        when (val s = settings) {
-                            Load.Loading -> item { Loading() }
-                            is Load.Failed -> item { ErrorBox(s.message, onRetry = { reload() }) }
-                            // The desktop stops a running browser, so the next request starts it in the new mode.
-                            is Load.Ok -> item { BrowserSettings(s.value) { mode -> save("chromium_mode" to JsonPrimitive(mode)) } }
-                        }
-                    }
-                    SettingsTab.Plugins -> {
-                        item { SettingsSectionTitle("Plugins", "Manage the plugins that bring your providers to Cloudstream.") }
-                        pluginItems(plugins, onRetry = { reload() })
                     }
                 }
             }
@@ -318,10 +308,68 @@ fun SettingsScreen(onUnpair: () -> Unit) {
 }
 
 @Composable
-private fun SettingsSectionTitle(title: String, description: String) {
+private fun SettingsCategories(tab: SettingsTab, vertical: Boolean, onSelect: (SettingsTab) -> Unit) {
+    val scroll = rememberLazyListState(initialFirstVisibleItemIndex = if (vertical) 0 else tab.ordinal)
+    LaunchedEffect(tab, vertical) {
+        if (!vertical) scroll.animateScrollToItem(tab.ordinal)
+    }
+    if (vertical) {
+        LazyColumn(
+            state = scroll,
+            modifier = Modifier.width(232.dp).fillMaxSize()
+                .background(MaterialTheme.colorScheme.surfaceContainerLow).selectableGroup(),
+            contentPadding = PaddingValues(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(SettingsTab.entries, key = { it.name }) { destination ->
+                SettingsCategory(destination, destination == tab, Modifier.fillMaxWidth()) { onSelect(destination) }
+            }
+        }
+    } else {
+        LazyRow(
+            state = scroll,
+            modifier = Modifier.fillMaxWidth().selectableGroup(),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(SettingsTab.entries, key = { it.name }) { destination ->
+                SettingsCategory(destination, destination == tab) { onSelect(destination) }
+            }
+        }
+        HorizontalDivider(Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+    }
+}
+
+@Composable
+private fun SettingsCategory(destination: SettingsTab, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.small,
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+        contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.tvFocusIndicator().semantics { role = Role.Tab; this.selected = selected },
+    ) {
+        Row(
+            Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(destination.icon, null, Modifier.size(20.dp))
+            Text(destination.label, style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+@Composable
+private fun SettingsSectionTitle(title: String, description: String, manualSave: Boolean = false) {
     Column(Modifier.padding(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
         Text(description, style = MaterialTheme.typography.bodyMedium, color = Palette.muted)
+        Text(
+            if (manualSave) "Save profile changes with the Save profile button." else "Changes save automatically",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -396,27 +444,30 @@ private fun DesktopStatus(address: String, status: Load<StatusDto>, onRetry: () 
     }
 }
 
-/** A section title: a label in the accent colour over a gap, so sections group the rows below without boxes. */
+/** Section spacing and a divider group controls without nesting them in cards. */
 @Composable
 internal fun Header(text: String, first: Boolean = false) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = if (first) 8.dp else 28.dp, bottom = 4.dp).semantics { heading() },
-    )
+    Column(Modifier.fillMaxWidth().padding(top = if (first) 8.dp else 24.dp)) {
+        if (!first) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Text(
+            text,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = if (first) 0.dp else 16.dp, bottom = 8.dp).semantics { heading() },
+        )
+    }
 }
 
 @Composable
 internal fun SwitchRow(label: String, checked: Boolean, help: String? = null, onChange: (Boolean) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 56.dp).tvFocusIndicator()
+        Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(MaterialTheme.shapes.small).tvFocusIndicator()
             .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
             .padding(horizontal = if (LocalTv.current) 12.dp else 0.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(label)
             if (!help.isNullOrBlank()) Text(help, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
         }
@@ -424,13 +475,14 @@ internal fun SwitchRow(label: String, checked: Boolean, help: String? = null, on
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun <T> ChoiceRow(label: String, options: List<T>, value: T, text: (T) -> String, onChange: (T) -> Unit) {
     Column(Modifier.padding(vertical = 8.dp)) {
         Text(label)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-            // Keep Material's compact chip surface and its separate 48dp touch target.
-            items(options) { o ->
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp).selectableGroup()) {
+            // Wrap choices so every value is discoverable at narrow widths and larger font sizes.
+            options.forEach { o ->
                 FilterChip(
                     selected = o == value,
                     onClick = { onChange(o) },

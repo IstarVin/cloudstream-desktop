@@ -4,13 +4,11 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
-import androidx.compose.ui.test.hasScrollToNodeAction
-import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.pressKey
@@ -43,7 +41,7 @@ class TvAppTest {
                 captureTvScreen("tv-settings-content-focus")
                 compose.onNode(hasText("Playback") and hasClickAction()).performSemanticsAction(SemanticsActions.RequestFocus)
                 compose.onNode(hasText("Playback") and hasClickAction()).performKeyInput { pressKey(Key.DirectionCenter) }
-                compose.onNode(hasScrollToNodeAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+                compose.onNodeWithTag("settings-content")
                     .performScrollToNode(hasText("Remote seek interval"))
                 compose.onNodeWithText("Remote seek interval").assertExists()
                 compose.onNodeWithText("Swipe to seek").assertDoesNotExist()

@@ -4,9 +4,11 @@ import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +30,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.FastForward
@@ -58,6 +61,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -77,6 +81,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -278,15 +284,15 @@ private fun RemoteSheet(device: DeviceInfo, s: PlayerState, command: (String, Pl
     val isMpv = device.kind == DeviceKind.MPV
     val busy = s.status == "resolving"
     var sources by remember { mutableStateOf(false) }
-    AdaptiveSheet(onDismiss) {
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    AdaptiveSheet(onDismiss, dragHandle = null) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(top = 20.dp, bottom = 16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val online = if (isMpv) s.mpvRunning else true
                 Box(Modifier.size(8.dp).background(if (online) Palette.accent else Palette.muted, CircleShape))
                 Text(if (isMpv) (if (s.mpvRunning) "Playing in mpv" else "mpv is closed") else "Playing on ${device.name}", style = MaterialTheme.typography.labelLarge, color = Palette.muted)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (s.poster != null) AsyncImage(imageRequest(s.poster), null, Modifier.size(96.dp, 136.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (s.poster != null) AsyncImage(imageRequest(s.poster), null, Modifier.size(72.dp, 100.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     val p = s.provider
                     val u = s.url
@@ -318,11 +324,13 @@ private fun RemoteSheet(device: DeviceInfo, s: PlayerState, command: (String, Pl
                     onValueChangeFinished = { scrub?.let { command("seek", PlayerCommand(seconds = it.toDouble())) }; scrub = null },
                     valueRange = 0f..s.duration.toFloat().coerceAtLeast(1f),
                     enabled = s.duration > 0,
-                    modifier = Modifier.tvSliderNavigation().tvFocusIndicator(),
+                    thumb = { Box(Modifier.size(16.dp).background(if (s.duration > 0) Palette.accent else Palette.muted, CircleShape)) },
+                    track = { state -> SliderDefaults.Track(state, modifier = Modifier.height(4.dp), enabled = s.duration > 0, thumbTrackGapSize = 0.dp, drawStopIndicator = null) },
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Playback position" }.tvSliderNavigation().tvFocusIndicator(),
                 )
                 Row {
                     Text(formatTime(position.toDouble()), style = MaterialTheme.typography.bodySmall.merge(TabularNumbers), color = Palette.muted, modifier = Modifier.weight(1f))
-                    Text("-" + formatTime(s.duration - position), style = MaterialTheme.typography.bodySmall.merge(TabularNumbers), color = Palette.muted)
+                    Text("-" + formatTime((s.duration - position).coerceAtLeast(0.0)), style = MaterialTheme.typography.bodySmall.merge(TabularNumbers), color = Palette.muted)
                 }
             }
 
@@ -336,7 +344,7 @@ private fun RemoteSheet(device: DeviceInfo, s: PlayerState, command: (String, Pl
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { command("prev", PlayerCommand()) }, enabled = s.hasPrev, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.SkipPrevious, "Previous episode") }
                 IconButton(onClick = { command("seek", PlayerCommand(seconds = -10.0, relative = true)) }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Replay10, "Back 10 seconds") }
-                FilledIconButton(onClick = { command("toggle", PlayerCommand()) }, modifier = Modifier.size(64.dp).tvFocusIndicator()) {
+                FilledIconButton(onClick = { command("toggle", PlayerCommand()) }, enabled = !busy, modifier = Modifier.size(64.dp).tvFocusIndicator()) {
                     if (busy) CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.dp, color = LocalContentColor.current)
                     else Icon(if (s.paused) Icons.Filled.PlayArrow else Icons.Filled.Pause, if (s.paused) "Play" else "Pause", Modifier.size(34.dp))
                 }
@@ -344,8 +352,13 @@ private fun RemoteSheet(device: DeviceInfo, s: PlayerState, command: (String, Pl
                 IconButton(onClick = { command("next", PlayerCommand()) }, enabled = s.hasNext, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.SkipNext, "Next episode") }
             }
 
-            TrackMenu("Audio", Icons.AutoMirrored.Filled.VolumeUp, s.audioTracks, offLabel = null) { command("track", PlayerCommand(type = "audio", id = it)) }
-            TrackMenu("Subtitles", Icons.Filled.ClosedCaption, s.subTracks, offLabel = "Subtitles off") { command("track", PlayerCommand(type = "sub", id = it)) }
+            Surface(color = Palette.surface2, shape = RoundedCornerShape(16.dp)) {
+                Column {
+                    TrackMenu("Audio", Icons.AutoMirrored.Filled.VolumeUp, s.audioTracks, offLabel = null) { command("track", PlayerCommand(type = "audio", id = it)) }
+                    HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    TrackMenu("Subtitles", Icons.Filled.ClosedCaption, s.subTracks, offLabel = "Subtitles off") { command("track", PlayerCommand(type = "sub", id = it)) }
+                }
+            }
 
             var volume by remember { mutableStateOf<Float?>(null) }
             val maxVolume = if (isMpv) 130f else 100f
@@ -356,14 +369,16 @@ private fun RemoteSheet(device: DeviceInfo, s: PlayerState, command: (String, Pl
                     onValueChange = { volume = it },
                     onValueChangeFinished = { volume?.let { command("volume", PlayerCommand(value = it.toDouble())) }; volume = null },
                     valueRange = 0f..maxVolume,
-                    modifier = Modifier.weight(1f).tvSliderNavigation().tvFocusIndicator(),
+                    thumb = { Box(Modifier.size(16.dp).background(Palette.accent, CircleShape)) },
+                    track = { state -> SliderDefaults.Track(state, modifier = Modifier.height(4.dp), thumbTrackGapSize = 0.dp, drawStopIndicator = null) },
+                    modifier = Modifier.weight(1f).semantics { contentDescription = "Volume" }.tvSliderNavigation().tvFocusIndicator(),
                 )
                 Text("${(volume ?: s.volume.toFloat()).toInt()}", style = MaterialTheme.typography.bodySmall.merge(TabularNumbers), modifier = Modifier.width(32.dp))
             }
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { sources = true }, enabled = s.provider != null && s.data != null, modifier = Modifier.weight(1f).tvFocusIndicator()) {
-                    Icon(Icons.Filled.Source, null, Modifier.size(18.dp)); Text("Sources", Modifier.padding(start = 6.dp))
+                OutlinedButton(onClick = { sources = true }, enabled = s.provider != null && s.data != null, modifier = Modifier.weight(1f).tvFocusIndicator(), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp)) {
+                    RemoteActionLabel(Icons.Filled.Source, "Sources")
                 }
                 val p = s.provider
                 val u = s.url
@@ -374,11 +389,11 @@ private fun RemoteSheet(device: DeviceInfo, s: PlayerState, command: (String, Pl
                     cast.select(PlayTargets.HERE)
                     PlayerActivity.startCast(context, PlayRequest(p, u, d, linkId = s.link?.id, startAt = s.position.takeIf { it > 5 }))
                     onDismiss()
-                }, modifier = Modifier.weight(1f).tvFocusIndicator()) {
-                    Icon(deviceIcon(null, cast.kind), null, Modifier.size(18.dp)); Text("Play here", Modifier.padding(start = 6.dp))
+                }, modifier = Modifier.weight(1f).tvFocusIndicator(), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp)) {
+                    RemoteActionLabel(deviceIcon(null, cast.kind), "Play here")
                 }
-                OutlinedButton(onClick = { command("stop", PlayerCommand()) }, modifier = Modifier.weight(1f).tvFocusIndicator()) {
-                    Icon(Icons.Filled.Stop, null, Modifier.size(18.dp)); Text("Stop", Modifier.padding(start = 6.dp))
+                OutlinedButton(onClick = { command("stop", PlayerCommand()) }, modifier = Modifier.weight(1f).tvFocusIndicator(), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp)) {
+                    RemoteActionLabel(Icons.Filled.Stop, "Stop")
                 }
             }
         }
@@ -387,6 +402,14 @@ private fun RemoteSheet(device: DeviceInfo, s: PlayerState, command: (String, Pl
         val p = s.provider
         val d = s.data
         if (p != null && d != null) RemoteSourcesSheet(device, p, d, s, command, onDismiss = { sources = false })
+    }
+}
+
+@Composable
+private fun RemoteActionLabel(icon: ImageVector, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Icon(icon, null, Modifier.size(20.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -399,13 +422,15 @@ private fun TrackMenu(label: String, icon: ImageVector, tracks: List<Track>, off
     Box {
         Surface(
             onClick = { open = true }, enabled = tracks.isNotEmpty() || offLabel != null,
-            color = Palette.surface2, shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            color = Color.Transparent,
             modifier = Modifier.fillMaxWidth().tvFocusIndicator(),
         ) {
-            Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(icon, null, Modifier.size(18.dp), tint = Palette.muted)
-                Text(label, style = MaterialTheme.typography.labelLarge)
-                Text(current, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = Palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(label, style = MaterialTheme.typography.labelMedium, color = Palette.muted)
+                    Text(current, style = MaterialTheme.typography.bodyMedium, color = Palette.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
                 Icon(Icons.Outlined.ExpandMore, null, Modifier.size(18.dp), tint = Palette.muted)
             }
         }
@@ -453,33 +478,50 @@ private fun RemoteSourcesSheet(device: DeviceInfo, provider: String, data: Strin
     }
     val profile = settings.activeProfile
     val ranked = links.filter { it.playable }.sortedWith(LinkRanking.comparator(profile))
-    AdaptiveSheet(onDismiss) {
-        Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Sources", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+    AdaptiveSheet(onDismiss, dragHandle = null) {
+        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 16.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Sources", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    listOfNotNull(s.episodeLabel ?: s.title, "on ${device.name}").joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall, color = Palette.muted,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+            }
             IconButton(onClick = { reloads++ }, enabled = done, modifier = Modifier.tvFocusIndicator()) {
-                Icon(Icons.Filled.Refresh, "Reload links", tint = Palette.muted)
+                Icon(Icons.Filled.Refresh, "Reload links")
+            }
+            IconButton(onClick = onDismiss, modifier = Modifier.tvFocusIndicator()) {
+                Icon(Icons.Filled.Close, "Close sources")
             }
         }
-        Text(
-            listOfNotNull(s.episodeLabel ?: s.title, "on ${device.name}").joinToString(" · "),
-            style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        )
-        if (!done) LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 4.dp))
-        LazyColumn(Modifier.heightIn(max = 560.dp)) {
+        if (!done) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
+        else HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        LazyColumn(
+            Modifier.weight(1f, fill = false).heightIn(max = 560.dp),
+            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (!done && ranked.isEmpty()) item {
+                Text("Finding sources…", style = MaterialTheme.typography.bodyMedium, color = Palette.muted, modifier = Modifier.padding(12.dp))
+            }
+            if (done && error != null && ranked.isNotEmpty()) item {
+                Text(error.orEmpty(), style = MaterialTheme.typography.bodySmall, color = Palette.danger, modifier = Modifier.padding(12.dp))
+            }
             if (done && ranked.isEmpty()) item {
-                Text(error ?: "No playable links", color = if (error != null) Palette.danger else Palette.muted, modifier = Modifier.padding(20.dp))
+                Text(error ?: "No playable links", color = if (error != null) Palette.danger else Palette.muted, modifier = Modifier.padding(12.dp))
             }
             items(ranked, key = { "l-" + it.id }) { l ->
                 val failed = l.id in s.failedLinks
                 SourceRow(
-                    "${l.source} · ${l.qualityLabel}",
+                    l.source,
                     listOfNotNull(l.name.takeIf { it != l.source }, sourceRecord(l), "priority ${profile.priority(l)}", "failed".takeIf { failed }).joinToString(" · "),
-                    selected = l.id == s.link?.id, dim = failed,
+                    selected = l.id == s.link?.id, dim = failed, quality = l.qualityLabel,
                 ) { command("source", PlayerCommand(linkId = l.id)); onDismiss() }
             }
             if (subtitles.isNotEmpty()) {
-                item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
-                item { Text("Add subtitles", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
+                item { HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant) }
+                item { Text("Add subtitles", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) }
                 items(subtitles, key = { "s-" + it.id }) { sub ->
                     SourceRow(sub.lang, null, selected = false, dim = false) { command("sub-add", PlayerCommand(id = sub.id)) }
                 }
@@ -490,17 +532,32 @@ private fun RemoteSourcesSheet(device: DeviceInfo, provider: String, data: Strin
 }
 
 @Composable
-private fun SourceRow(title: String, detail: String?, selected: Boolean, dim: Boolean, onClick: () -> Unit) {
+private fun SourceRow(title: String, detail: String?, selected: Boolean, dim: Boolean, quality: String? = null, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator().clickable(onClick = onClick)
+        Modifier.fillMaxWidth().clip(shape).tvFocusIndicator(shape)
             .background(if (selected) Palette.accent.copy(alpha = 0.14f) else Color.Transparent)
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .then(if (quality != null) Modifier.selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+                else Modifier.clickable(role = Role.Button, onClick = onClick))
+            .heightIn(min = 56.dp).padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, color = if (dim) Palette.muted else Palette.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = if (dim) Palette.muted else Palette.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (quality != null) Surface(
+                    color = if (selected) Palette.accent else Palette.surface2,
+                    contentColor = if (selected) Palette.accentInk else Palette.muted,
+                    shape = RoundedCornerShape(4.dp),
+                ) {
+                    Text(quality, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+                if (quality != null) Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+                    if (selected) Icon(Icons.Filled.Check, null, Modifier.size(20.dp), tint = Palette.accent)
+                }
+            }
+            if (!detail.isNullOrBlank()) Text(detail, style = MaterialTheme.typography.bodySmall, color = if (selected) Palette.text.copy(alpha = 0.8f) else Palette.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
-        if (selected) Icon(Icons.Filled.Check, null, tint = Palette.accent)
     }
 }
