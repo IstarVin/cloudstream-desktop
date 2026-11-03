@@ -45,7 +45,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -173,16 +172,16 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
                         Text(if (manual) "Hide manual entry" else "Enter the address instead")
                     }
                     if (manual || tv) {
-                        OutlinedTextField(
+                        RemoteTextField(
                             address, { address = it },
                             label = { Text("Desktop address") },
                             placeholder = { Text("192.168.1.10:6969") },
                             enabled = !checking,
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Next),
-                            modifier = Modifier.fillMaxWidth().focusRequester(addressFocus).tvFocusIndicator(),
+                            modifier = Modifier.fillMaxWidth().focusRequester(addressFocus),
                         )
-                        OutlinedTextField(
+                        RemoteTextField(
                             token, { token = it },
                             label = { Text("Token") },
                             supportingText = { Text("Shown under the code in the desktop's settings.") },
@@ -190,7 +189,7 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
                             keyboardActions = KeyboardActions(onDone = { connect() }),
-                            modifier = Modifier.fillMaxWidth().tvFocusIndicator(),
+                            modifier = Modifier.fillMaxWidth(),
                         )
                         Button(onClick = ::connect, enabled = canConnect, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator()) {
                             Text(if (checking) "Connecting…" else "Connect")

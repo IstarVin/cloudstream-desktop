@@ -3,6 +3,10 @@ package desktop.app.ui
 import android.content.res.Configuration
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,10 +28,18 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -57,11 +69,11 @@ fun InitialTvFocus(requester: FocusRequester) {
 }
 
 /** Draw inside the bounds so lazy lists and clipped artwork cannot cut off the focus outline. */
-fun Modifier.tvFocusIndicator(): Modifier = composed {
+fun Modifier.tvFocusIndicator(shape: Shape? = null): Modifier = composed {
     if (!LocalTv.current) return@composed this
     var focused by remember { mutableStateOf(false) }
     onFocusChanged { focused = it.isFocused }
-        .border(3.dp, if (focused) Palette.accent else Color.Transparent, MaterialTheme.shapes.small)
+        .border(3.dp, if (focused) Palette.accent else Color.Transparent, shape ?: MaterialTheme.shapes.small)
 }
 
 /** A focus-contained TV picker; phones retain their bottom sheet interaction. */
@@ -74,15 +86,13 @@ fun AdaptiveSheet(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     if (LocalTv.current) {
-        Dialog(onDismissRequest, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Dialog(onDismissRequest, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
             val focus = remember { FocusRequester() }
             val availableHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
-            LaunchedEffect(Unit) {
-                withFrameNanos { }
-                focus.requestFocus()
-            }
+            InitialTvFocus(focus)
             Surface(
-                modifier = Modifier.padding(24.dp).widthIn(max = 640.dp).fillMaxWidth(),
+                modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing).imePadding()
+                    .padding(24.dp).widthIn(max = 640.dp).fillMaxWidth(),
                 shape = MaterialTheme.shapes.large,
                 color = containerColor,
             ) {
@@ -100,5 +110,21 @@ fun AdaptiveSheet(
             containerColor = containerColor,
             content = content,
         )
+    }
+}
+
+/** Material sliders use Up/Down to change values; a remote needs those keys to leave the row. */
+fun Modifier.tvSliderNavigation(): Modifier = composed {
+    if (!LocalTv.current) return@composed this
+    val focus = LocalFocusManager.current
+    onPreviewKeyEvent { event ->
+        val direction = when (event.key) {
+            Key.DirectionUp -> FocusDirection.Up
+            Key.DirectionDown -> FocusDirection.Down
+            else -> return@onPreviewKeyEvent false
+        }
+        if (event.type == KeyEventType.KeyDown) focus.moveFocus(direction)
+        // Consume even at an edge, so vertical navigation never changes the value.
+        true
     }
 }

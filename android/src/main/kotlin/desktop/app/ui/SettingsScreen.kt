@@ -39,7 +39,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -157,7 +156,7 @@ fun SettingsScreen(onUnpair: () -> Unit) {
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }, containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally) {
             Column(
-                Modifier.widthIn(max = 840.dp).fillMaxWidth().padding(horizontal = 22.dp).padding(top = 24.dp, bottom = 20.dp),
+                Modifier.widthIn(max = 840.dp).fillMaxWidth().padding(horizontal = 22.dp).padding(top = if (tv) 12.dp else 24.dp, bottom = if (tv) 12.dp else 20.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text("Settings", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, fontWeight = FontWeight.Bold), modifier = Modifier.semantics { heading() })
@@ -196,7 +195,7 @@ fun SettingsScreen(onUnpair: () -> Unit) {
                     SettingsTab.Plugins -> pluginsScroll
                     SettingsTab.Browser -> browserScroll
                 },
-                contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 36.dp, bottom = 32.dp),
+                contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = if (tv) 20.dp else 36.dp, bottom = 32.dp),
             ) {
                 when (tab) {
                     SettingsTab.Playback -> {
@@ -337,7 +336,7 @@ private fun SettingsNote(text: String) {
 }
 
 @Composable
-private fun SubtitleSize(player: PlayerPrefs, onChange: (Float) -> Unit) {
+internal fun SubtitleSize(player: PlayerPrefs, onChange: (Float) -> Unit) {
     var scale by remember(player.subtitleScale) { mutableFloatStateOf(player.subtitleScale) }
     val percent = (scale * 100).roundToInt()
     Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -369,10 +368,10 @@ private fun SubtitleSize(player: PlayerPrefs, onChange: (Float) -> Unit) {
             onValueChangeFinished = { onChange(scale) },
             valueRange = 0.6f..2f,
             steps = 27,
-            modifier = (Modifier.semantics { contentDescription = "Subtitle size"; stateDescription = "$percent percent" }).tvFocusIndicator(),
+            modifier = (Modifier.semantics { contentDescription = "Subtitle size"; stateDescription = "$percent percent" }).tvSliderNavigation().tvFocusIndicator(),
         )
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("60–200%", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (LocalTv.current) "Left / right to adjust · Up / down to move" else "60–200%", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             TextButton(enabled = scale != 1f, onClick = { scale = 1f; onChange(1f) }, modifier = Modifier.tvFocusIndicator()) { Text("Reset size") }
         }
     }
@@ -411,7 +410,9 @@ internal fun Header(text: String, first: Boolean = false) {
 @Composable
 internal fun SwitchRow(label: String, checked: Boolean, help: String? = null, onChange: (Boolean) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 56.dp).tvFocusIndicator().toggleable(value = checked, role = Role.Switch, onValueChange = onChange).padding(vertical = 8.dp),
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).tvFocusIndicator()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
+            .padding(horizontal = if (LocalTv.current) 12.dp else 0.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -487,7 +488,7 @@ private fun ProfileEditor(settings: ServerSettings, draft: ProfileDraft, onSave:
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(newSource, { newSource = it }, placeholder = { Text("Source name, exactly as listed") }, singleLine = true, modifier = Modifier.weight(1f).tvFocusIndicator())
+                    RemoteTextField(newSource, { newSource = it }, placeholder = { Text("Source name, exactly as listed") }, singleLine = true, modifier = Modifier.weight(1f))
                     TextButton(enabled = newSource.isNotBlank(), onClick = {
                         edit { it.copy(sourcePriorities = it.sourcePriorities + (newSource.trim() to 1)) }
                         newSource = ""

@@ -112,6 +112,7 @@ import desktop.app.ui.TabularNumbers
 import desktop.app.ui.MoveToDeviceButton
 import desktop.app.ui.Palette
 import desktop.app.ui.LocalTv
+import desktop.app.ui.tvSliderNavigation
 import desktop.app.ui.tvFocusIndicator
 import desktop.app.ui.formatTime
 import kotlinx.coroutines.delay
@@ -717,7 +718,7 @@ private fun SeekBar(position: Long, duration: Long, buffered: Long, skips: List<
         onValueChangeFinished = { onScrub(position, true) },
         valueRange = 0f..max,
         enabled = duration > 0,
-        modifier = modifier.heightIn(min = 48.dp).semantics { contentDescription = "Playback position" }
+        modifier = modifier.tvSliderNavigation().heightIn(min = 48.dp).semantics { contentDescription = "Playback position" }
             .onPreviewKeyEvent { event ->
                 if (!tv || duration <= 0 || event.key !in listOf(Key.DirectionLeft, Key.DirectionRight)) return@onPreviewKeyEvent false
                 if (event.type == KeyEventType.KeyDown) {

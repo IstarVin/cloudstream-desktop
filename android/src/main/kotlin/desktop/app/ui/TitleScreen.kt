@@ -53,7 +53,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -545,7 +544,7 @@ private fun EpisodesHeader(
             }
         }
         if (total > 20) {
-            OutlinedTextField(
+            RemoteTextField(
                 filter, onFilter,
                 label = { Text("Find an episode") },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
@@ -558,7 +557,7 @@ private fun EpisodesHeader(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { focus.clearFocus(); keyboard?.hide() }),
                 shape = MaterialTheme.shapes.medium,
-                modifier = Modifier.fillMaxWidth().tvFocusIndicator(),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }

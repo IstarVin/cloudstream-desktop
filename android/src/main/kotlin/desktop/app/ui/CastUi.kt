@@ -318,7 +318,7 @@ private fun RemoteSheet(device: DeviceInfo, s: PlayerState, command: (String, Pl
                     onValueChangeFinished = { scrub?.let { command("seek", PlayerCommand(seconds = it.toDouble())) }; scrub = null },
                     valueRange = 0f..s.duration.toFloat().coerceAtLeast(1f),
                     enabled = s.duration > 0,
-                    modifier = Modifier.tvFocusIndicator(),
+                    modifier = Modifier.tvSliderNavigation().tvFocusIndicator(),
                 )
                 Row {
                     Text(formatTime(position.toDouble()), style = MaterialTheme.typography.bodySmall.merge(TabularNumbers), color = Palette.muted, modifier = Modifier.weight(1f))
@@ -356,7 +356,7 @@ private fun RemoteSheet(device: DeviceInfo, s: PlayerState, command: (String, Pl
                     onValueChange = { volume = it },
                     onValueChangeFinished = { volume?.let { command("volume", PlayerCommand(value = it.toDouble())) }; volume = null },
                     valueRange = 0f..maxVolume,
-                    modifier = Modifier.weight(1f).tvFocusIndicator(),
+                    modifier = Modifier.weight(1f).tvSliderNavigation().tvFocusIndicator(),
                 )
                 Text("${(volume ?: s.volume.toFloat()).toInt()}", style = MaterialTheme.typography.bodySmall.merge(TabularNumbers), modifier = Modifier.width(32.dp))
             }

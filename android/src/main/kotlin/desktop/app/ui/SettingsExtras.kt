@@ -17,7 +17,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -50,14 +49,14 @@ internal fun TextSettingRow(label: String, value: String, help: String? = null, 
     Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label)
         help?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.muted) }
-        OutlinedTextField(
+        RemoteTextField(
             text, { text = it },
             placeholder = { Text(placeholder) },
             singleLine = true,
             shape = RoundedCornerShape(8.dp),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
-            modifier = Modifier.fillMaxWidth().tvFocusIndicator().onFocusChanged { if (!it.isFocused && text != value) onCommit(text) },
+            modifier = Modifier.fillMaxWidth().onFocusChanged { if (!it.isFocused && text != value) onCommit(text) },
         )
     }
 }

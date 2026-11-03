@@ -41,7 +41,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -199,7 +198,7 @@ fun LazyListScope.pluginItems(c: PluginsController, onRetry: () -> Unit) {
             val issues = all.count { it.hasIssue() }
             val repo = c.source?.takeIf { it.mode == "repo" }
             item {
-                OutlinedTextField(
+                RemoteTextField(
                     c.query, { c.query = it },
                     placeholder = { Text("Search plugins or providers") },
                     leadingIcon = { Icon(Icons.Filled.Search, null) },
@@ -211,7 +210,7 @@ fun LazyListScope.pluginItems(c: PluginsController, onRetry: () -> Unit) {
                         focusedContainerColor = Palette.surface2,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
                     ),
-                    modifier = (Modifier.fillMaxWidth().semantics { contentDescription = "Search plugins or providers" }).tvFocusIndicator(),
+                    modifier = (Modifier.fillMaxWidth().semantics { contentDescription = "Search plugins or providers" }),
                 )
             }
             item {
@@ -460,7 +459,7 @@ private fun PluginSettingsForm(p: PluginDto, api: Api, tell: (String) -> Unit) {
                     else -> {
                         val secret = f.type == "secret"
                         val shown = revealed[id] == true
-                        OutlinedTextField(
+                        RemoteTextField(
                             value, ::set,
                             label = { Text(f.label) },
                             supportingText = f.help?.let { h -> { Text(h) } },
@@ -473,7 +472,7 @@ private fun PluginSettingsForm(p: PluginDto, api: Api, tell: (String) -> Unit) {
                                     Icon(if (shown) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, if (shown) "Hide ${f.label}" else "Show ${f.label}")
                                 }
                             }) else null,
-                            modifier = Modifier.fillMaxWidth().tvFocusIndicator(),
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                 }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -50,7 +51,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -167,18 +167,10 @@ fun ProviderPicker(
                 Text("Choose a source", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
                 IconButton(onClick = onDismiss, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Close, "Close source picker") }
             }
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(Icons.Filled.Search, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                Text("Find a source", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
-            }
-            OutlinedTextField(
+            RemoteTextField(
                 value = query,
                 onValueChange = { query = it },
+                label = { Text("Find a source") },
                 placeholder = { Text("Name, plugin or language") },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 trailingIcon = {
@@ -200,9 +192,9 @@ fun ProviderPicker(
                     unfocusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
                 ),
                 modifier = (Modifier.fillMaxWidth().padding(horizontal = 20.dp)
-                    .semantics { contentDescription = "Find a source by name, plugin or language" }).tvFocusIndicator(),
+                    .semantics { contentDescription = "Find a source by name, plugin or language" }),
             )
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(if (LocalTv.current) 12.dp else 20.dp))
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f, fill = false).fillMaxWidth().selectableGroup(),
@@ -212,7 +204,7 @@ fun ProviderPicker(
                 item(key = "filters") {
                     Column(Modifier.padding(horizontal = 8.dp)) {
                         if (filters.isNotEmpty()) {
-                            Row(
+                            if (!LocalTv.current) Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.padding(bottom = 4.dp),
@@ -220,41 +212,19 @@ fun ProviderPicker(
                                 Icon(Icons.Filled.Layers, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                                 Text("Content types", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(0.dp),
-                            ) {
-                                filters.forEach { group ->
-                                    val active = group.id in categories
-                                    // Material keeps a 48dp touch target around the compact chip.
-                                    // The label and width stay stable when selection changes.
-                                    FilterChip(
-                                        selected = active,
-                                        onClick = { onCategories(if (active) categories - group.id else categories + group.id) },
-                                        label = { Text(group.label, style = MaterialTheme.typography.labelMedium) },
-                                        leadingIcon = { Icon(contentTypeIcon(group.id), null, modifier = Modifier.size(16.dp)) },
-                                        shape = MaterialTheme.shapes.large,
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                            labelColor = MaterialTheme.colorScheme.onSurface,
-                                            iconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                            selectedLabelColor = MaterialTheme.colorScheme.onSurface,
-                                            selectedLeadingIconColor = MaterialTheme.colorScheme.primary,
-                                        ),
-                                        border = FilterChipDefaults.filterChipBorder(
-                                            enabled = true,
-                                            selected = active,
-                                            borderColor = MaterialTheme.colorScheme.outlineVariant,
-                                            selectedBorderColor = MaterialTheme.colorScheme.primary,
-                                            selectedBorderWidth = 1.dp,
-                                        ),
-                                        modifier = Modifier.tvFocusIndicator(),
-                                    )
+                            if (LocalTv.current) {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(filters, key = { it.id }) { group ->
+                                        SourceCategoryChip(group, categories, onCategories)
+                                    }
+                                }
+                            } else {
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    filters.forEach { group -> SourceCategoryChip(group, categories, onCategories) }
                                 }
                             }
                             Row(
-                                Modifier.padding(top = 8.dp, bottom = 16.dp),
+                                Modifier.padding(top = 8.dp, bottom = if (LocalTv.current) 4.dp else 16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 Icon(Icons.Filled.Info, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
@@ -371,4 +341,34 @@ private fun contentTypeIcon(id: String): ImageVector = when (id) {
     "torrent" -> Icons.Filled.Download
     "adult" -> Icons.Filled.Person
     else -> Icons.Filled.LiveTv
+}
+
+@Composable
+private fun SourceCategoryChip(group: ContentTypes.Group, categories: Set<String>, onCategories: (Set<String>) -> Unit) {
+    val active = group.id in categories
+    // Material keeps a 48dp touch target around the compact chip.
+    // The label and width stay stable when selection changes.
+    FilterChip(
+        selected = active,
+        onClick = { onCategories(if (active) categories - group.id else categories + group.id) },
+        label = { Text(group.label, style = MaterialTheme.typography.labelMedium) },
+        leadingIcon = { Icon(contentTypeIcon(group.id), null, modifier = Modifier.size(16.dp)) },
+        shape = MaterialTheme.shapes.large,
+        colors = FilterChipDefaults.filterChipColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            labelColor = MaterialTheme.colorScheme.onSurface,
+            iconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.onSurface,
+            selectedLeadingIconColor = MaterialTheme.colorScheme.primary,
+        ),
+        border = FilterChipDefaults.filterChipBorder(
+            enabled = true,
+            selected = active,
+            borderColor = MaterialTheme.colorScheme.outlineVariant,
+            selectedBorderColor = MaterialTheme.colorScheme.primary,
+            selectedBorderWidth = 1.dp,
+        ),
+        modifier = Modifier.tvFocusIndicator(),
+    )
 }

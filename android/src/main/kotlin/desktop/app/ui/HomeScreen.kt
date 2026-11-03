@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -168,9 +169,10 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
     val status by vm.status.collectAsState()
     val refreshing by vm.refreshing.collectAsState()
     val categories by vm.categories.collectAsState()
+    val tv = LocalTv.current
     var picking by rememberSaveable { mutableStateOf(false) }
 
-    PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.load() }, modifier = Modifier.fillMaxSize()) {
+    HomeRefreshContainer(isRefreshing = refreshing, onRefresh = { vm.load() }) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
                 Row(
@@ -184,8 +186,16 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
                         modifier = Modifier.weight(1f, fill = false).widthIn(max = 480.dp),
                     )
                     IconButton(onClick = onManage, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Outlined.Extension, "Manage plugins") }
+                    if (tv) {
+                        IconButton(onClick = { vm.load() }, enabled = !refreshing, modifier = Modifier.tvFocusIndicator()) {
+                            Icon(Icons.Filled.Refresh, "Refresh home")
+                        }
+                    }
                     CastButton()
                 }
+            }
+            if (tv && refreshing) {
+                item { LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = Gutter)) }
             }
             status?.takeIf { it.building }?.let { s ->
                 item {
@@ -249,6 +259,18 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
                 vm.choose(it)
             },
         )
+    }
+}
+
+/** Focus-driven scrolling on TV must never enter the touch refresh gesture handler. */
+@Composable
+internal fun HomeRefreshContainer(isRefreshing: Boolean, onRefresh: () -> Unit, content: @Composable () -> Unit) {
+    if (LocalTv.current) {
+        Box(Modifier.fillMaxSize()) { content() }
+    } else {
+        PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
+            content()
+        }
     }
 }
 

@@ -102,10 +102,12 @@ fun Poster(
     Column(
         modifier.then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())
             .clip(MaterialTheme.shapes.medium)
-            .tvFocusIndicator().clickable(role = Role.Button, onClickLabel = "Open $title", onClick = onClick)
+            .tvFocusIndicator(shape = MaterialTheme.shapes.medium)
+            .clickable(role = Role.Button, onClickLabel = "Open $title", onClick = onClick)
             .semantics(mergeDescendants = true) {
                 progress?.takeIf { it.isFinite() }?.let { stateDescription = "${(it.coerceIn(0f, 1f) * 100).toInt()}% watched" }
-            },
+            }
+            .padding(if (LocalTv.current) 8.dp else 0.dp),
     ) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(aspect).clip(MaterialTheme.shapes.medium).background(Palette.surface2)

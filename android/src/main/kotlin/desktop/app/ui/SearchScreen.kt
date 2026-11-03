@@ -27,7 +27,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -141,7 +140,7 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
     Column(Modifier.fillMaxSize()) {
         // The field is the screen's header: nothing above it but the status bar.
         Row(verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
+        RemoteTextField(
             query, { query = it },
             placeholder = { Text("Search movies, series, anime…") },
             leadingIcon = {
@@ -156,7 +155,7 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
             shape = MaterialTheme.shapes.large,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { run(query) }),
-            modifier = (Modifier.weight(1f).padding(horizontal = Gutter, vertical = 8.dp).semantics { contentDescription = "Search all sources" }).tvFocusIndicator(),
+            modifier = (Modifier.weight(1f).padding(horizontal = Gutter, vertical = 8.dp).semantics { contentDescription = "Search all sources" }),
         )
         CastButton(Modifier.padding(end = 8.dp))
         }
