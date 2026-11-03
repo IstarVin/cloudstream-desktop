@@ -6,6 +6,17 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
+import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.widthIn
@@ -15,31 +26,22 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.VerticalDivider
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -129,16 +131,16 @@ private fun Root() {
     }
 }
 
-private data class Tab(val label: String, val icon: ImageVector, val selectedIcon: ImageVector, val route: Any)
+private data class Tab(val label: String, val icon: ImageVector, val route: Any)
 
 @Composable
 private fun MainScaffold(onUnpair: () -> Unit) {
     val nav = rememberNavController()
     val tabs = listOf(
-        Tab("Home", Icons.Outlined.Home, Icons.Filled.Home, HomeRoute),
-        Tab("Search", Icons.Outlined.Search, Icons.Filled.Search, SearchRoute()),
-        Tab("Library", Icons.Outlined.VideoLibrary, Icons.Filled.VideoLibrary, LibraryRoute),
-        Tab("Settings", Icons.Outlined.Settings, Icons.Filled.Settings, SettingsRoute),
+        Tab("Home", Icons.Outlined.Home, HomeRoute),
+        Tab("Search", Icons.Outlined.Search, SearchRoute()),
+        Tab("Library", Icons.Outlined.VideoLibrary, LibraryRoute),
+        Tab("Settings", Icons.Outlined.Settings, SettingsRoute),
     )
     val entry by nav.currentBackStackEntryAsState()
     val dest = entry?.destination
@@ -164,20 +166,21 @@ private fun MainScaffold(onUnpair: () -> Unit) {
         bottomBar = {
             if (!wide) Column {
                 HorizontalDivider(color = Palette.line)
-                NavigationBar(containerColor = Palette.bg, tonalElevation = 0.dp) {
+                Row(Modifier.fillMaxWidth().navigationBarsPadding().selectableGroup().padding(vertical = 6.dp)) {
                     tabs.forEach { tab ->
                         val selected = dest?.hasRoute(tab.route::class) == true
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = { open(tab.route) },
-                            icon = { Icon(if (selected) tab.selectedIcon else tab.icon, contentDescription = null) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Palette.accent, selectedTextColor = Palette.accent,
-                                indicatorColor = Palette.accentSoft,
-                                unselectedIconColor = Palette.muted, unselectedTextColor = Palette.muted,
-                            ),
-                            label = { Text(tab.label) },
-                        )
+                        Column(
+                            Modifier.weight(1f).clip(MaterialTheme.shapes.small)
+                                .selectable(selected, role = Role.Tab, onClick = { open(tab.route) })
+                                .padding(vertical = 6.dp).heightIn(min = 48.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Box(Modifier.size(40.dp, 28.dp).background(if (selected) Palette.accentSoft else ComposeColor.Transparent, MaterialTheme.shapes.small), contentAlignment = Alignment.Center) {
+                                Icon(tab.icon, null, Modifier.size(22.dp), tint = if (selected) Palette.accent else Palette.muted)
+                            }
+                            Text(tab.label, style = MaterialTheme.typography.labelMedium, color = if (selected) Palette.accent else Palette.muted)
+                        }
                     }
                 }
             }
@@ -185,28 +188,32 @@ private fun MainScaffold(onUnpair: () -> Unit) {
     ) { padding ->
         Row(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()
             .then(if (tv) Modifier.padding(horizontal = 24.dp, vertical = 12.dp) else Modifier)) {
-            if (wide) NavigationRail(
-                modifier = Modifier.fillMaxHeight().verticalScroll(rememberScrollState()),
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                header = {
-                    Box(Modifier.padding(vertical = 20.dp).size(40.dp), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.PlayArrow, null, tint = Palette.accent, modifier = Modifier.size(28.dp))
-                    }
-                },
+            if (wide) Column(
+                Modifier.width(if (tv) 184.dp else 200.dp).fillMaxHeight()
+                    .background(Palette.surface).verticalScroll(rememberScrollState())
+                    .selectableGroup().padding(horizontal = 12.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                Row(Modifier.padding(horizontal = 10.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Filled.PlayArrow, null, tint = Palette.accent, modifier = Modifier.size(24.dp))
+                    Text("Cloudstream", style = MaterialTheme.typography.titleMedium)
+                }
+                Spacer(Modifier.height(12.dp))
                 tabs.forEach { tab ->
-                    NavigationRailItem(
-                        modifier = Modifier.then(if (tab == tabs.first()) Modifier.focusRequester(initialFocus) else Modifier).tvFocusIndicator(),
-                        selected = dest?.hasRoute(tab.route::class) == true,
-                        onClick = { open(tab.route) },
-                        icon = { Icon(if (dest?.hasRoute(tab.route::class) == true) tab.selectedIcon else tab.icon, null) },
-                        colors = NavigationRailItemDefaults.colors(
-                            selectedIconColor = Palette.accent, selectedTextColor = Palette.accent,
-                            indicatorColor = Palette.accentSoft,
-                            unselectedIconColor = Palette.muted, unselectedTextColor = Palette.muted,
-                        ),
-                        label = { Text(tab.label) },
-                    )
+                    val selected = dest?.hasRoute(tab.route::class) == true
+                    Row(
+                        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small)
+                            .background(if (selected) Palette.accentSoft else ComposeColor.Transparent)
+                            .then(if (tab == tabs.first()) Modifier.focusRequester(initialFocus) else Modifier)
+                            .tvFocusIndicator(shape = MaterialTheme.shapes.small)
+                            .selectable(selected, role = Role.Tab, onClick = { open(tab.route) })
+                            .heightIn(min = 52.dp).padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(tab.icon, null, Modifier.size(22.dp), tint = if (selected) Palette.accent else Palette.muted)
+                        Text(tab.label, style = MaterialTheme.typography.labelLarge, color = if (selected) Palette.accent else Palette.muted)
+                    }
                 }
             }
             if (wide) VerticalDivider(color = Palette.line)
@@ -231,6 +238,12 @@ private fun MainScaffold(onUnpair: () -> Unit) {
                                     onTitle = toTitle,
                                     onSection = { p, s, row, name -> nav.navigate(SectionRoute(p, s, row, name)) },
                                     onManage = { open(SettingsRoute) },
+                                    onSearch = { query ->
+                                        nav.navigate(SearchRoute(query)) {
+                                            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                                            launchSingleTop = true
+                                        }
+                                    },
                                 )
                             }
                             composable<SearchRoute> { SearchScreen(initial = it.toRoute<SearchRoute>().q, onTitle = toTitle) }

@@ -544,7 +544,7 @@ private fun ProfileEditor(settings: ServerSettings, draft: ProfileDraft, onSave:
             }
         }
         if (dirty) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(enabled = dirty, onClick = { onSave(profiles, active) }, modifier = Modifier.tvFocusIndicator()) { Text("Save profile") }
+            Button(shape = MaterialTheme.shapes.small, enabled = dirty, onClick = { onSave(profiles, active) }, modifier = Modifier.tvFocusIndicator()) { Text("Save profile") }
             TextButton(enabled = dirty, onClick = { profiles = settings.sourceProfiles; active = settings.sourceProfile }, modifier = Modifier.tvFocusIndicator()) { Text("Discard") }
         }
     }

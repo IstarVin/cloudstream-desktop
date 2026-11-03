@@ -138,7 +138,7 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
     LaunchedEffect(initial) { if (initial.isNotBlank() && initial != vm.lastQuery) vm.search(initial) }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenHeading("Search") { CastButton() }
+        ScreenHeading("Search", subtitle = "Find something worth watching.") { CastButton() }
         Row(verticalAlignment = Alignment.CenterVertically) {
         RemoteTextField(
             query, { query = it },

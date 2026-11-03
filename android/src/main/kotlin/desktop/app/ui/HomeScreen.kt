@@ -2,7 +2,10 @@ package desktop.app.ui
 
 import android.app.Application
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,12 +14,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -31,6 +32,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -43,17 +46,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.SubcomposeAsyncImage
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -161,7 +160,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 }
 
 @Composable
-fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, String, String) -> Unit, onManage: () -> Unit) {
+fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, String, String) -> Unit, onManage: () -> Unit, onSearch: (String) -> Unit = {}) {
     val vm: HomeViewModel = viewModel()
     val providers by vm.providers.collectAsState()
     val provider by vm.provider.collectAsState()
@@ -171,7 +170,24 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
     val refreshing by vm.refreshing.collectAsState()
     val categories by vm.categories.collectAsState()
     val tv = LocalTv.current
+    var query by rememberSaveable { mutableStateOf("") }
     var picking by rememberSaveable { mutableStateOf(false) }
+
+    @Composable
+    fun HomeSearch(modifier: Modifier) {
+        RemoteTextField(
+            value = query, onValueChange = { query = it },
+            placeholder = { Text("Search titles…", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            leadingIcon = { Icon(Icons.Filled.Search, null, tint = Palette.muted) },
+            trailingIcon = {
+                Button(shape = MaterialTheme.shapes.small, onClick = { onSearch(query.trim()) }, modifier = Modifier.padding(end = 6.dp).tvFocusIndicator(), contentPadding = PaddingValues(horizontal = 14.dp)) { Text("Go") }
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { onSearch(query.trim()) }),
+            modifier = modifier,
+        )
+    }
 
     HomeRefreshContainer(isRefreshing = refreshing, onRefresh = { vm.load() }) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -182,27 +198,25 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
                             Icon(Icons.Filled.Refresh, "Refresh home")
                         }
                     }
+                    if (LocalCatalogLayout.current.expanded) HomeSearch(Modifier.width(320.dp))
                     CastButton()
                 }
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = Gutter).padding(bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                if (!LocalCatalogLayout.current.expanded) HomeSearch(Modifier.fillMaxWidth().padding(horizontal = Gutter).padding(bottom = 20.dp))
+                Surface(
+                    Modifier.fillMaxWidth().padding(horizontal = Gutter),
+                    color = Palette.surface, shape = MaterialTheme.shapes.medium,
+                    border = BorderStroke(1.dp, Palette.line),
                 ) {
-                    SourceSelector(
-                        current = (providers as? Load.Ok)?.value?.firstOrNull { it.name == provider },
-                        onClick = { picking = true },
-                        modifier = Modifier.weight(1f, fill = false).widthIn(max = 480.dp),
-                    )
-                    if (LocalCatalogLayout.current.expanded) {
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = onManage, modifier = Modifier.tvFocusIndicator()) {
-                            Icon(Icons.Outlined.Extension, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Manage plugins")
-                        }
-                    } else {
-                        IconButton(onClick = onManage, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Outlined.Extension, "Manage plugins") }
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SourceSelector(
+                            current = (providers as? Load.Ok)?.value?.firstOrNull { it.name == provider },
+                            onClick = { picking = true },
+                            modifier = if (LocalCatalogLayout.current.expanded) Modifier.width(360.dp) else Modifier.weight(1f),
+                        )
+                        if (LocalCatalogLayout.current.expanded) {
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = onManage, modifier = Modifier.tvFocusIndicator(), colors = ButtonDefaults.textButtonColors(contentColor = Palette.muted)) { Text("Manage plugins") }
+                        } else IconButton(onClick = onManage, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Outlined.Extension, "Manage plugins", tint = Palette.muted) }
                     }
                 }
             }
@@ -286,72 +300,19 @@ internal fun HomeRefreshContainer(isRefreshing: Boolean, onRefresh: () -> Unit, 
     }
 }
 
-/** Keep portrait artwork intact while making room for the episode and watch progress. */
+/** Landscape artwork, metadata and an edge progress track, matching the web shelf. */
 @Composable
 private fun ContinueWatchingCard(entry: ContinueEntry, onClick: () -> Unit) {
     val progress = if (entry.duration.isFinite() && entry.duration > 0 && entry.position.isFinite()) {
         (entry.position / entry.duration).toFloat().coerceIn(0f, 1f)
     } else null
     val remaining = if (progress != null) remainingLabel(entry.position, entry.duration) else null
-    Surface(
-        onClick = onClick,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        shape = MaterialTheme.shapes.medium,
-        border = BorderStroke(1.dp, Palette.line),
-        modifier = Modifier.width(if (LocalTv.current) 340.dp else 292.dp).tvFocusIndicator().semantics(mergeDescendants = true) {
-            progress?.let { stateDescription = "${(it * 100).toInt()}% watched" }
-        },
-    ) {
-        Row(
-            Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier.width(76.dp).height(114.dp).clip(MaterialTheme.shapes.small)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                contentAlignment = Alignment.Center,
-            ) {
-                val fallback: @Composable () -> Unit = {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.VideoLibrary, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(28.dp))
-                    }
-                }
-                val request = imageRequest(entry.poster)
-                if (request == null) fallback() else SubcomposeAsyncImage(
-                    model = request,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                    loading = { fallback() },
-                    error = { fallback() },
-                )
-            }
-            Column(
-                Modifier.weight(1f).heightIn(min = 114.dp),
-                verticalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(entry.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    entry.episodeLabel?.substringBefore(" · ")?.takeIf { it.isNotBlank() }?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-                Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    remaining?.let {
-                        Text(it, style = MaterialTheme.typography.labelMedium.merge(TabularNumbers), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (progress != null) LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxWidth().height(4.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        drawStopIndicator = {},
-                    )
-                }
-            }
-        }
-    }
+    Poster(
+        title = entry.title, poster = entry.poster,
+        width = LocalCatalogLayout.current.landscapeWidth, aspect = 16f / 9f,
+        subtitle = listOfNotNull(entry.provider, entry.episodeLabel, remaining).joinToString(" · "),
+        progress = progress, onClick = onClick,
+    )
 }
 
 @Composable
@@ -375,7 +336,7 @@ private fun HomeSectionRows(vm: HomeViewModel, section: HomeSection, onTitle: (S
                 ) {
                     Text(row.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
                     Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = { onMore(row.name) }, modifier = (Modifier.heightIn(min = 48.dp).semantics { contentDescription = "See all ${row.name}" }).tvFocusIndicator()) {
+                    TextButton(colors = ButtonDefaults.textButtonColors(contentColor = Palette.muted), onClick = { onMore(row.name) }, modifier = (Modifier.heightIn(min = 48.dp).semantics { contentDescription = "See all ${row.name}" }).tvFocusIndicator()) {
                         Text("See all")
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(18.dp))
                     }

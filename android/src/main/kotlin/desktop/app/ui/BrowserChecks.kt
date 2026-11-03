@@ -96,7 +96,7 @@ private fun CheckCard(c: BrowserCheckDto, onSolve: () -> Unit, onDismiss: () -> 
                 )
             }
             if (c.solving) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-            else Button(onClick = onSolve, modifier = Modifier.tvFocusIndicator()) { Text("Solve") }
+            else Button(shape = MaterialTheme.shapes.small, onClick = onSolve, modifier = Modifier.tvFocusIndicator()) { Text("Solve") }
             IconButton(onClick = onDismiss, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Close, "Dismiss") }
         }
     }

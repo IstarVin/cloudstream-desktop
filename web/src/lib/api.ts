@@ -33,15 +33,10 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
-    headers:
-      body === undefined ? undefined : { "content-type": "application/json" },
+    headers: body === undefined ? undefined : { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();
@@ -51,17 +46,13 @@ async function request<T>(
 }
 
 const get = <T>(path: string) => request<T>("GET", path);
-const post = <T>(path: string, body?: unknown) =>
-  request<T>("POST", path, body ?? {});
+const post = <T>(path: string, body?: unknown) => request<T>("POST", path, body ?? {});
 const put = <T>(path: string, body: unknown) => request<T>("PUT", path, body);
-const q = (params: Record<string, string>) =>
-  new URLSearchParams(params).toString();
+const q = (params: Record<string, string>) => new URLSearchParams(params).toString();
 
 export const api = {
-  authStatus: () =>
-    get<{ authed: boolean; loopback: boolean }>("/api/auth/status"),
-  pairing: () =>
-    get<{ url: string; token: string; lanUrls: string[] }>("/api/auth/pairing"),
+  authStatus: () => get<{ authed: boolean; loopback: boolean }>("/api/auth/status"),
+  pairing: () => get<{ url: string; token: string; lanUrls: string[] }>("/api/auth/pairing"),
   rotateToken: () => post("/api/auth/rotate"),
   status: () => get<Status>("/api/status"),
 
@@ -69,23 +60,16 @@ export const api = {
   homeSections: (provider: string) =>
     get<HomeSection[]>(`/api/providers/${encodeURIComponent(provider)}/home`),
   homeRow: (provider: string, section: number, page = 1) =>
-    get<HomePage>(
-      `/api/providers/${encodeURIComponent(provider)}/home/${section}?page=${page}`,
-    ),
-  details: (provider: string, url: string) =>
-    get<Details>(`/api/load?${q({ provider, url })}`),
+    get<HomePage>(`/api/providers/${encodeURIComponent(provider)}/home/${section}?page=${page}`),
+  details: (provider: string, url: string) => get<Details>(`/api/load?${q({ provider, url })}`),
 
   play: (body: PlayRequest) => post("/api/play", body),
-  player: (cmd: string, body: Record<string, unknown> = {}) =>
-    post(`/api/player/${cmd}`, body),
+  player: (cmd: string, body: Record<string, unknown> = {}) => post(`/api/player/${cmd}`, body),
 
   // Casting: the same play and commands, on any connected device ("mpv" is the server's).
   castDevices: () => get<DeviceInfo[]>("/api/cast/devices"),
   castPlay: (device: string, body: PlayRequest, from?: string) =>
-    post(
-      `/api/cast/${encodeURIComponent(device)}/play${from ? `?${q({ from })}` : ""}`,
-      body,
-    ),
+    post(`/api/cast/${encodeURIComponent(device)}/play${from ? `?${q({ from })}` : ""}`, body),
   castCommand: (device: string, cmd: string, body: PlayerCommand = {}) =>
     post(`/api/cast/${encodeURIComponent(device)}/${cmd}`, body),
 
@@ -101,8 +85,7 @@ export const api = {
       "/api/progress",
       new Blob([JSON.stringify(req)], { type: "application/json" }),
     ),
-  reportLink: (link: string, success: boolean) =>
-    post("/api/links/report", { link, success }),
+  reportLink: (link: string, success: boolean) => post("/api/links/report", { link, success }),
   skips: (p: {
     episode: number;
     duration: number;
@@ -143,12 +126,9 @@ export const api = {
   pluginSource: () => get<PluginSource>("/api/plugins/source"),
   checkUpdates: () => post<PluginSource>("/api/plugins/check-updates"),
   updatePlugins: (modules?: string[]) =>
-    post<{ failed: Record<string, string>; source: PluginSource }>(
-      "/api/plugins/update",
-      {
-        modules,
-      },
-    ),
+    post<{ failed: Record<string, string>; source: PluginSource }>("/api/plugins/update", {
+      modules,
+    }),
   rollbackPlugin: (name: string) =>
     post<PluginSource>(`/api/plugins/${encodeURIComponent(name)}/rollback`),
   setPluginEnabled: (name: string, enabled: boolean) =>
@@ -161,10 +141,7 @@ export const api = {
   solveCheck: (id: string) =>
     post<BrowserStatus>(`/api/browser/checks/${encodeURIComponent(id)}/solve`),
   dismissCheck: (id: string) =>
-    request<BrowserStatus>(
-      "DELETE",
-      `/api/browser/checks/${encodeURIComponent(id)}`,
-    ),
+    request<BrowserStatus>("DELETE", `/api/browser/checks/${encodeURIComponent(id)}`),
   stopBrowser: () => post<BrowserStatus>("/api/browser/stop"),
   forgetClearance: (host: string) =>
     request<BrowserStatus>("DELETE", `/api/browser/clearances?${q({ host })}`),
@@ -224,12 +201,8 @@ export function streamLinks(
   const es = new EventSource(
     `/api/links?${q(fresh ? { provider, data, fresh: "1" } : { provider, data })}`,
   );
-  es.addEventListener("link", (e) =>
-    handlers.link(JSON.parse((e as MessageEvent).data)),
-  );
-  es.addEventListener("subtitle", (e) =>
-    handlers.subtitle(JSON.parse((e as MessageEvent).data)),
-  );
+  es.addEventListener("link", (e) => handlers.link(JSON.parse((e as MessageEvent).data)));
+  es.addEventListener("subtitle", (e) => handlers.subtitle(JSON.parse((e as MessageEvent).data)));
   es.addEventListener("error", (e) => {
     const data = (e as MessageEvent).data;
     if (data) handlers.error(JSON.parse(data).error);
@@ -286,8 +259,7 @@ export function castSocket(
 }
 
 /** Route to a title's details page. URLs are long, so they go in the query string. */
-export const titleHref = (provider: string, url: string) =>
-  `/title?${q({ provider, url })}`;
+export const titleHref = (provider: string, url: string) => `/title?${q({ provider, url })}`;
 
 export function formatTime(seconds: number): string {
   if (!isFinite(seconds) || seconds < 0) seconds = 0;
@@ -306,7 +278,5 @@ export function episodeLabel(
     e.season != null ? `S${e.season}` : "",
     e.episode != null ? `E${e.episode}` : "",
   ].join("");
-  return (
-    [num, e.name ?? ""].filter(Boolean).join(" · ") || `Episode ${index + 1}`
-  );
+  return [num, e.name ?? ""].filter(Boolean).join(" · ") || `Episode ${index + 1}`;
 }

@@ -335,7 +335,7 @@ private fun RemoteSheet(device: DeviceInfo, s: PlayerState, command: (String, Pl
             }
 
             skipLabel(s)?.let { label ->
-                OutlinedButton(onClick = { command("skip", PlayerCommand()) }, modifier = Modifier.fillMaxWidth().tvFocusIndicator()) {
+                OutlinedButton(shape = MaterialTheme.shapes.small, onClick = { command("skip", PlayerCommand()) }, modifier = Modifier.fillMaxWidth().tvFocusIndicator()) {
                     Icon(Icons.Filled.FastForward, null, Modifier.size(18.dp))
                     Text(label, Modifier.padding(start = 8.dp))
                 }
@@ -377,22 +377,22 @@ private fun RemoteSheet(device: DeviceInfo, s: PlayerState, command: (String, Pl
             }
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { sources = true }, enabled = s.provider != null && s.data != null, modifier = Modifier.weight(1f).tvFocusIndicator(), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp)) {
+                OutlinedButton(shape = MaterialTheme.shapes.small, onClick = { sources = true }, enabled = s.provider != null && s.data != null, modifier = Modifier.weight(1f).tvFocusIndicator(), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp)) {
                     RemoteActionLabel(Icons.Filled.Source, "Sources")
                 }
                 val p = s.provider
                 val u = s.url
                 val d = s.data
-                if (p != null && u != null && d != null) OutlinedButton(onClick = {
+                if (p != null && u != null && d != null) OutlinedButton(shape = MaterialTheme.shapes.small, onClick = {
                     // Carries on here from the same point and link, and plays here from now on.
                     command("stop", PlayerCommand())
                     cast.select(PlayTargets.HERE)
                     PlayerActivity.startCast(context, PlayRequest(p, u, d, linkId = s.link?.id, startAt = s.position.takeIf { it > 5 }))
                     onDismiss()
-                }, modifier = Modifier.weight(1f).tvFocusIndicator(), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp)) {
+                }, modifier = Modifier.weight(1f).tvFocusIndicator(), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp)) {
                     RemoteActionLabel(deviceIcon(null, cast.kind), "Play here")
                 }
-                OutlinedButton(onClick = { command("stop", PlayerCommand()) }, modifier = Modifier.weight(1f).tvFocusIndicator(), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp)) {
+                OutlinedButton(shape = MaterialTheme.shapes.small, onClick = { command("stop", PlayerCommand()) }, modifier = Modifier.weight(1f).tvFocusIndicator(), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp)) {
                     RemoteActionLabel(Icons.Filled.Stop, "Stop")
                 }
             }

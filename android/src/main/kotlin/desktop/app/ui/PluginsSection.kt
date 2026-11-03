@@ -205,7 +205,7 @@ fun LazyListScope.pluginItems(c: PluginsController, onRetry: () -> Unit) {
                     leadingIcon = { Icon(Icons.Filled.Search, null) },
                     trailingIcon = { if (c.query.isNotEmpty()) IconButton(onClick = { c.query = "" }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Close, "Clear search") } },
                     singleLine = true,
-                    shape = RoundedCornerShape(8.dp),
+                    shape = MaterialTheme.shapes.small,
                     colors = OutlinedTextFieldDefaults.colors(
                         unfocusedContainerColor = Palette.surface2,
                         focusedContainerColor = Palette.surface2,
@@ -222,7 +222,7 @@ fun LazyListScope.pluginItems(c: PluginsController, onRetry: () -> Unit) {
                     Text("${all.count { it.status.equals("loaded", true) }} loaded", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                 }
                 if (repo != null && updates > 0) {
-                    Button(onClick = { c.update(null) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) {
+                    Button(shape = MaterialTheme.shapes.small, onClick = { c.update(null) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) {
                         Text("Update $updates ${if (updates == 1) "plugin" else "plugins"}")
                     }
                 }
@@ -242,10 +242,9 @@ private fun PluginSource(c: PluginsController, onRefresh: () -> Unit) {
     val repo = source?.mode == "repo"
     var expanded by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedButton(
+        OutlinedButton(shape = MaterialTheme.shapes.small,
             onClick = { if (repo) c.checkUpdates() else onRefresh() },
             enabled = !c.busy && c.plugins !is Load.Loading,
-            shape = RoundedCornerShape(8.dp),
             colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(containerColor = Palette.surface2, contentColor = Palette.text),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
@@ -254,10 +253,9 @@ private fun PluginSource(c: PluginsController, onRefresh: () -> Unit) {
             else Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp))
             Text(if (repo) "Check for updates" else "Refresh", Modifier.padding(start = 10.dp))
         }
-        if (source != null && !repo) OutlinedButton(
+        if (source != null && !repo) OutlinedButton(shape = MaterialTheme.shapes.small,
             onClick = { c.rebuild() },
             enabled = !c.busy && !c.building && source.devAvailable,
-            shape = RoundedCornerShape(8.dp),
             colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(containerColor = Palette.surface2, contentColor = Palette.text),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
@@ -405,8 +403,8 @@ fun PluginSheet(c: PluginsController, api: Api, tell: (String) -> Unit) {
             SwitchRow("Enabled", p.enabled) { c.setEnabled(p, it) }
             if (repo != null && (p.hasUpdate() || p.previous != null)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                    if (p.hasUpdate()) Button(onClick = { c.update(listOf(p.name)) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) { Text("Update to v${p.available}") }
-                    if (p.previous != null) OutlinedButton(onClick = { c.rollback(p.name) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) { Text("Roll back to v${p.previous}") }
+                    if (p.hasUpdate()) Button(shape = MaterialTheme.shapes.small, onClick = { c.update(listOf(p.name)) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) { Text("Update to v${p.available}") }
+                    if (p.previous != null) OutlinedButton(shape = MaterialTheme.shapes.small, onClick = { c.rollback(p.name) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) { Text("Roll back to v${p.previous}") }
                 }
             }
             if (p.settingsSchema.isNotEmpty()) {
@@ -491,7 +489,7 @@ private fun PluginSettingsForm(p: PluginDto, api: Api, tell: (String) -> Unit) {
                     }
                 }
             }
-            Button(
+            Button(shape = MaterialTheme.shapes.small,
                 enabled = dirty && !saving,
                 modifier = Modifier.padding(top = 8.dp).fillMaxWidth().heightIn(min = 48.dp).tvFocusIndicator(),
                 onClick = {

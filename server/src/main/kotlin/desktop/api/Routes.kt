@@ -275,7 +275,8 @@ fun Route.apiRoutes(s: Services) {
         // ---- a client's own player (the Android app) ---------------------------------------------------------------
         get("/stream") {
             val direct = call.request.queryParameters["direct"] == "1"
-            call.respond(s.clientStreams.stream(call.param("link"), direct, s.settings.bool(Settings.PROXY_ALL)))
+            val decrypt = call.request.queryParameters["decrypt"] == "1"
+            call.respond(s.clientStreams.stream(call.param("link"), direct, s.settings.bool(Settings.PROXY_ALL), decrypt))
         }
         get("/subtitle") {
             val (format, bytes) = s.clientStreams.subtitle(call.param("id"))

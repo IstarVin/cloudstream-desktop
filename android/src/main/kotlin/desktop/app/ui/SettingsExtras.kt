@@ -114,7 +114,7 @@ internal fun BrowserSettings(settings: ServerSettings, onMode: (String) -> Unit)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Chromium passes Cloudflare checks and loads pages that need a real browser. ${browserState(b)}.",
                     Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = Palette.muted)
-                if (b.running) OutlinedButton(onClick = { act { api.stopBrowser() } }, modifier = Modifier.padding(start = 12.dp).tvFocusIndicator()) {
+                if (b.running) OutlinedButton(shape = MaterialTheme.shapes.small, onClick = { act { api.stopBrowser() } }, modifier = Modifier.padding(start = 12.dp).tvFocusIndicator()) {
                     Icon(Icons.Filled.Stop, null, Modifier.size(16.dp)); Text("Stop", Modifier.padding(start = 6.dp))
                 }
             }

@@ -26,6 +26,22 @@ demand. Pick headless, Xvfb or a visible window on the Settings page; checks it 
 The first start writes `~/.config/cloudstream-desktop/config.toml`; set `plugins.source`, `plugins.repo_url` or
 `plugins.dev_path` there.
 
+### Docker
+
+A headless image (no mpv; play from the Android app or another client) with Chromium for plugins that need a browser.
+It's published to GHCR by `.github/workflows/docker.yml` on pushes to `main` and `v*` tags (amd64 only).
+
+```bash
+docker run -d --init --name cloudstream -p 6969:6969 --shm-size=1g \
+  -v cs-config:/config -v cs-data:/data ghcr.io/istarvin/cloudstream-desktop:latest
+# or build it yourself: docker compose up -d --build
+```
+
+Settings live in `/config/cloudstream-desktop/config.toml` (seeded from `docker/config.toml`; restart after editing).
+Requests from outside the container need the pairing token: read it with
+`docker exec cloudstream cat /data/cloudstream-desktop/token` and open `http://<host>:6969/pair?token=<token>`.
+Don't expose port 6969 to the internet.
+
 Source priority in Settings and the Sources sheet provides seven named profiles for source and quality scores,
 with optional filters for failed or negative-priority links. Auto-play waits for links to resolve and starts as soon as one reaches a combined priority of 10; the rest keep loading in the background. If none does, it plays the best link once they're all in.
 See [source profiles](docs/SOURCE_PROFILES.md) for behavior and settings API details.

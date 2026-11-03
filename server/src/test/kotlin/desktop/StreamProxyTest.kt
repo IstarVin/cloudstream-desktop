@@ -233,4 +233,25 @@ class StreamProxyTest {
             assertEquals("https://site.example/|abc", seen["/v/seg-1.ts"], "segments carry the link's headers too")
         }
     }
+
+    /** GoPlay labels its DASH manifest mpegurl and lists only Widevine and PlayReady; dash.js needs ClearKey named. */
+    @Test
+    fun namesClearKeyInAManifestTheCdnCallsMpegurl() {
+        val mpd = """<?xml version="1.0"?><MPD><Period><AdaptationSet>""" +
+            """<ContentProtection value="cenc" schemeIdUri="urn:mpeg:dash:mp4protection:2011" cenc:default_KID="f32da79c-c8c7-4e4a-ab11-d85ed50e9368"/>""" +
+            """<ContentProtection schemeIdUri="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"/>""" +
+            """<Representation><BaseURL>https://cdn.example/v.mp4</BaseURL></Representation></AdaptationSet></Period></MPD>"""
+        LocalServer { ex -> ex.respond(200, mpd, "application/x-mpegURL") }.use { upstream ->
+            val proxy = StreamProxy()
+            testApplication {
+                routing { get("/proxy/{token}/{encoded}/{name?}") { proxy.serve(call, call.parameters["token"]!!, call.parameters["encoded"]!!) } }
+                val res = client.get(proxy.register("${upstream.url}/stream_dash.mpd?d=abc", emptyMap(), null))
+                assertTrue(res.headers[HttpHeaders.ContentType]!!.startsWith("application/dash+xml"), res.headers[HttpHeaders.ContentType])
+                val body = res.bodyAsText()
+                assertEquals(1, Regex("e2719d58-a985-b3c9-781a-b030af78d30e").findAll(body).count(), body)
+                assertTrue("urn:uuid:edef8ba9" in body, "other schemes stay")
+                assertEquals(body, StreamProxy.withClearKeyProtection(body), "a manifest naming ClearKey is left alone")
+            }
+        }
+    }
 }

@@ -155,9 +155,9 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
                         onCode = { text -> if (!checking) tryPair(ServerConfig.parse(text)) },
                     )
                     Text("Point the camera at the code on your desktop.", color = Palette.muted, style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(onClick = { scanning = false }, enabled = !checking, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator()) { Text("Cancel") }
+                    OutlinedButton(shape = MaterialTheme.shapes.small, onClick = { scanning = false }, enabled = !checking, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator()) { Text("Cancel") }
                 } else {
-                    if (!tv) Button(
+                    if (!tv) Button(shape = MaterialTheme.shapes.small,
                         onClick = {
                             if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) scanning = true
                             else permission.launch(Manifest.permission.CAMERA)
@@ -191,7 +191,7 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
                             keyboardActions = KeyboardActions(onDone = { connect() }),
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        Button(onClick = ::connect, enabled = canConnect, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator()) {
+                        Button(shape = MaterialTheme.shapes.small, onClick = ::connect, enabled = canConnect, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator()) {
                             Text(if (checking) "Connecting…" else "Connect")
                         }
                     }

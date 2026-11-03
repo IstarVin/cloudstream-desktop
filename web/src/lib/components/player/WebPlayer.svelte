@@ -104,7 +104,7 @@
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
       if (!p.paused && !panel && p.status === "playing") controls = false;
-    }, 1500);
+    }, 1000);
   }
   $effect(() => {
     // Holding the video still for a swipe-seek isn't a pause worth showing the controls for.

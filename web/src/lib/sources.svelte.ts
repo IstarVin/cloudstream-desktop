@@ -58,8 +58,7 @@ class Sources {
 
   /** Streams an episode's links and subtitles, unless they're already here; [fresh] resolves them again. */
   load(t: Target, fresh = false) {
-    const same =
-      this.target?.provider === t.provider && this.target?.data === t.data;
+    const same = this.target?.provider === t.provider && this.target?.data === t.data;
     this.target = t;
     if (same && !fresh && (this.links.length || !this.done)) return;
     this.close?.();
@@ -96,8 +95,7 @@ class Sources {
     const t = this.target;
     if (!t) return;
     const target = playTarget.effective;
-    const remoteAt =
-      player.state.position > 5 ? player.state.position : undefined;
+    const remoteAt = player.state.position > 5 ? player.state.position : undefined;
     if (target === "browser") {
       this.hide();
       if (currentlyPlaying) {

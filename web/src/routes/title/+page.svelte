@@ -227,7 +227,11 @@
           disabled={!plotOverflows}
           aria-expanded={plotOverflows ? plotExpanded : undefined}
           aria-controls="title-plot"
-          aria-label={plotOverflows ? (plotExpanded ? "Collapse description" : "Expand description") : undefined}
+          aria-label={plotOverflows
+            ? plotExpanded
+              ? "Collapse description"
+              : "Expand description"
+            : undefined}
           onclick={() => (expandedPlotTitle = plotExpanded ? null : titleKey)}
         >
           <span

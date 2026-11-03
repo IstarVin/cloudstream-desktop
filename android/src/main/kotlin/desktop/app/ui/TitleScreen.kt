@@ -468,12 +468,12 @@ private fun Actions(d: Details, episodes: List<Episode>, next: Episode?, onPlay:
             val play = Modifier.weight(1f).heightIn(min = 52.dp)
             when {
                 d.kind == "torrent" -> Text("Torrents aren't supported.", color = Palette.muted, modifier = Modifier.weight(1f))
-                d.movieData != null && episodes.isEmpty() -> Button(onClick = { onPlay(d.movieData!!) }, modifier = play.tvFocusIndicator()) {
+                d.movieData != null && episodes.isEmpty() -> Button(shape = MaterialTheme.shapes.small, onClick = { onPlay(d.movieData!!) }, modifier = play.tvFocusIndicator()) {
                     Icon(Icons.Filled.PlayArrow, null)
                     val p = d.movieProgress
                     Text(if (resuming) "Resume" else if (d.kind == "live") "Watch live" else if (p?.watched == true) "Play again" else "Play", Modifier.padding(start = 8.dp))
                 }
-                next != null -> Button(onClick = { onPlay(next.data) }, modifier = play.tvFocusIndicator()) {
+                next != null -> Button(shape = MaterialTheme.shapes.small, onClick = { onPlay(next.data) }, modifier = play.tvFocusIndicator()) {
                     Icon(Icons.Filled.PlayArrow, null)
                     val p = next.progress
                     val label = episodeTitle(next.copy(name = null), episodes.indexOf(next))
@@ -663,7 +663,7 @@ private fun BookmarkMenu(current: String?, onPick: (String?) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val list = BOOKMARK_LISTS.firstOrNull { it.first == current }?.second
     Box {
-        FilledTonalButton(
+        FilledTonalButton(shape = MaterialTheme.shapes.small,
             onClick = { open = true },
             modifier = Modifier.heightIn(min = 52.dp).semantics { stateDescription = list?.let { "Saved to $it" } ?: "Not in your library" },
             contentPadding = PaddingValues(horizontal = 16.dp),

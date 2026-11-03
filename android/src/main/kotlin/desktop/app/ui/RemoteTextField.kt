@@ -46,8 +46,13 @@ fun RemoteTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
-    shape: Shape = MaterialTheme.shapes.extraSmall,
-    colors: TextFieldColors = OutlinedTextFieldDefaults.colors(),
+    shape: Shape = MaterialTheme.shapes.small,
+    colors: TextFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedContainerColor = Palette.surface,
+        unfocusedContainerColor = Palette.surface,
+        unfocusedBorderColor = Palette.line,
+        focusedBorderColor = Palette.accent,
+    ),
 ) {
     val tv = LocalTv.current
     val focus = LocalFocusManager.current

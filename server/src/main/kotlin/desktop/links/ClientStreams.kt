@@ -4,6 +4,7 @@ import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.DrmExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import desktop.api.ClearKeyDto
 import desktop.api.NotFound
 import desktop.api.StreamDto
@@ -43,12 +44,21 @@ class ClientStreams(
 ) {
     class Gone(message: String) : RuntimeException(message)
 
-    fun stream(linkId: String, direct: Boolean, proxyAll: Boolean): StreamDto {
+    /**
+     * [decrypt] asks for a ClearKey DASH link to arrive decrypted: the server holds the key, and some devices can't
+     * decrypt with theirs. It falls back to handing the key over when the manifest isn't one the proxy can decrypt.
+     */
+    suspend fun stream(linkId: String, direct: Boolean, proxyAll: Boolean, decrypt: Boolean = false): StreamDto {
         val link = links.link(linkId) ?: throw Gone("Those links have expired; load them again")
         require(link.playable) { "This link can't be played" }
         val l = link.link
         val headers = LinkHeaders.of(l)
         val clearKey = link.clearKey?.let { ClearKeyDto((l as? DrmExtractorLink)?.kid?.let(ClearKey::toHex), it) }
+        if (decrypt && clearKey != null && l.type == ExtractorLinkType.DASH) {
+            val key = ClearKey.toHex(clearKey.key)?.chunked(2)?.map { it.toInt(16).toByte() }?.toByteArray()
+            val path = key?.let { proxy.registerDecrypted(l.url, headers.all, link.interceptor, it) }
+            if (path != null) return StreamDto(path, l.type.name, proxied = true)
+        }
         if (direct && !proxyAll && !needsProxy(link)) {
             return StreamDto(l.url, l.type.name, headers.all, proxied = false, clearKey = clearKey)
         }

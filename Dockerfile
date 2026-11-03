@@ -23,8 +23,12 @@ RUN --mount=type=cache,target=/root/.gradle \
 # Debian, not Ubuntu: Ubuntu's chromium package is a snap stub that doesn't run in a container.
 FROM debian:bookworm-slim
 
+LABEL org.opencontainers.image.title="cloudstream-desktop" \
+      org.opencontainers.image.description="Headless Cloudstream server with web UI" \
+      org.opencontainers.image.source="https://github.com/IstarVin/cloudstream-desktop"
+
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openjdk-17-jre-headless chromium xvfb fonts-liberation ca-certificates \
+    && apt-get install -y --no-install-recommends openjdk-17-jre-headless chromium xvfb fonts-liberation ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Chromium refuses to start as root or inside Docker's default seccomp profile with its own sandbox; the container is
@@ -44,4 +48,7 @@ USER app
 ENV XDG_CONFIG_HOME=/config XDG_DATA_HOME=/data
 VOLUME ["/config", "/data"]
 EXPOSE 6969
+# /api/auth/status is reachable without a pairing token.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:6969/api/auth/status >/dev/null || exit 1
 ENTRYPOINT ["/app/entrypoint.sh"]

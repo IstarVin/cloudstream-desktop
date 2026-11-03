@@ -110,16 +110,16 @@ fun SourceSelector(current: ProviderDto?, onClick: () -> Unit, modifier: Modifie
     Surface(
         onClick = onClick,
         shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = modifier.heightIn(min = 64.dp).tvFocusIndicator().semantics { contentDescription = "Source: ${current?.name ?: "none chosen"}. Change source" },
+        color = Palette.surface2,
+        contentColor = Palette.text,
+        modifier = modifier.heightIn(min = 48.dp).tvFocusIndicator().semantics { contentDescription = "Source: ${current?.name ?: "none chosen"}. Change source" },
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SourceIcon(current)
+            SourceIcon(current, size = 32.dp)
             Column(Modifier.weight(1f)) {
                 Text(current?.name ?: "Choose a source", style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    current?.let { sourceLanguage(it.lang) } ?: "Browse installed plugins",
+                    current?.let { sourceLanguage(it.lang) + " · Change source" } ?: "Browse installed plugins",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -185,12 +185,12 @@ fun ProviderPicker(
                     keyboard?.hide()
                     focusManager.clearFocus()
                 }),
-                shape = MaterialTheme.shapes.large,
+                shape = MaterialTheme.shapes.small,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
+                    unfocusedBorderColor = Palette.line,
                 ),
                 modifier = (Modifier.fillMaxWidth().padding(horizontal = 20.dp)
                     .semantics { contentDescription = "Find a source by name, plugin or language" }),

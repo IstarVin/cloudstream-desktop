@@ -7,7 +7,7 @@ The web implementation is the visual reference for both clients. Catalog browsin
 | Role | Value | Use |
 | --- | --- | --- |
 | Background | `#0E0F13` | Page canvas |
-| Surface | `#16181E` | Navigation rail, source selector, resume cards |
+| Surface | `#16181E` | Sidebar, source band, text fields |
 | Surface 2 | `#1E2129` | Fields, artwork placeholders, secondary controls |
 | Surface 3 | `#282C36` | Raised/interactive surfaces |
 | Text | `#ECEEF3` | Titles and body copy |
@@ -22,20 +22,21 @@ Source tokens live in `web/src/app.css`; Android maps them to Material roles in 
 
 Use the platform sans-serif family, bold page headings, strong section headings, semibold poster labels and quieter metadata. Web headings scale with viewport width. Android uses scalable `sp`: 30/36 for page headings, 36/42 on expanded catalog panes, 20/26 for section headings, 14/20 for poster labels, and 13/18 for supporting text. TV retains its larger body and label scale. Page and section headings use slight negative tracking; body text uses the platform defaults.
 
-Use 8-unit spacing steps with 4-unit refinements. Artwork and source selectors have 12-unit corners; smaller fields use 8. Material buttons, navigation indicators and sheets keep their native shapes. Avoid adding containers around every shelf: the artwork supplies the structure.
+Use 8-unit spacing steps with 4-unit refinements. Artwork and source selectors have 12-unit corners; smaller fields use 8. Primary and outlined buttons use 8dp corners on Android, matching the web’s compact rectangular controls. Navigation selections also use softly rounded rectangles. Bottom sheets retain native shapes. Avoid adding containers around every shelf: the artwork supplies the structure.
 
 ## Layout and platform translation
 
 | Web pattern | Android adaptation |
 | --- | --- |
 | Page heading and short introduction | Shared `ScreenHeading`, wrapping supporting text and 48dp native action targets |
-| Bottom navigation below 900px; sidebar above | Material bottom navigation below 600dp window width; rail above, always rail on TV |
-| Orange active link, muted inactive links | Orange selected icon/label, soft orange indicator, outlined inactive icons |
+| Bottom navigation below 900px; sidebar above | Compact bottom navigation below 600dp window width; labeled 200dp sidebar above, 184dp sidebar on TV |
+| Orange active link, muted inactive links | Outlined icons in both states; orange selected icon/label with a soft orange rectangle (40 × 28dp behind bottom-navigation icons) |
 | Centered content with a 1400px maximum | Catalog area capped at 1400dp; extra side spacing above 900dp of available pane width |
+| Home search and source band | Search beside the heading on expanded panes or full-width below on compact panes; bordered source band with source selector and plugin management |
 | Horizontal poster shelves with desktop arrows | Swipeable lazy rows; D-pad focus and scrolling on TV |
 | Responsive artwork sizing | 140dp portrait / 248dp landscape on compact panes; 176dp / 304dp at 720dp pane width or on TV |
-| Library and collection grids | Adaptive grid cells, 16dp column gaps and 24dp row gaps |
-| Landscape resume thumbnails | Native resume cards preserve portrait artwork, episode text, remaining time and progress |
+| Library and collection grids | Adaptive grid cells with a 140dp compact minimum (156dp on expanded panes or TV), 16dp column gaps and 24dp row gaps |
+| Landscape resume thumbnails | 16:9 landscape posters with title and provider/episode/remaining-time metadata below, plus an artwork-edge progress track |
 | Title backdrop with gradient and poster | Scrimmed hero, 96dp portrait artwork (80dp in short windows), native play and bookmark controls |
 | Settings sidebar | Category strip on compact panes; category sidebar on wide panes |
 | Web dialogs and source pickers | Material bottom sheets; focus-contained dialogs on TV |
@@ -47,7 +48,9 @@ Android layout decisions use available window/pane width, not device model. Keep
 - Shelf titles have more space above than below; use 32dp between home collections and 16dp between artwork cards.
 - Poster text sits below artwork, with two lines for titles and muted source/year metadata. Failed images retain initials and the same aspect ratio.
 - Loading shelves share the loaded poster width so content does not change scale when it arrives.
-- Primary actions use filled orange. Secondary actions, unselected tabs and supporting text stay quiet.
+- Primary actions use filled orange with 8dp corners; outlined actions share the same corners. Secondary actions, unselected tabs and supporting text stay quiet.
+- Text fields use a filled surface, subtle border and 8dp corners; focus changes the border to orange. Retain native keyboard actions and remote text entry.
+- Bottom navigation preserves labels, selection semantics and minimum touch targets. Sidebar destinations place outlined icons beside labels, with a full-row soft orange selected background and visible TV focus.
 - Headings wrap with system font scaling. Controls retain Android's minimum touch targets and built-in accessibility semantics.
 - Preserve factual copy and real catalog imagery. Do not introduce decorative heroes or fabricated featured titles.
 

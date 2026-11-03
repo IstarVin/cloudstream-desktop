@@ -128,9 +128,9 @@ fun Poster(
                 Text(
                     badge,
                     style = MaterialTheme.typography.labelSmall,
-                    color = Palette.accentInk,
+                    color = Palette.onImage,
                     modifier = Modifier.align(Alignment.TopStart).padding(6.dp)
-                        .background(Palette.accent, MaterialTheme.shapes.extraSmall).padding(horizontal = 6.dp, vertical = 2.dp),
+                        .background(Palette.scrim, MaterialTheme.shapes.extraSmall).padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
             if (progress != null && progress > 0f) {
@@ -184,7 +184,7 @@ fun ErrorBox(message: String, modifier: Modifier = Modifier, onRetry: (() -> Uni
             modifier = Modifier.semantics { heading() },
         )
         Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 440.dp))
-        if (onRetry != null) Button(onClick = onRetry, modifier = Modifier.tvFocusIndicator()) { Text("Try again") }
+        if (onRetry != null) Button(shape = MaterialTheme.shapes.small, onClick = onRetry, modifier = Modifier.tvFocusIndicator()) { Text("Try again") }
     }
 }
 
@@ -197,7 +197,7 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier) {
 @Composable
 fun ScreenHeading(title: String, modifier: Modifier = Modifier, subtitle: String? = null, actions: @Composable RowScope.() -> Unit = {}) {
     Row(
-        modifier.fillMaxWidth().padding(start = Gutter, end = Gutter, top = 20.dp, bottom = 24.dp),
+        modifier.fillMaxWidth().padding(start = Gutter, end = Gutter, top = if (LocalCatalogLayout.current.expanded) 40.dp else 24.dp, bottom = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -256,7 +256,7 @@ val Gutter = 20.dp
 data class CatalogLayout(val expanded: Boolean = false, val television: Boolean = false) {
     val posterWidth: Dp get() = if (television || expanded) 176.dp else 140.dp
     val landscapeWidth: Dp get() = if (television || expanded) 304.dp else 248.dp
-    val gridMinWidth: Dp get() = if (television || expanded) 156.dp else 104.dp
+    val gridMinWidth: Dp get() = if (television || expanded) 156.dp else 140.dp
 }
 
 val LocalCatalogLayout = staticCompositionLocalOf { CatalogLayout() }

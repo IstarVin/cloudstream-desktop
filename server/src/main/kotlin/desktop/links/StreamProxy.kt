@@ -36,7 +36,9 @@ import java.util.concurrent.ConcurrentHashMap
  * kept per token so a repeat request never reaches the upstream.
  */
 class StreamProxy {
-    private class Target(val headers: Map<String, String>, val client: OkHttpClient, val created: Long) {
+    private class Target(val headers: Map<String, String>, val client: OkHttpClient, val created: Long, val key: ByteArray? = null) {
+        /** The decryptor of each media file fetched here with a [key]; empty for a file that isn't an MP4. */
+        val cenc = ConcurrentHashMap<String, java.util.Optional<CencFile>>()
         val playlists = ConcurrentHashMap<String, String>()
         val aliases = ConcurrentHashMap<String, String>()
         /** DASH manifests made here (one per period of a multi-period one), keyed by their made-up URL. */
@@ -50,12 +52,72 @@ class StreamProxy {
     private val random = SecureRandom()
 
     /** Registers [url]'s request context and returns the proxied URL path (relative to the server root). */
-    fun register(url: String, headers: Map<String, String>, interceptor: Interceptor?): String {
+    fun register(url: String, headers: Map<String, String>, interceptor: Interceptor?, key: ByteArray? = null): String {
         expire()
         val token = ByteArray(12).also(random::nextBytes).let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
         val client = interceptor?.let { app.baseClient.newBuilder().addInterceptor(it).build() } ?: app.baseClient
-        targets[token] = Target(headers, client, System.currentTimeMillis())
+        targets[token] = Target(headers, client, System.currentTimeMillis(), key)
         return path(token, url)
+    }
+
+    /**
+     * The proxied path of the ClearKey DASH manifest at [url], with the proxy decrypting every media file it serves
+     * with [key] and the manifest rewritten to say so (no protection, files through the proxy). Null when the manifest
+     * isn't one this can do that for ([decryptableMpd]); nothing stays registered then.
+     */
+    suspend fun registerDecrypted(url: String, headers: Map<String, String>, interceptor: Interceptor?, key: ByteArray): String? {
+        val path = register(url, headers, interceptor, key)
+        val token = path.removePrefix("/proxy/").substringBefore('/')
+        val target = targets.getValue(token)
+        val rewritten = runCatching {
+            withContext(Dispatchers.IO) {
+                val request = Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()
+                target.client.newCall(request).execute().use { res ->
+                    val text = res.body.string().takeIf { res.isSuccessful && it.trimStart().startsWith("<") } ?: return@use null
+                    decryptableMpd(text, res.request.url.toString(), token)
+                }
+            }
+        }.getOrNull()
+        if (rewritten == null) { targets.remove(token); return null }
+        target.documents[url] = rewritten
+        return path
+    }
+
+    /** A decryptor for the MP4 at [url], opened once; null when it isn't an MP4. */
+    private fun cencFor(target: Target, url: String): CencFile? {
+        val key = target.key ?: return null
+        target.cenc[url]?.let { return it.orElse(null) }
+        val file = CencFile.open(key) { from, to ->
+            val request = Request.Builder().url(url).apply {
+                target.headers.forEach { (k, v) -> header(k, v) }
+                header(HttpHeaders.Range, "bytes=$from-$to")
+            }.build()
+            target.client.newCall(request).execute().use { res ->
+                if (res.code != 206) throw IOException("The media host answered ${res.code} to a ranged read; decrypting needs ranges")
+                val total = res.header(HttpHeaders.ContentRange)?.substringAfter('/')?.toLongOrNull() ?: throw IOException("No file length")
+                Fetched(from, res.body.bytes(), total)
+            }
+        }
+        target.cenc[url] = java.util.Optional.ofNullable(file)
+        return file
+    }
+
+    /**
+     * [mpd] for a client that gets the media decrypted by this proxy: each `BaseURL` points back here and the
+     * protection elements are gone. Null for what this can't serve that way: `cenc` is the only scheme handled, and
+     * media named by a template or a segment list isn't one file with a segment index.
+     */
+    fun decryptableMpd(mpd: String, base: String, token: String): String? {
+        if (BASE_URL.find(mpd) == null || "<SegmentList" in mpd || TEMPLATE_ATTR.containsMatchIn(mpd)) return null
+        val scheme = CENC_PROTECTION_ANY.findAll(mpd).mapNotNull { Regex("""\bvalue="([^"]*)"""").find(it.value)?.groupValues?.get(1) }.firstOrNull()
+        if (scheme != null && scheme != "cenc") return null
+        val baseUri = URI(base)
+        val rebased = BASE_URL.replace(mpd) { m ->
+            val uri = baseUri.resolve(m.groupValues[1].trim().replace("&amp;", "&"))
+            if (!uri.scheme.equals("http", true) && !uri.scheme.equals("https", true)) return@replace m.value
+            "<BaseURL>${path(token, uri.toString()).replace("&", "&amp;")}</BaseURL>"
+        }
+        return PROTECTION_ELEMENT.replace(rebased, "")
     }
 
     private fun path(token: String, url: String): String {
@@ -93,7 +155,9 @@ class StreamProxy {
         try {
             val type = res.header("Content-Type").orEmpty()
             val body = res.body
-            val isPlaylist = type.contains("mpegurl", true) || url.substringBefore('?').endsWith(".m3u8")
+            // A manifest is a manifest whatever the CDN labels it (GoPlay's .mpd comes as mpegurl).
+            val isManifest = type.contains("dash+xml", true) || url.substringBefore('?').endsWith(".mpd")
+            val isPlaylist = !isManifest && (type.contains("mpegurl", true) || url.substringBefore('?').endsWith(".m3u8"))
             if (isPlaylist && res.isSuccessful) {
                 // Some CDNs label every file mpegurl, init segments included; those bytes must not go through a charset.
                 val bytes = withContext(Dispatchers.IO) { body.bytes() }
@@ -104,13 +168,18 @@ class StreamProxy {
                 call.respondBytes(bytes, runCatching { ContentType.parse(type) }.getOrDefault(ContentType.Application.OctetStream), HttpStatusCode.fromValue(res.code))
                 return
             }
-            if (res.isSuccessful && (type.contains("dash+xml", true) || url.substringBefore('?').endsWith(".mpd"))) {
+            if (res.isSuccessful && isManifest) {
                 val text = withContext(Dispatchers.IO) { body.string() }
                 respondDocument(call, rewriteMpd(text, res.request.url.toString(), token))
                 return
             }
             for (h in listOf(HttpHeaders.ContentRange, HttpHeaders.AcceptRanges)) res.header(h)?.let { call.response.header(h, it) }
             val length = body.contentLength().takeIf { it >= 0 }
+            val cenc = if (target.key != null && res.isSuccessful) {
+                try { withContext(Dispatchers.IO) { cencFor(target, url) } }
+                catch (e: Exception) { return call.respondText("Can't decrypt this stream: ${e.message}", status = HttpStatusCode.BadGateway) }
+            } else null
+            var position = res.header(HttpHeaders.ContentRange)?.let { CONTENT_RANGE.find(it) }?.groupValues?.get(1)?.toLongOrNull() ?: 0L
             val tap = if (res.isSuccessful) tap(target, url, res.header(HttpHeaders.ContentRange)) else null
             handedOff = true
             call.respondOutputStream(
@@ -126,6 +195,8 @@ class StreamProxy {
                             while (true) {
                                 val n = input.read(chunk)
                                 if (n < 0) break
+                                cenc?.apply(chunk, 0, n, position)
+                                position += n
                                 this@respondOutputStream.write(chunk, 0, n)
                                 tap?.feed(chunk, 0, n)
                             }
@@ -232,7 +303,7 @@ class StreamProxy {
      */
     fun rewriteMpd(mpd: String, base: String, token: String): String {
         val baseUri = URI(base)
-        return MPD_URL.replace(withSegmentDuration(mpd)) { m ->
+        return MPD_URL.replace(withClearKeyProtection(withSegmentDuration(mpd))) { m ->
             val ref = m.groupValues[2].replace("&amp;", "&")
             if ('$' in ref) return@replace m.value
             val uri = baseUri.resolve(ref)
@@ -341,6 +412,23 @@ class StreamProxy {
             val d = TIMELINE_D.findAll(m.groupValues[2]).map { it.groupValues[1] }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
             if (d == null || Regex("""\sduration=""").containsMatchIn(attrs)) m.value
             else "<SegmentList$attrs duration=\"$d\">${m.groupValues[2]}</SegmentList>"
+        }
+
+        private val BASE_URL = Regex("""<BaseURL\b[^>]*>([^<]+)</BaseURL>""")
+        private val PROTECTION_ELEMENT = Regex("""<ContentProtection\b[^>]*/>|<ContentProtection\b[^>]*>.*?</ContentProtection>""", RegexOption.DOT_MATCHES_ALL)
+        private val CENC_PROTECTION_ANY = Regex("""<ContentProtection\b[^>]*mp4protection:2011[^>]*>""")
+        private val TEMPLATE_ATTR = Regex("""\b(media|initialization)="[^"]*[$]""")
+        private const val CLEARKEY_SCHEME = "urn:uuid:e2719d58-a985-b3c9-781a-b030af78d30e"
+        private val CENC_PROTECTION = Regex("""<ContentProtection\b[^>]*mp4protection:2011[^>]*/>""")
+
+        /**
+         * Players decrypting with a ClearKey only use the streams whose manifest names that key system: dash.js drops a
+         * manifest listing just Widevine and PlayReady ("No streams to play"). Where the manifest has the generic
+         * `cenc` protection element (key id, no scheme of its own) and no ClearKey one, adds the ClearKey element.
+         */
+        fun withClearKeyProtection(mpd: String): String {
+            if (CLEARKEY_SCHEME in mpd) return mpd
+            return CENC_PROTECTION.replace(mpd) { it.value + """<ContentProtection schemeIdUri="$CLEARKEY_SCHEME"/>""" }
         }
 
         private val PERIOD = Regex("""<Period\b.*?</Period>""", RegexOption.DOT_MATCHES_ALL)

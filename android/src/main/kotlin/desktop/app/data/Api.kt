@@ -199,7 +199,8 @@ class Api(initial: ServerConfig?) {
         sse("/api/links", mapOf("provider" to provider, "data" to data, "fresh" to if (fresh) 1 else null))
 
     suspend fun stream(link: String, direct: Boolean): StreamDto =
-        get("/api/stream", mapOf("link" to link, "direct" to if (direct) 1 else null))
+        // The server decrypts ClearKey streams itself: some devices' ClearKey service can't decrypt.
+        get("/api/stream", mapOf("link" to link, "direct" to if (direct) 1 else null, "decrypt" to 1))
 
     fun subtitleUrl(sub: SubtitleDto): String = url("/api/subtitle", mapOf("id" to sub.id)).toString()
 
