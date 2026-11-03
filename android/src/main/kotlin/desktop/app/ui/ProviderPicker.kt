@@ -111,7 +111,8 @@ fun SourceSelector(current: ProviderDto?, onClick: () -> Unit, modifier: Modifie
         onClick = onClick,
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = modifier.heightIn(min = 56.dp).tvFocusIndicator().semantics { contentDescription = "Source: ${current?.name ?: "none chosen"}. Change source" },
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = modifier.heightIn(min = 64.dp).tvFocusIndicator().semantics { contentDescription = "Source: ${current?.name ?: "none chosen"}. Change source" },
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SourceIcon(current)

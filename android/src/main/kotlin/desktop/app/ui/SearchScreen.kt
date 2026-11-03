@@ -138,7 +138,7 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
     LaunchedEffect(initial) { if (initial.isNotBlank() && initial != vm.lastQuery) vm.search(initial) }
 
     Column(Modifier.fillMaxSize()) {
-        // The field is the screen's header: nothing above it but the status bar.
+        ScreenHeading("Search") { CastButton() }
         Row(verticalAlignment = Alignment.CenterVertically) {
         RemoteTextField(
             query, { query = it },
@@ -152,12 +152,11 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
                 if (query.isNotEmpty()) IconButton(onClick = { query = "" }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Clear, "Clear search text") }
             },
             singleLine = true,
-            shape = MaterialTheme.shapes.large,
+            shape = MaterialTheme.shapes.small,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { run(query) }),
             modifier = (Modifier.weight(1f).padding(horizontal = Gutter, vertical = 8.dp).semantics { contentDescription = "Search all sources" }),
         )
-        CastButton(Modifier.padding(end = 8.dp))
         }
         val showFilters = vm.lastQuery.isNotEmpty()
         if (showFilters) LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -215,7 +214,7 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
                         SectionTitle(provider)
                         Text("${items.size}", style = MaterialTheme.typography.bodySmall.merge(TabularNumbers), color = Palette.muted)
                     }
-                    LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         items(items, key = { it.url }) { item ->
                             Poster(item.name, item.poster, headers = item.posterHeaders,
                                 subtitle = listOfNotNull(item.year?.toString(), item.type).joinToString(" · "),

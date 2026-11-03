@@ -162,14 +162,7 @@ fun SettingsScreen(onUnpair: () -> Unit) {
         BoxWithConstraints(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
             val wide = maxWidth >= 760.dp
             Column(Modifier.widthIn(max = 1120.dp).fillMaxSize()) {
-                Column(
-                    Modifier.fillMaxWidth().padding(horizontal = 24.dp)
-                        .padding(top = if (tv) 12.dp else 20.dp, bottom = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text("Settings", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
-                    Text("Make Cloudstream work your way.", style = MaterialTheme.typography.bodyMedium, color = Palette.muted)
-                }
+                ScreenHeading("Settings", subtitle = "Make Cloudstream work your way.")
                 if (!wide) SettingsCategories(tab, vertical = false, onSelect = ::selectTab)
                 Row(Modifier.weight(1f).fillMaxWidth()) {
                     if (wide) SettingsCategories(tab, vertical = true, onSelect = ::selectTab)

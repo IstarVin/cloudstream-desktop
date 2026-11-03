@@ -344,7 +344,7 @@ private fun TitleContent(
             }
             Part.Related -> Column {
                 SectionTitle("More like this", Modifier.padding(start = Gutter, top = 20.dp, bottom = 8.dp))
-                LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     items(d.recommendations, key = { it.provider + it.url }) { r ->
                         Poster(r.name, r.poster, headers = r.posterHeaders, onClick = { onTitle(r.provider, r.url) })
                     }
@@ -422,7 +422,7 @@ private fun Hero(d: Details, onBack: () -> Unit) {
         }
         Column(Modifier.fillMaxWidth().padding(top = artworkHeight - 64.dp).padding(horizontal = Gutter)) {
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Box(Modifier.width(80.dp).aspectRatio(2f / 3f).clip(MaterialTheme.shapes.small).background(Palette.surface2)) {
+                Box(Modifier.width(if (shortWindow) 80.dp else 96.dp).aspectRatio(2f / 3f).clip(MaterialTheme.shapes.medium).background(Palette.surface2)) {
                     AsyncImage(imageRequest(d.poster, d.posterHeaders), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {

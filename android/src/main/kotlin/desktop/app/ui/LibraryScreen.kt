@@ -99,18 +99,18 @@ fun LibraryScreen(onTitle: (String, String) -> Unit, onBrowse: () -> Unit) {
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            ScreenHeading("Library") { CastButton() }
+            ScreenHeading("Library", subtitle = "Your watchlist and the stories you’ve started.") { CastButton() }
             PrimaryTabRow(selectedTabIndex = tab) {
-                Tab(tab == 0, { tab = 0 }, text = { Text("History") })
-                Tab(tab == 1, { tab = 1 }, text = { Text("Bookmarks") })
+                Tab(tab == 0, { tab = 0 }, text = { Text("History") }, unselectedContentColor = Palette.muted)
+                Tab(tab == 1, { tab = 1 }, text = { Text("Bookmarks") }, unselectedContentColor = Palette.muted)
             }
             val grid: @Composable (content: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit) -> Unit = { content ->
                 LazyVerticalGrid(
-                    GridCells.Adaptive(if (LocalTv.current) 140.dp else 100.dp),
+                    GridCells.Adaptive(LocalCatalogLayout.current.gridMinWidth),
                     state = if (tab == 0) historyGrid else bookmarkGrid,
                     contentPadding = PaddingValues(Gutter),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp),
                     modifier = Modifier.fillMaxSize(),
                     content = content,
                 )

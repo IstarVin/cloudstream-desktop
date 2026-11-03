@@ -31,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -94,7 +95,7 @@ fun Poster(
     subtitle: String? = null,
     progress: Float? = null,
     badge: String? = null,
-    width: Dp? = if (LocalTv.current) 140.dp else 120.dp,
+    width: Dp? = LocalCatalogLayout.current.posterWidth,
     /** Width over height: posters are 2:3, landscape rows 16:9. */
     aspect: Float = 2f / 3f,
     onClick: () -> Unit,
@@ -140,7 +141,7 @@ fun Poster(
         }
         Text(
             title,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.titleSmall,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 8.dp),
@@ -189,17 +190,22 @@ fun ErrorBox(message: String, modifier: Modifier = Modifier, onRetry: (() -> Uni
 
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = modifier.semantics { heading() })
+    Text(text, style = MaterialTheme.typography.titleLarge, modifier = modifier.semantics { heading() })
 }
 
-/** The title of a top-level screen: one compact row, so the content starts near the top of the screen. */
+/** Shared page hierarchy, with native action targets and text that follows the system font scale. */
 @Composable
-fun ScreenHeading(title: String, modifier: Modifier = Modifier, actions: @Composable RowScope.() -> Unit = {}) {
+fun ScreenHeading(title: String, modifier: Modifier = Modifier, subtitle: String? = null, actions: @Composable RowScope.() -> Unit = {}) {
     Row(
-        modifier.heightIn(min = 56.dp).padding(start = 16.dp, end = 8.dp),
+        modifier.fillMaxWidth().padding(start = Gutter, end = Gutter, top = 20.dp, bottom = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(title, style = if (LocalCatalogLayout.current.expanded) MaterialTheme.typography.headlineLarge else MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.semantics { heading() })
+            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Palette.muted)
+        }
         actions()
     }
 }
@@ -227,13 +233,14 @@ fun EmptyState(
 
 @Composable
 fun PosterPlaceholders() {
+    val posterWidth = LocalCatalogLayout.current.posterWidth
     LazyRow(
         Modifier.fillMaxWidth().padding(top = 12.dp).clearAndSetSemantics { contentDescription = "Loading titles" },
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
         userScrollEnabled = false,
     ) {
         items(8) {
-            Column(Modifier.width(120.dp)) {
+            Column(Modifier.width(posterWidth)) {
                 Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp)).background(Palette.surface2))
                 Spacer(Modifier.height(8.dp))
                 Box(Modifier.fillMaxWidth(0.8f).height(12.dp).clip(RoundedCornerShape(4.dp)).background(Palette.surface2))
@@ -243,7 +250,16 @@ fun PosterPlaceholders() {
 }
 
 /** The gutter every top-level screen shares. */
-val Gutter = 16.dp
+val Gutter = 20.dp
+
+/** Based on the content pane's available width, including split-window and rail layouts. */
+data class CatalogLayout(val expanded: Boolean = false, val television: Boolean = false) {
+    val posterWidth: Dp get() = if (television || expanded) 176.dp else 140.dp
+    val landscapeWidth: Dp get() = if (television || expanded) 304.dp else 248.dp
+    val gridMinWidth: Dp get() = if (television || expanded) 156.dp else 104.dp
+}
+
+val LocalCatalogLayout = staticCompositionLocalOf { CatalogLayout() }
 
 @Composable
 fun CatalogLoading() {

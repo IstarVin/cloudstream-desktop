@@ -29,11 +29,11 @@ class TvAppTest {
         app.api.server = ServerConfig("http://127.0.0.1:1", "offline-ui-test")
         try {
             ActivityScenario.launch(MainActivity::class.java).use {
-                compose.onNodeWithText("Home").assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
-                compose.onNodeWithText("Search").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
+                compose.onNode(hasText("Home") and hasClickAction()).assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
+                compose.onNode(hasText("Search") and hasClickAction()).assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
                 compose.onNodeWithText("Search movies, series, anime…").assertExists()
-                compose.onNodeWithText("Search").performKeyInput { pressKey(Key.DirectionDown) }
-                compose.onNodeWithText("Library").assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
+                compose.onNode(hasText("Search") and hasClickAction()).performKeyInput { pressKey(Key.DirectionDown) }
+                compose.onNode(hasText("Library") and hasClickAction()).assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
                 compose.onNode(hasText("Settings") and hasClickAction()).assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
                 compose.onNode(hasText("Plugins") and hasClickAction()).assertExists()
                 captureTvScreen("tv-settings")

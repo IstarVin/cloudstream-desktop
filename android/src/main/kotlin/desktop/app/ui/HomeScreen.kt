@@ -1,6 +1,7 @@
 package desktop.app.ui
 
 import android.app.Application
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -175,8 +176,16 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
     HomeRefreshContainer(isRefreshing = refreshing, onRefresh = { vm.load() }) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
+                ScreenHeading("Home", subtitle = "Your next watch starts here.") {
+                    if (tv) {
+                        IconButton(onClick = { vm.load() }, enabled = !refreshing, modifier = Modifier.tvFocusIndicator()) {
+                            Icon(Icons.Filled.Refresh, "Refresh home")
+                        }
+                    }
+                    CastButton()
+                }
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 8.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = Gutter).padding(bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -185,13 +194,16 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
                         onClick = { picking = true },
                         modifier = Modifier.weight(1f, fill = false).widthIn(max = 480.dp),
                     )
-                    IconButton(onClick = onManage, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Outlined.Extension, "Manage plugins") }
-                    if (tv) {
-                        IconButton(onClick = { vm.load() }, enabled = !refreshing, modifier = Modifier.tvFocusIndicator()) {
-                            Icon(Icons.Filled.Refresh, "Refresh home")
+                    if (LocalCatalogLayout.current.expanded) {
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = onManage, modifier = Modifier.tvFocusIndicator()) {
+                            Icon(Icons.Outlined.Extension, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Manage plugins")
                         }
+                    } else {
+                        IconButton(onClick = onManage, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Outlined.Extension, "Manage plugins") }
                     }
-                    CastButton()
                 }
             }
             if (tv && refreshing) {
@@ -214,7 +226,7 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
                     )
                 }
                 item {
-                    LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         items(cont, key = { it.provider + it.url }) { c ->
                             ContinueWatchingCard(c, onClick = { onTitle(c.provider, c.url) })
                         }
@@ -284,8 +296,9 @@ private fun ContinueWatchingCard(entry: ContinueEntry, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         color = MaterialTheme.colorScheme.surfaceContainer,
-        shape = MaterialTheme.shapes.large,
-        modifier = Modifier.width(if (LocalTv.current) 320.dp else 292.dp).tvFocusIndicator().semantics(mergeDescendants = true) {
+        shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(1.dp, Palette.line),
+        modifier = Modifier.width(if (LocalTv.current) 340.dp else 292.dp).tvFocusIndicator().semantics(mergeDescendants = true) {
             progress?.let { stateDescription = "${(it * 100).toInt()}% watched" }
         },
     ) {
@@ -355,9 +368,9 @@ private fun HomeSectionRows(vm: HomeViewModel, section: HomeSection, onTitle: (S
             TextButton(onClick = { vm.loadSection(section.index) }, modifier = Modifier.tvFocusIndicator()) { Text("Retry") }
         }
         is Load.Ok -> page.value.rows.filter { it.items.isNotEmpty() }.forEach { row ->
-            Column(Modifier.padding(top = 24.dp)) {
+            Column(Modifier.padding(top = 32.dp)) {
                 Row(
-                    Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = Gutter, end = 8.dp, bottom = 4.dp),
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = Gutter, end = Gutter, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(row.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
@@ -367,12 +380,12 @@ private fun HomeSectionRows(vm: HomeViewModel, section: HomeSection, onTitle: (S
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(18.dp))
                     }
                 }
-                LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     items(row.items, key = { it.provider + it.url }) { item ->
                         Poster(
                             item.name, item.poster,
                             headers = item.posterHeaders,
-                            width = if (row.horizontal) 232.dp else 128.dp,
+                            width = if (row.horizontal) LocalCatalogLayout.current.landscapeWidth else LocalCatalogLayout.current.posterWidth,
                             aspect = if (row.horizontal) 16f / 9f else 2f / 3f,
                             subtitle = item.year?.toString(),
                             badge = item.quality,

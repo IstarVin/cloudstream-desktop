@@ -101,12 +101,12 @@ fun SectionScreen(provider: String, section: Int, row: String, name: String, onT
         },
     ) { padding ->
         LazyVerticalGrid(
-            GridCells.Adaptive(if (LocalTv.current) 140.dp else 100.dp),
+            GridCells.Adaptive(LocalCatalogLayout.current.gridMinWidth),
             state = grid,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = Gutter, end = Gutter, top = padding.calculateTopPadding() + 8.dp, bottom = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             items(items, key = { it.provider + it.url }) { item ->
                 Poster(item.name, item.poster, headers = item.posterHeaders, width = null, subtitle = item.year?.toString(),

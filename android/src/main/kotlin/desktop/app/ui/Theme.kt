@@ -23,6 +23,8 @@ object Palette {
     val muted = Color(0xFF979CAB)
     val accent = Color(0xFFFF8A4C)
     val accentInk = Color(0xFF1D0E05)
+    val accentSoft = accent.copy(alpha = 0.14f)
+    val line = Color(0x1AFFFFFF)
     val good = Color(0xFF53D3A3)
     val danger = Color(0xFFFF6170)
 
@@ -34,11 +36,11 @@ object Palette {
 private val colors = darkColorScheme(
     primary = Palette.accent,
     onPrimary = Palette.accentInk,
-    primaryContainer = Palette.accent.copy(alpha = 0.18f),
+    primaryContainer = Palette.accentSoft,
     onPrimaryContainer = Palette.accent,
     secondary = Palette.accent,
     onSecondary = Palette.accentInk,
-    secondaryContainer = Palette.accent.copy(alpha = 0.14f),
+    secondaryContainer = Palette.accentSoft,
     onSecondaryContainer = Palette.accent,
     background = Palette.bg,
     onBackground = Palette.text,
@@ -52,8 +54,12 @@ private val colors = darkColorScheme(
     surfaceContainerHigh = Palette.surface2,
     surfaceContainerHighest = Palette.surface3,
     outline = Color(0x33FFFFFF),
-    outlineVariant = Color(0x1AFFFFFF),
+    outlineVariant = Palette.line,
     error = Palette.danger,
+    onError = Palette.accentInk,
+    errorContainer = Color(0xFF462028),
+    onErrorContainer = Color(0xFFFFDADD),
+    surfaceTint = Palette.accent,
 )
 
 private val base = Typography()
@@ -61,9 +67,10 @@ private val base = Typography()
 // A product scale on one family: tighter steps than Material's defaults, and nothing under 12sp, so metadata under
 // posters and episodes stays readable at the system font size.
 private val type = Typography(
-    headlineMedium = base.headlineMedium.copy(fontSize = 26.sp, lineHeight = 32.sp, fontWeight = FontWeight.SemiBold),
+    headlineLarge = base.headlineLarge.copy(fontSize = 36.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.9).sp),
+    headlineMedium = base.headlineMedium.copy(fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp),
     headlineSmall = base.headlineSmall.copy(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
-    titleLarge = base.titleLarge.copy(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold),
+    titleLarge = base.titleLarge.copy(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp),
     titleMedium = base.titleMedium.copy(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold),
     titleSmall = base.titleSmall.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
     bodyLarge = base.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp),
@@ -97,7 +104,8 @@ val TabularNumbers = TextStyle(fontFeatureSettings = "tnum")
 
 @Composable
 fun AppTheme(content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalTv provides isTelevision()) {
+    val television = isTelevision()
+    CompositionLocalProvider(LocalTv provides television, LocalCatalogLayout provides CatalogLayout(television = television)) {
         MaterialTheme(colorScheme = colors, typography = if (LocalTv.current) tvType else type, shapes = shapes, content = content)
     }
 }
