@@ -12,8 +12,8 @@
     Pause,
     PictureInPicture2,
     Play,
-    RefreshCw,
     RectangleHorizontal,
+    RefreshCw,
     RotateCcw,
     SkipBack,
     SkipForward,
@@ -27,9 +27,14 @@
   import { useQueryClient } from "@tanstack/svelte-query";
   import { onDestroy, tick, untrack } from "svelte";
   import { formatTime } from "../../api";
-  import { playerGestures } from "../../player/gestures";
   import { player } from "../../player.svelte";
-  import { loadLocal, prefs, saveLocal, type ResizeMode } from "../../player/prefs.svelte";
+  import { playerGestures } from "../../player/gestures";
+  import {
+    loadLocal,
+    prefs,
+    saveLocal,
+    type ResizeMode,
+  } from "../../player/prefs.svelte";
   import { scrubPosition, skipName } from "../../player/rules";
   import { sources } from "../../sources.svelte";
   import { webPlayer } from "../../web-player.svelte";
@@ -63,7 +68,9 @@
   let lastScrubSeek = 0;
   let tapSeek = $state<{ side: -1 | 1; seconds: number } | null>(null);
   let tapSeekTimer: ReturnType<typeof setTimeout> | undefined;
-  let level = $state<{ kind: "volume" | "brightness"; value: number } | null>(null);
+  let level = $state<{ kind: "volume" | "brightness"; value: number } | null>(
+    null,
+  );
   let levelTimer: ReturnType<typeof setTimeout> | undefined;
   let brightness = $state(1);
 
@@ -75,7 +82,8 @@
     const { w: vw, h: vh } = natural;
     if (!w || !h || !vw || !vh || pref.resizeMode === "fit") return "none";
     const fit = Math.min(w / vw, h / vh);
-    if (pref.resizeMode === "zoom") return `scale(${Math.max(w / vw, h / vh) / fit})`;
+    if (pref.resizeMode === "zoom")
+      return `scale(${Math.max(w / vw, h / vh) / fit})`;
     return `scale(${w / (vw * fit)}, ${h / (vh * fit)})`;
   });
   const RESIZE = [
@@ -83,9 +91,13 @@
     { mode: "fill", label: "Stretch", icon: MoveHorizontal },
     { mode: "zoom", label: "Zoom", icon: ZoomIn },
   ] satisfies { mode: ResizeMode; label: string; icon: unknown }[];
-  const resize = $derived(RESIZE.find((r) => r.mode === pref.resizeMode) ?? RESIZE[0]);
+  const resize = $derived(
+    RESIZE.find((r) => r.mode === pref.resizeMode) ?? RESIZE[0],
+  );
 
-  const busy = $derived(p.status === "resolving" || p.status === "loading" || p.buffering);
+  const busy = $derived(
+    p.status === "resolving" || p.status === "loading" || p.buffering,
+  );
   const subtitleLine = $derived(
     [p.label, p.current && `${p.current.source} ${p.current.qualityLabel}`]
       .filter(Boolean)
@@ -104,7 +116,7 @@
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
       if (!p.paused && !panel && p.status === "playing") controls = false;
-    }, 3500);
+    }, 1500);
   }
   $effect(() => {
     // Holding the video still for a swipe-seek isn't a pause worth showing the controls for.
@@ -148,7 +160,10 @@
 
   function tapSeekBy(side: -1 | 1) {
     const step = pref.seekStep;
-    tapSeek = { side, seconds: (tapSeek?.side === side ? tapSeek.seconds : 0) + step };
+    tapSeek = {
+      side,
+      seconds: (tapSeek?.side === side ? tapSeek.seconds : 0) + step,
+    };
     p.seekBy(side * step);
     clearTimeout(tapSeekTimer);
     tapSeekTimer = setTimeout(() => (tapSeek = null), 700);
@@ -204,7 +219,8 @@
     },
     vertical(side, delta, done) {
       if (done) return;
-      if (side === 1 && pref.volumeGesture && video) setVolume(video.volume + delta * 1.5);
+      if (side === 1 && pref.volumeGesture && video)
+        setVolume(video.volume + delta * 1.5);
       if (side === -1 && pref.brightnessGesture) {
         brightness = Math.min(1, Math.max(0.15, brightness + delta * 1.5));
         flash("brightness", brightness);
@@ -234,7 +250,8 @@
   async function togglePip() {
     if (!video) return;
     try {
-      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      if (document.pictureInPictureElement)
+        await document.exitPictureInPicture();
       else await video.requestPictureInPicture();
     } catch {
       // Not supported here.
@@ -248,7 +265,8 @@
   }
 
   function close() {
-    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    if (document.fullscreenElement)
+      void document.exitFullscreen().catch(() => {});
     panel = null;
     p.close();
   }
@@ -262,7 +280,13 @@
   let morphing = $state(false);
 
   /** Glides the box from where it was ([first]) to where it is now ([last]). */
-  function glide(el: HTMLElement, first: DOMRect, last: DOMRect, from: number, to: number) {
+  function glide(
+    el: HTMLElement,
+    first: DOMRect,
+    last: DOMRect,
+    from: number,
+    to: number,
+  ) {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const frame = (r: DOMRect, radius: number) => ({
       top: `${r.top}px`,
@@ -288,7 +312,8 @@
   /** Flips between the full screen and the floating window, gliding the box from one to the other. */
   async function setMinimized(next: boolean) {
     if (!root || p.minimized === next) return;
-    if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
+    if (document.fullscreenElement)
+      await document.exitFullscreen().catch(() => {});
     const el = root;
     const first = el.getBoundingClientRect();
     morph?.cancel();
@@ -302,21 +327,28 @@
 
   const DOCK_KEY = "player-mini";
   const EDGE_GAP = 12;
-  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
+  const clamp = (v: number, lo: number, hi: number) =>
+    Math.min(Math.max(v, lo), Math.max(lo, hi));
 
   /** Which side edge the window sits on, and how far it has been lifted off the bottom. */
   let dock = $state<{ side: "left" | "right"; lift: number }>(
     loadLocal(DOCK_KEY, { side: "right", lift: 0 }),
   );
   let drag = $state<{ x: number; y: number } | null>(null);
-  let grab: { px: number; py: number; rect: DOMRect; moved: boolean } | null = null;
+  let grab: { px: number; py: number; rect: DOMRect; moved: boolean } | null =
+    null;
   let swallowClick = false;
 
   function dragDown(e: PointerEvent) {
     if (e.button !== 0 || !root) return;
     morph?.cancel();
     morphing = false;
-    grab = { px: e.clientX, py: e.clientY, rect: root.getBoundingClientRect(), moved: false };
+    grab = {
+      px: e.clientX,
+      py: e.clientY,
+      rect: root.getBoundingClientRect(),
+      moved: false,
+    };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
 
@@ -342,13 +374,18 @@
     setTimeout(() => (swallowClick = false), 50);
     const el = root;
     const first = el.getBoundingClientRect();
-    const side = first.left + first.width / 2 < innerWidth / 2 ? "left" : "right";
+    const side =
+      first.left + first.width / 2 < innerWidth / 2 ? "left" : "right";
     // Settle on the nearer edge, keeping the height it was dropped at (between the tab bar and the top).
     drag = null;
     dock = { side, lift: 0 };
     await tick();
     const rest = el.getBoundingClientRect();
-    const lift = clamp(rest.bottom - first.bottom, 0, rest.bottom - rest.height - EDGE_GAP);
+    const lift = clamp(
+      rest.bottom - first.bottom,
+      0,
+      rest.bottom - rest.height - EDGE_GAP,
+    );
     dock = { side, lift };
     saveLocal(DOCK_KEY, dock);
     await tick();
@@ -359,7 +396,8 @@
   function fitDock() {
     if (!p.minimized || !root) return;
     const over = EDGE_GAP - root.getBoundingClientRect().top;
-    if (over > 0 && dock.lift > 0) dock = { ...dock, lift: Math.max(0, dock.lift - over) };
+    if (over > 0 && dock.lift > 0)
+      dock = { ...dock, lift: Math.max(0, dock.lift - over) };
   }
 
   function expand() {
@@ -368,7 +406,15 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (!p.open || p.minimized || sources.open || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (
+      !p.open ||
+      p.minimized ||
+      sources.open ||
+      e.ctrlKey ||
+      e.metaKey ||
+      e.altKey
+    )
+      return;
     const t = e.target as HTMLElement | null;
     if (t?.closest("input, select, textarea, [contenteditable]")) return;
     const handled = () => {
@@ -434,7 +480,9 @@
     try {
       navigator.mediaSession.setActionHandler(
         "enterpictureinpicture" as MediaSessionAction,
-        pref.autoPip && p.open ? () => void video?.requestPictureInPicture() : null,
+        pref.autoPip && p.open
+          ? () => void video?.requestPictureInPicture()
+          : null,
       );
     } catch {
       // Unsupported.
@@ -461,7 +509,9 @@
     if (!active) return;
     const track = active;
     const update = () =>
-      (cues = [...(track.activeCues ?? [])].map((c) => (c as VTTCue).getCueAsHTML()));
+      (cues = [...(track.activeCues ?? [])].map((c) =>
+        (c as VTTCue).getCueAsHTML(),
+      ));
     track.addEventListener("cuechange", update);
     update();
     return () => track.removeEventListener("cuechange", update);
@@ -479,8 +529,14 @@
   });
 </script>
 
-<svelte:window onkeydown={onKey} onpagehide={() => p.saveOnExit()} onresize={fitDock} />
-<svelte:document onfullscreenchange={() => (fullscreen = !!document.fullscreenElement)} />
+<svelte:window
+  onkeydown={onKey}
+  onpagehide={() => p.saveOnExit()}
+  onresize={fitDock}
+/>
+<svelte:document
+  onfullscreenchange={() => (fullscreen = !!document.fullscreenElement)}
+/>
 
 {#if p.open}
   <div
@@ -515,9 +571,15 @@
         bind:this={video}
         playsinline
         onloadedmetadata={(e) =>
-          (natural = { w: e.currentTarget.videoWidth, h: e.currentTarget.videoHeight })}
+          (natural = {
+            w: e.currentTarget.videoWidth,
+            h: e.currentTarget.videoHeight,
+          })}
         onresize={(e) =>
-          (natural = { w: e.currentTarget.videoWidth, h: e.currentTarget.videoHeight })}
+          (natural = {
+            w: e.currentTarget.videoWidth,
+            h: e.currentTarget.videoHeight,
+          })}
         onplaying={() => p.onVideoEvent("playing")}
         onwaiting={() => p.onVideoEvent("waiting")}
         onpause={() => p.onVideoEvent("pause")}
@@ -528,7 +590,13 @@
       >
         {#each p.loadedSubs as s (s.id)}
           {#if s.src}
-            <track kind="subtitles" src={s.src} label={s.lang} data-id={s.id} data-vtt="1" />
+            <track
+              kind="subtitles"
+              src={s.src}
+              label={s.lang}
+              data-id={s.id}
+              data-vtt="1"
+            />
           {/if}
         {/each}
       </video>
@@ -565,15 +633,25 @@
       <div class="mini-bar">
         <div class="mini-text">
           <div class="title">{p.item?.details.name ?? ""}</div>
-          <div class="sub">{p.status === "error" ? (p.message ?? "Couldn't play") : p.label}</div>
+          <div class="sub">
+            {p.status === "error" ? (p.message ?? "Couldn't play") : p.label}
+          </div>
         </div>
         <button
           class="icon"
           onclick={() => p.toggle()}
           disabled={p.status === "resolving" || p.status === "error"}
-          aria-label={p.status === "ended" ? "Replay" : p.paused ? "Play" : "Pause"}
+          aria-label={p.status === "ended"
+            ? "Replay"
+            : p.paused
+              ? "Play"
+              : "Pause"}
         >
-          {#if p.status === "ended"}<RotateCcw size={20} strokeWidth={2} aria-hidden="true" />
+          {#if p.status === "ended"}<RotateCcw
+              size={20}
+              strokeWidth={2}
+              aria-hidden="true"
+            />
           {:else if p.paused}<Play
               size={20}
               fill="currentColor"
@@ -588,7 +666,9 @@
         </button>
       </div>
       <div class="mini-line">
-        <div style:width="{p.duration > 0 ? (p.position / p.duration) * 100 : 0}%"></div>
+        <div
+          style:width="{p.duration > 0 ? (p.position / p.duration) * 100 : 0}%"
+        ></div>
       </div>
     {:else}
       {#if p.status === "error"}
@@ -606,7 +686,9 @@
       {/if}
 
       {#if holding}
-        <div class="pill top">{pref.holdSpeed}× <FastForward size={16} aria-hidden="true" /></div>
+        <div class="pill top">
+          {pref.holdSpeed}× <FastForward size={16} aria-hidden="true" />
+        </div>
       {/if}
       {#if scrubTarget != null}
         <div class="pill mid">
@@ -625,11 +707,13 @@
       {/if}
       {#if level}
         <div class="pill level">
-          {#if level.kind === "volume"}<Volume2 size={18} aria-hidden="true" />{:else}<Sun
+          {#if level.kind === "volume"}<Volume2
               size={18}
               aria-hidden="true"
-            />{/if}
-          <span class="meter"><span style:width="{level.value * 100}%"></span></span>
+            />{:else}<Sun size={18} aria-hidden="true" />{/if}
+          <span class="meter"
+            ><span style:width="{level.value * 100}%"></span></span
+          >
         </div>
       {/if}
 
@@ -644,9 +728,14 @@
       {#if p.upNext != null}
         <div class="card up-next">
           <small>Up next in {p.upNext}</small>
-          <b>{p.item?.episodes[(p.item?.index ?? 0) + 1]?.name ?? "Next episode"}</b>
+          <b
+            >{p.item?.episodes[(p.item?.index ?? 0) + 1]?.name ??
+              "Next episode"}</b
+          >
           <div class="row">
-            <button class="btn primary" onclick={() => p.next()}>Play now</button>
+            <button class="btn primary" onclick={() => p.next()}
+              >Play now</button
+            >
             <button class="btn" onclick={() => p.cancelUpNext()}>Cancel</button>
           </div>
         </div>
@@ -654,8 +743,16 @@
 
       <div class="chrome" class:shown={controls} inert={!controls}>
         <div class="top">
-          <button class="icon" onclick={minimize} aria-label="Minimize player" title="Minimize"
-            ><ChevronDown size={26} strokeWidth={1.8} aria-hidden="true" /></button
+          <button
+            class="icon"
+            onclick={minimize}
+            aria-label="Minimize player"
+            title="Minimize"
+            ><ChevronDown
+              size={26}
+              strokeWidth={1.8}
+              aria-hidden="true"
+            /></button
           >
           <div class="titles">
             <div class="title">{p.item?.details.name ?? ""}</div>
@@ -671,8 +768,15 @@
             ></button
           >
           {#if "pictureInPictureEnabled" in document && document.pictureInPictureEnabled}
-            <button class="icon" onclick={togglePip} aria-label="Picture in picture"
-              ><PictureInPicture2 size={20} strokeWidth={1.8} aria-hidden="true" /></button
+            <button
+              class="icon"
+              onclick={togglePip}
+              aria-label="Picture in picture"
+              ><PictureInPicture2
+                size={20}
+                strokeWidth={1.8}
+                aria-hidden="true"
+              /></button
             >
           {/if}
           <button
@@ -683,7 +787,11 @@
                 size={20}
                 strokeWidth={1.8}
                 aria-hidden="true"
-              />{:else}<Maximize size={20} strokeWidth={1.8} aria-hidden="true" />{/if}</button
+              />{:else}<Maximize
+                size={20}
+                strokeWidth={1.8}
+                aria-hidden="true"
+              />{/if}</button
           >
         </div>
 
@@ -693,13 +801,22 @@
             onclick={() => p.prev()}
             disabled={!p.hasPrev}
             aria-label="Previous episode"
-            ><SkipBack size={26} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /></button
+            ><SkipBack
+              size={26}
+              fill="currentColor"
+              strokeWidth={1.8}
+              aria-hidden="true"
+            /></button
           >
           <button
             class="icon play"
             onclick={() => p.toggle()}
             disabled={p.status === "resolving" || p.status === "error"}
-            aria-label={p.status === "ended" ? "Replay" : p.paused ? "Play" : "Pause"}
+            aria-label={p.status === "ended"
+              ? "Replay"
+              : p.paused
+                ? "Play"
+                : "Pause"}
           >
             {#if p.status === "ended"}<RotateCcw
                 size={32}
@@ -744,8 +861,17 @@
             onseek={(t) => p.seekTo(t)}
           />
           <div class="actions">
-            <button class="icon" onclick={close} aria-label="Stop and close player" title="Stop"
-              ><Square size={20} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /></button
+            <button
+              class="icon"
+              onclick={close}
+              aria-label="Stop and close player"
+              title="Stop"
+              ><Square
+                size={20}
+                fill="currentColor"
+                strokeWidth={1.8}
+                aria-hidden="true"
+              /></button
             >
             <button
               class="icon"
@@ -755,7 +881,11 @@
                   size={20}
                   strokeWidth={1.8}
                   aria-hidden="true"
-                />{:else}<Volume2 size={20} strokeWidth={1.8} aria-hidden="true" />{/if}</button
+                />{:else}<Volume2
+                  size={20}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />{/if}</button
             >
             <input
               class="volume"
@@ -769,31 +899,44 @@
               onkeydown={(e) => e.stopPropagation()}
             />
             <span class="spacer"></span>
-            <button class="action" onclick={() => (panel = panel === "speed" ? null : "speed")}
+            <button
+              class="action"
+              onclick={() => (panel = panel === "speed" ? null : "speed")}
               ><Gauge size={19} strokeWidth={1.8} aria-hidden="true" /><span
                 >{p.rate === 1 ? "Speed" : `${p.rate}×`}</span
               ></button
             >
-            <button class="action" onclick={() => (panel = panel === "tracks" ? null : "tracks")}
+            <button
+              class="action"
+              onclick={() => (panel = panel === "tracks" ? null : "tracks")}
               ><Captions size={19} strokeWidth={1.8} aria-hidden="true" /><span
                 >Audio &amp; subs</span
               ></button
             >
             <button class="action" onclick={openSources}
-              ><Layers size={19} strokeWidth={1.8} aria-hidden="true" /><span>Sources</span></button
+              ><Layers size={19} strokeWidth={1.8} aria-hidden="true" /><span
+                >Sources</span
+              ></button
             >
             {#if (p.item?.episodes.length ?? 0) > 1}
               <button
                 class="action"
-                onclick={() => (panel = panel === "episodes" ? null : "episodes")}
-                ><ListVideo size={19} strokeWidth={1.8} aria-hidden="true" /><span>Episodes</span
-                ></button
+                onclick={() =>
+                  (panel = panel === "episodes" ? null : "episodes")}
+                ><ListVideo
+                  size={19}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                /><span>Episodes</span></button
               >
             {/if}
             {#if p.hasNext}
               <button class="action" onclick={() => p.next()}
-                ><SkipForward size={19} strokeWidth={1.8} aria-hidden="true" /><span>Next</span
-                ></button
+                ><SkipForward
+                  size={19}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                /><span>Next</span></button
               >
             {/if}
           </div>
@@ -1147,7 +1290,8 @@
 
   /* Minimised: a floating window above the tab bar, so the app stays usable underneath. */
   .player.mini {
-    inset: auto 12px calc(var(--nav-h) + var(--safe-b) + 12px + var(--lift, 0px)) auto;
+    inset: auto 12px
+      calc(var(--nav-h) + var(--safe-b) + 12px + var(--lift, 0px)) auto;
     width: min(320px, calc(100vw - 24px));
     aspect-ratio: 16 / 9;
     border-radius: 12px;
@@ -1157,7 +1301,9 @@
     cursor: default;
   }
   .player.mini.above-bar {
-    bottom: calc(var(--nav-h) + var(--bar-h) + var(--safe-b) + 20px + var(--lift, 0px));
+    bottom: calc(
+      var(--nav-h) + var(--bar-h) + var(--safe-b) + 20px + var(--lift, 0px)
+    );
   }
   .player.mini.left {
     left: 12px;
