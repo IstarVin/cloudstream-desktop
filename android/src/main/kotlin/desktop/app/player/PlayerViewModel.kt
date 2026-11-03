@@ -188,33 +188,45 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
 
         linksJob = viewModelScope.launch {
             if (startAt == null) startAt = runCatching { api.resume(item.details.provider, item.data) }.getOrNull()
-            try {
-                api.links(item.details.provider, item.data).collect { ev ->
-                    when (ev.event) {
-                        "link" -> {
-                            val l = ev.link()
-                            _session.update { s -> s.copy(links = (s.links + l).sortedWith(LinkRanking.comparator(profile))) }
-                        }
-                        "subtitle" -> {
-                            val sub = ev.subtitle()
-                            _session.update { s -> s.copy(subtitles = s.subtitles + sub) }
-                            maybeAddSubtitle()
-                        }
-                        "error" -> _session.update { it.copy(message = ev.error()) }
-                    }
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (_session.value.links.isEmpty()) _session.update { it.copy(status = "error", message = "Couldn't load links: ${e.message}") }
-            }
-            _session.update { it.copy(linksDone = true) }
+            collectLinks(item)
         }
         when {
             linkId != null -> pickWhenFound(linkId)
             settings.autoplayBest -> autoPick(fallback = false)
             else -> _session.update { it.copy(message = "Choose a source", pickSource = true) }
         }
+    }
+
+    private suspend fun collectLinks(item: Item, fresh: Boolean = false) {
+        try {
+            api.links(item.details.provider, item.data, fresh).collect { ev ->
+                when (ev.event) {
+                    "link" -> {
+                        val l = ev.link()
+                        _session.update { s -> s.copy(links = (s.links + l).sortedWith(LinkRanking.comparator(profile))) }
+                    }
+                    "subtitle" -> {
+                        val sub = ev.subtitle()
+                        _session.update { s -> s.copy(subtitles = s.subtitles + sub) }
+                        maybeAddSubtitle()
+                    }
+                    "error" -> _session.update { it.copy(message = ev.error()) }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (_session.value.links.isEmpty()) _session.update { it.copy(status = "error", message = "Couldn't load links: ${e.message}") }
+        }
+        _session.update { it.copy(linksDone = true) }
+    }
+
+    /** Runs the plugin's `loadLinks` again for the current episode, without interrupting what's playing. */
+    fun reloadLinks() {
+        val item = _session.value.item ?: return
+        linksJob?.cancel()
+        _session.update { it.copy(links = emptyList(), subtitles = emptyList(), linksDone = false) }
+        linksJob = viewModelScope.launch { collectLinks(item, fresh = true) }
     }
 
     /** Plays the link another device picked once it streams in; auto-picks if it never does. */

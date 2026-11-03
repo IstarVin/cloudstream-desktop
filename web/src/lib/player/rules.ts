@@ -58,10 +58,19 @@ export function subtitleMatchesSource(lang: string, source: string, name: string
 export const preferredLanguage = (lang: string) =>
   ["en", "eng", "english"].some((p) => lang.toLowerCase().startsWith(p));
 
-/** Subtitles labelled for this link's source first; the rest only once the links are [done]. */
-export function orderSubtitles(subs: Subtitle[], link: Link, done: boolean): Subtitle[] {
-  const matching = subs.filter((s) => subtitleMatchesSource(s.lang, link.source, link.name));
-  return done ? [...matching, ...subs.filter((s) => !matching.includes(s))] : matching;
+/** English first, then this link's source within each language group; other sources only once done. */
+export function orderSubtitles(
+  subs: Subtitle[],
+  link: Link | null | undefined,
+  done: boolean,
+): Subtitle[] {
+  const matching = link
+    ? subs.filter((s) => subtitleMatchesSource(s.lang, link.source, link.name))
+    : [];
+  const ordered = done ? [...matching, ...subs.filter((s) => !matching.includes(s))] : matching;
+  return ordered.sort(
+    (a, b) => Number(preferredLanguage(b.lang)) - Number(preferredLanguage(a.lang)),
+  );
 }
 
 /** The range [pos] is inside, ignoring its last second so a seek to the end doesn't count. */

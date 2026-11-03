@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -430,10 +431,13 @@ private fun RemoteSourcesSheet(device: DeviceInfo, provider: String, data: Strin
     var done by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var settings by remember { mutableStateOf(ServerSettings()) }
-    LaunchedEffect(provider, data) {
-        launch { runCatching { api.settings() }.onSuccess { settings = it } }
+    // Bumped by the reload button; the server then runs the plugin's loadLinks again.
+    var reloads by remember { mutableStateOf(0) }
+    LaunchedEffect(provider, data) { runCatching { api.settings() }.onSuccess { settings = it } }
+    LaunchedEffect(provider, data, reloads) {
+        links = emptyList(); subtitles = emptyList(); error = null; done = false
         try {
-            api.links(provider, data).collect { ev ->
+            api.links(provider, data, fresh = reloads > 0).collect { ev ->
                 when (ev.event) {
                     "link" -> links = links + ev.link()
                     "subtitle" -> subtitles = subtitles + ev.subtitle()
@@ -450,7 +454,12 @@ private fun RemoteSourcesSheet(device: DeviceInfo, provider: String, data: Strin
     val profile = settings.activeProfile
     val ranked = links.filter { it.playable }.sortedWith(LinkRanking.comparator(profile))
     AdaptiveSheet(onDismiss) {
-        Text("Sources", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 20.dp))
+        Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Sources", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            IconButton(onClick = { reloads++ }, enabled = done, modifier = Modifier.tvFocusIndicator()) {
+                Icon(Icons.Filled.Refresh, "Reload links", tint = Palette.muted)
+            }
+        }
         Text(
             listOfNotNull(s.episodeLabel ?: s.title, "on ${device.name}").joinToString(" · "),
             style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),

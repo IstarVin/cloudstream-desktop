@@ -30,10 +30,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -150,6 +152,9 @@ fun SourcesPanel(vm: PlayerViewModel, s: Session, onDismiss: () -> Unit) {
             Column(Modifier.weight(1.4f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     PanelTitle("Sources", Modifier.weight(1f))
+                    IconButton(onClick = { link = s.current?.id; vm.reloadLinks() }, enabled = s.linksDone, modifier = Modifier.tvFocusIndicator()) {
+                        Icon(Icons.Filled.Refresh, "Reload links", tint = Palette.muted)
+                    }
                     if (hidden > 0) TextButton(onClick = { showHidden = !showHidden }, modifier = Modifier.tvFocusIndicator()) {
                         Text(if (showHidden) "Hide $hidden" else "$hidden hidden by profile")
                     }

@@ -5,6 +5,7 @@
   import { modal } from "../dialog";
   import { playTarget } from "../play-target.svelte";
   import { player } from "../player.svelte";
+  import { orderSubtitles } from "../player/rules";
   import {
     AUTO_QUALITY,
     compareLinks,
@@ -33,9 +34,11 @@
   const playingThis = $derived(
     !!t && player.state.provider === t.provider && player.state.data === t.data,
   );
-  const currentLink = $derived(
-    inBrowser ? webPlayer.current?.id : playingThis ? player.state.link?.id : null,
+  const activeLink = $derived(
+    inBrowser ? webPlayer.current : playingThis ? player.state.link : null,
   );
+  const currentLink = $derived(activeLink?.id);
+  const subtitles = $derived(orderSubtitles(sources.subtitles, activeLink, true));
   const failed = $derived(
     new Set(inBrowser ? webPlayer.failed : playingThis ? (player.state.failedLinks ?? []) : []),
   );
@@ -221,7 +224,7 @@
         </button>
         {#if subsOpen}
           <div class="sub-list">
-            {#each sources.subtitles as s (s.id)}
+            {#each subtitles as s (s.id)}
               <button
                 class={["chip", { on: sources.chosenSubs.includes(s.id) }]}
                 onclick={() => toggleSub(s.id)}>{s.lang}</button

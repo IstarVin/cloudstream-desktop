@@ -5,6 +5,7 @@
 <script lang="ts">
   import { Check, X } from "@lucide/svelte";
   import { episodeLabel } from "../../api";
+  import { orderSubtitles } from "../../player/rules";
   import { sources } from "../../sources.svelte";
   import { webPlayer } from "../../web-player.svelte";
 
@@ -15,6 +16,7 @@
     { tracks: "Audio & subtitles", speed: "Speed", episodes: "Episodes" }[panel],
   );
   const p = webPlayer;
+  const subtitles = $derived(orderSubtitles(sources.subtitles, p.current, true));
   const noSubs = $derived(p.subtitlesOff || (!p.subtitle && p.embeddedSub < 0));
   const loaded = $derived(new Set(p.loadedSubs.map((s) => s.id)));
   let current = $state<HTMLElement | null>(null);
@@ -64,7 +66,7 @@
             />{/if}
         </button>
       {/each}
-      {#each sources.subtitles as s (s.id)}
+      {#each subtitles as s (s.id)}
         <button class={["row", { on: p.subtitle === s.id }]} onclick={() => p.selectSubtitle(s)}>
           <span
             >{s.lang}

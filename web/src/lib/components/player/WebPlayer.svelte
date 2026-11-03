@@ -390,11 +390,11 @@
         p.toggle();
         return handled();
       case "ArrowLeft":
-        p.seekBy(-pref.seekStep);
-        return handled();
+        tapSeekBy(-1);
+        return e.preventDefault();
       case "ArrowRight":
-        p.seekBy(pref.seekStep);
-        return handled();
+        tapSeekBy(1);
+        return e.preventDefault();
       case "j":
         p.seekBy(-10);
         return handled();

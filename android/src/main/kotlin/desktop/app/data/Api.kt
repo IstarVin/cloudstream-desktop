@@ -194,7 +194,9 @@ class Api(initial: ServerConfig?) {
 
     suspend fun details(provider: String, url: String): Details = get("/api/load", mapOf("provider" to provider, "url" to url))
 
-    fun links(provider: String, data: String): Flow<SseEvent> = sse("/api/links", mapOf("provider" to provider, "data" to data))
+    /** [fresh] makes the server run the plugin's `loadLinks` again instead of reusing its cached set. */
+    fun links(provider: String, data: String, fresh: Boolean = false): Flow<SseEvent> =
+        sse("/api/links", mapOf("provider" to provider, "data" to data, "fresh" to if (fresh) 1 else null))
 
     suspend fun stream(link: String, direct: Boolean): StreamDto =
         get("/api/stream", mapOf("link" to link, "direct" to if (direct) 1 else null))
