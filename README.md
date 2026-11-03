@@ -30,6 +30,25 @@ Source priority in Settings and the Sources sheet provides seven named profiles 
 with optional filters for failed or negative-priority links. Auto-play waits for links to resolve and starts as soon as one reaches a combined priority of 10; the rest keep loading in the background. If none does, it plays the best link once they're all in.
 See [source profiles](docs/SOURCE_PROFILES.md) for behavior and settings API details.
 
+## Install the web app
+
+The production web UI is an installable PWA that opens in its own window with a Cloudstream launcher icon.
+Build and serve it normally (`./gradlew :server:run`), then open it in your browser:
+
+- **Desktop Chrome / Edge:** use the install icon in the address bar or the browser menu's install option.
+- **Android Chrome:** open the browser menu and choose **Install app** / **Add to Home screen**.
+- **iPhone / iPad Safari:** use **Share → Add to Home Screen**, with **Open as Web App** enabled when offered.
+
+Installation and the service worker require a secure origin: `http://localhost:6969` or
+`http://127.0.0.1:6969` works on the server's own computer. On another device, serve Cloudstream over HTTPS
+with a trusted certificate (for example, through a reverse proxy); a plain HTTP LAN address does not qualify.
+The manifest and service worker are included in production builds, so use a built app to test installation.
+
+The server must remain running and reachable for browsing and playback. The service worker caches only a
+small connection-help page, not library data, pairing tokens or streams. If the server is unavailable when
+opening the app, that page offers a retry. New service worker versions activate after existing app windows
+and tabs close, so updates do not interrupt playback.
+
 ## Android app
 
 `android/` is a phone, tablet and Android TV client that plays locally with ExoPlayer instead of controlling mpv: the same home,

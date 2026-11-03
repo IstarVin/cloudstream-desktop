@@ -77,20 +77,24 @@
     <a class="skip-link" href="#main-content">Skip to content</a>
     <div class={["shell", { "with-bar": player.active }]}>
       <nav aria-label="Main">
-        <div class="brand">
+        <a class="brand" href="/" aria-label="Cloudstream Desktop, go to Home">
           <span class="brand-icon"
             ><Play size={20} fill="currentColor" strokeWidth={1.8} aria-hidden="true" /></span
           >
           <span class="brand-name">Cloudstream<span>Desktop</span></span>
-        </div>
+        </a>
         {#each nav as n (n.href)}
           <a
-            class={["nav-link", { active: isActive(n.href) }]}
+            class={[
+              "nav-link",
+              { active: isActive(n.href), "nav-settings": n.href === "/settings" },
+            ]}
             href={isActive(n.href) ? n.href : tabUrl(n.href)}
             aria-current={isActive(n.href) ? "page" : undefined}
           >
-            <n.icon size={22} strokeWidth={1.8} aria-hidden="true" />
+            <span class="nav-icon"><n.icon size={22} strokeWidth={1.8} aria-hidden="true" /></span>
             <span>{n.label}</span>
+            <span class="nav-indicator" aria-hidden="true"></span>
           </a>
         {/each}
       </nav>
@@ -204,12 +208,47 @@
     align-items: center;
     justify-content: center;
     gap: 3px;
+    position: relative;
+    min-width: 0;
+    transition:
+      color 150ms,
+      background-color 150ms;
     font-size: 11.5px;
     font-weight: 600;
     color: var(--muted);
   }
   .nav-link.active {
     color: var(--accent);
+  }
+  .nav-icon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+  }
+  .nav-link.active .nav-icon {
+    background: var(--accent-soft);
+  }
+  .nav-link:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -4px;
+  }
+  .nav-link:active {
+    background: var(--surface-2);
+  }
+  .nav-indicator {
+    display: none;
+  }
+  @media (hover: hover) {
+    .nav-link:hover {
+      color: var(--text);
+      background: var(--surface-2);
+    }
+    .nav-link.active:hover {
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
   }
   .brand {
     display: none;
@@ -330,6 +369,9 @@
     .toast {
       animation: none;
     }
+    .nav-link {
+      transition: none;
+    }
   }
   @media (min-width: 900px) {
     .shell,
@@ -343,32 +385,75 @@
       height: auto;
       flex-direction: column;
       justify-content: flex-start;
-      gap: 6px;
-      padding: 16px 0;
+      gap: 8px;
+      padding: 24px 12px 16px;
+      overflow-y: auto;
+      background: var(--surface);
+      backdrop-filter: none;
       border-top: 0;
       border-right: 1px solid var(--line);
     }
     .nav-link {
-      flex: 0 0 48px;
+      flex: 0 0 52px;
       flex-direction: row;
       justify-content: flex-start;
-      gap: 14px;
-      padding: 0 16px;
-      margin: 0 16px;
+      gap: 12px;
+      padding: 0 14px;
+      margin: 0;
       border-radius: var(--radius-sm);
       font-size: 14px;
     }
     .nav-link.active {
       background: var(--accent-soft);
     }
-    .nav-link:hover {
-      background: var(--surface);
+    .nav-icon {
+      width: 24px;
+      height: 24px;
+      flex: none;
+    }
+    .nav-link.active .nav-icon {
+      background: transparent;
+    }
+    .nav-indicator {
+      display: block;
+      width: 5px;
+      height: 5px;
+      margin-left: auto;
+      border-radius: 50%;
+      background: currentColor;
+      visibility: hidden;
+    }
+    .nav-link.active .nav-indicator {
+      visibility: visible;
+    }
+    .nav-settings {
+      margin-top: auto;
+    }
+    .nav-settings::before {
+      content: "";
+      position: absolute;
+      top: -12px;
+      left: 14px;
+      right: 14px;
+      height: 1px;
+      background: var(--line);
+    }
+    .nav-link:nth-last-child(2) {
+      margin-bottom: 32px;
     }
     .brand {
       display: flex;
       align-items: center;
       gap: 11px;
-      padding: 12px 24px 32px;
+      padding: 4px 12px 28px;
+      flex-shrink: 0;
+      color: inherit;
+      text-decoration: none;
+      border-radius: 10px;
+    }
+    .brand:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
     }
     .brand-icon {
       display: grid;
