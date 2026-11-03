@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-type Dev = { id: string; name: string; kind: string; receiver: boolean; controller?: string | null };
+type Dev = {
+  id: string;
+  name: string;
+  kind: string;
+  receiver: boolean;
+  controller?: string | null;
+};
 const cast = vi.hoisted(() => ({
   id: "me",
   targets: [] as Dev[],
@@ -66,7 +72,10 @@ describe("playTarget", () => {
 
   it("keeps a device it holds enabled", () => {
     cast.targets = [{ ...tv, controller: "me" }];
-    expect(playTarget.options.find((o) => o.id === "tv1")).toMatchObject({ disabled: false, busy: false });
+    expect(playTarget.options.find((o) => o.id === "tv1")).toMatchObject({
+      disabled: false,
+      busy: false,
+    });
   });
 
   it("goes back to the browser when the picked device closes", () => {

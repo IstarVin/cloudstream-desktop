@@ -38,8 +38,16 @@ describe("player store (the remote)", () => {
       type: "devices",
       devices: [dev("mpv", "mpv", "other"), dev("tv"), me()],
     });
-    cast.onFrame({ type: "state", device: "mpv", state: state({ status: "playing", title: "Up" }) });
-    cast.onFrame({ type: "state", device: "tv", state: state({ status: "playing", title: "Dune" }) });
+    cast.onFrame({
+      type: "state",
+      device: "mpv",
+      state: state({ status: "playing", title: "Up" }),
+    });
+    cast.onFrame({
+      type: "state",
+      device: "tv",
+      state: state({ status: "playing", title: "Dune" }),
+    });
     expect(player.device).toBe(null);
     expect(player.active).toBe(false);
     expect(player.state.title).toBeUndefined();
