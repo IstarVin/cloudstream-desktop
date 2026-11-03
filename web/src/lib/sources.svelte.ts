@@ -58,7 +58,8 @@ class Sources {
 
   /** Streams an episode's links and subtitles, unless they're already here; [fresh] resolves them again. */
   load(t: Target, fresh = false) {
-    const same = this.target?.provider === t.provider && this.target?.data === t.data;
+    const same =
+      this.target?.provider === t.provider && this.target?.data === t.data;
     this.target = t;
     if (same && !fresh && (this.links.length || !this.done)) return;
     this.close?.();
@@ -67,19 +68,24 @@ class Sources {
     this.chosenSubs = [];
     this.done = false;
     this.error = null;
-    this.close = streamLinks(t.provider, t.data, {
-      link: (l) => this.links.push(l),
-      subtitle: (s) => {
-        this.subtitles.push(s);
-        webPlayer.onSubtitleArrived();
+    this.close = streamLinks(
+      t.provider,
+      t.data,
+      {
+        link: (l) => this.links.push(l),
+        subtitle: (s) => {
+          this.subtitles.push(s);
+          webPlayer.onSubtitleArrived();
+        },
+        error: (m) => (this.error = m),
+        done: () => {
+          this.done = true;
+          // Subtitles not labelled for the link's source only count once every link is in.
+          webPlayer.onSubtitleArrived();
+        },
       },
-      error: (m) => (this.error = m),
-      done: () => {
-        this.done = true;
-        // Subtitles not labelled for the link's source only count once every link is in.
-        webPlayer.onSubtitleArrived();
-      },
-    });
+      fresh,
+    );
   }
 
   /**
@@ -90,7 +96,8 @@ class Sources {
     const t = this.target;
     if (!t) return;
     const target = playTarget.effective;
-    const remoteAt = player.state.position > 5 ? player.state.position : undefined;
+    const remoteAt =
+      player.state.position > 5 ? player.state.position : undefined;
     if (target === "browser") {
       this.hide();
       if (currentlyPlaying) {

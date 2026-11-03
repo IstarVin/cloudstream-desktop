@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Captions, Check, TriangleAlert, X } from "@lucide/svelte";
+  import { Captions, Check, RefreshCw, TriangleAlert, X } from "@lucide/svelte";
   import { createQuery } from "@tanstack/svelte-query";
   import { api } from "../api";
   import { modal } from "../dialog";
@@ -93,6 +93,19 @@
           {playTarget.remote ? ` · on ${playTarget.label}` : ""}
         </div>
       </div>
+      <button
+        class="close"
+        onclick={() => sources.load(t, true)}
+        disabled={!sources.done}
+        aria-label="Reload links"
+        title="Reload links"
+        ><RefreshCw
+          size={20}
+          strokeWidth={1.8}
+          class={{ spin: !sources.done }}
+          aria-hidden="true"
+        /></button
+      >
       <button class="close" onclick={() => sources.hide()} aria-label="Close"
         ><X size={22} strokeWidth={1.8} aria-hidden="true" /></button
       >
@@ -290,8 +303,20 @@
       background-color 150ms ease,
       transform 150ms ease;
   }
-  .close:hover {
+  .close:hover:not(:disabled) {
     background: var(--surface-2);
+  }
+  .close:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .close :global(.spin) {
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   .close:active {
     transform: scale(0.92);
@@ -519,6 +544,9 @@
     }
     .close:active {
       transform: none;
+    }
+    .close :global(.spin) {
+      animation: none;
     }
   }
 </style>

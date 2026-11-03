@@ -173,7 +173,7 @@ fun Route.apiRoutes(s: Services) {
         get("/links") {
             val provider = s.catalog.provider(call.param("provider"))
             val data = call.param("data")
-            val set = s.links.resolve(provider.api, data)
+            val set = s.links.resolve(provider.api, data, fresh = call.request.queryParameters["fresh"] == "1")
             call.sse { emit ->
                 var sentLinks = 0
                 var sentSubs = 0
