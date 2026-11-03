@@ -103,16 +103,10 @@
       .body.textContent?.trim() ?? "";
 
   let expandedPlotTitle = $state<string | null>(null);
+  let plotHeight = $state<number>();
+  let plotPreviewHeight = $state(0);
   const plot = $derived(d?.plot ? plainText(d.plot).replace(/\n{3,}/g, "\n\n") : "");
-  const plotPreview = $derived.by(() => {
-    const lines = plot.split("\n").slice(0, 3).join("\n");
-    if (lines.length <= 280 && lines.length === plot.length) return plot;
-    let preview = lines.slice(0, 280).trimEnd();
-    if (lines.length > 280 && !/\s/.test(lines[280])) {
-      preview = preview.replace(/\s+\S*$/, "");
-    }
-    return preview + "…";
-  });
+  const plotOverflows = $derived((plotHeight ?? 0) > plotPreviewHeight + 1);
   const plotExpanded = $derived(expandedPlotTitle === titleKey);
 
   const playing = (data: string) =>
@@ -226,15 +220,37 @@
 
     {#if plot}
       <div class="plot">
-        <p id="title-plot">{plotExpanded ? plot : plotPreview}</p>
-        {#if plotPreview !== plot}
+        <div class="plot-measure" bind:clientHeight={plotPreviewHeight} aria-hidden="true"></div>
+        <button
+          class="plot-hitbox"
+          type="button"
+          disabled={!plotOverflows}
+          aria-expanded={plotOverflows ? plotExpanded : undefined}
+          aria-controls="title-plot"
+          aria-label={plotOverflows ? (plotExpanded ? "Collapse description" : "Expand description") : undefined}
+          onclick={() => (expandedPlotTitle = plotExpanded ? null : titleKey)}
+        >
+          <span
+            class={["plot-content", { revealed: plotExpanded || !plotOverflows }]}
+            style:height={plotHeight == null || !plotPreviewHeight
+              ? "auto"
+              : `${plotExpanded ? plotHeight : Math.min(plotHeight, plotPreviewHeight)}px`}
+          >
+            <span id="title-plot" bind:clientHeight={plotHeight}>{plot}</span>
+          </span>
+        </button>
+        {#if plotOverflows}
           <button
             class="plot-toggle"
+            type="button"
             aria-expanded={plotExpanded}
             aria-controls="title-plot"
             onclick={() => (expandedPlotTitle = plotExpanded ? null : titleKey)}
           >
             {plotExpanded ? "Show less" : "Show more"}
+            <span class={["plot-chevron", { expanded: plotExpanded }]}>
+              <ChevronDown size={16} strokeWidth={1.8} aria-hidden="true" />
+            </span>
           </button>
         {/if}
       </div>
@@ -461,22 +477,74 @@
     background-color: color-mix(in srgb, var(--accent) 20%, var(--surface-2));
   }
   .plot {
+    position: relative;
     margin: 28px 0 0;
     color: var(--muted);
     max-width: 75ch;
-    white-space: pre-line;
     line-height: 1.75;
   }
+  .plot-measure {
+    position: absolute;
+    height: 3lh;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .plot-hitbox {
+    display: block;
+    width: 100%;
+    text-align: start;
+    border-radius: var(--radius-sm);
+  }
+  .plot-hitbox:disabled {
+    cursor: default;
+    opacity: 1;
+  }
+  .plot-content {
+    display: block;
+    overflow: hidden;
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 1lh), transparent);
+    mask-size: 100% 100%;
+    mask-repeat: no-repeat;
+    transition:
+      height 360ms cubic-bezier(0.22, 1, 0.36, 1),
+      mask-size 360ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .plot-content.revealed {
+    mask-size: 100% calc(100% + 1lh);
+  }
+  #title-plot {
+    display: block;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+  }
   .plot-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: var(--radius-sm);
     color: var(--text);
     font-size: 14px;
     font-weight: 600;
-    margin-top: 6px;
+    margin-top: 2px;
     min-height: 44px;
   }
   .plot-toggle:hover {
+    color: var(--accent);
     text-decoration: underline;
     text-underline-offset: 3px;
+  }
+  .plot-chevron {
+    display: flex;
+    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .plot-chevron.expanded {
+    transform: rotate(180deg);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .plot-content,
+    .plot-chevron {
+      transition: none;
+    }
   }
   .seg {
     display: inline-flex;
