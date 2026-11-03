@@ -25,19 +25,45 @@
   const info = $derived(player.info);
   const isMpv = $derived(info?.kind === "mpv");
   const online = $derived(isMpv ? s.mpvRunning : !!info);
-  const statusText = $derived(
-    isMpv
-      ? s.mpvRunning
-        ? "Playing in mpv"
-        : "mpv is closed"
-      : info
-        ? `Playing on ${info.name}`
-        : "Device disconnected",
-  );
-  const pct = $derived(s.duration > 0 ? (s.position / s.duration) * 100 : 0);
   const busy = $derived(s.status === "resolving");
-  // While dragging the seek bar, show the drag position instead of the live one.
+  const playbackText = $derived(
+    busy
+      ? "Loading"
+      : s.status === "error"
+        ? "Playback error"
+        : s.status === "idle"
+          ? "Stopped"
+          : s.paused
+            ? "Paused"
+            : "Playing",
+  );
+  const statusText = $derived(
+    !player.connected
+      ? "Device disconnected"
+      : isMpv
+        ? s.mpvRunning
+          ? `${playbackText} in mpv`
+          : "mpv is closed"
+        : info
+          ? `${playbackText} on ${info.name}`
+          : "Device disconnected",
+  );
+  const available = $derived(online && player.connected);
+  const canControl = $derived(available && !busy);
+  const canSource = $derived(!!(s.provider && s.url && s.data));
+  const pct = $derived(
+    s.duration > 0 ? Math.min(100, Math.max(0, (s.position / s.duration) * 100)) : 0,
+  );
+  // Keep local feedback responsive while the remote device acknowledges a change.
   let scrub = $state<number | null>(null);
+  let volume = $state<number | null>(null);
+  const position = $derived(scrub ?? s.position);
+  const seekPct = $derived(
+    s.duration > 0 ? Math.min(100, Math.max(0, (position / s.duration) * 100)) : 0,
+  );
+  const maxVolume = $derived(isMpv ? 130 : 100);
+  const shownVolume = $derived(volume ?? s.volume);
+  let failedPoster = $state<string | null>(null);
 
   async function cmd(name: string, body: Record<string, unknown> = {}) {
     try {
@@ -109,7 +135,7 @@
     </button>
     {#if busy}<div class="spinner"></div>{/if}
     {#if skipLabel}
-      <button class="skip-btn" onclick={() => cmd("skip")}
+      <button class="skip-btn" disabled={!canControl} onclick={() => cmd("skip")}
         ><FastForward size={16} strokeWidth={1.8} aria-hidden="true" />
         {skipLabel}</button
       >
@@ -118,7 +144,7 @@
       class="icon-btn"
       onclick={() => cmd("toggle")}
       aria-label={s.paused ? "Play" : "Pause"}
-      disabled={busy}
+      disabled={!canControl}
     >
       {#if s.paused}<Play
           size={22}
@@ -129,10 +155,10 @@
     </button>
     {#if s.hasNext}
       <button
-        class="icon-btn hide-sm"
-        class:primed={s.next?.status === "ready"}
+        class={["icon-btn hide-sm", { primed: s.next?.status === "ready" }]}
         onclick={() => cmd("next")}
         aria-label="Next episode"
+        disabled={!canControl}
         title={nextText ?? "Next episode"}
         ><SkipForward size={22} strokeWidth={1.8} aria-hidden="true" /></button
       >
@@ -151,18 +177,19 @@
       <button class="icon-btn" onclick={() => (player.expanded = false)} aria-label="Close remote"
         ><ChevronDown size={22} strokeWidth={1.8} aria-hidden="true" /></button
       >
-      <span class="player-status"
-        ><span class={["status-dot", { online: online }]}></span>{statusText}</span
-      >
-      <button class="icon-btn" onclick={openSources} aria-label="Sources"
-        ><Layers size={22} strokeWidth={1.8} aria-hidden="true" /></button
+      <span class="remote-label"><MonitorPlay size={17} aria-hidden="true" /> Playback remote</span>
+      <span class="player-status" role="status"
+        ><span
+          class={["status-dot", { online: available, paused: available && (s.paused || busy) }]}
+        ></span>{statusText}</span
       >
     </header>
 
     <div class="body">
       <div class="artwork">
         <div class="cover">
-          {#if s.poster}<img
+          {#if s.poster && failedPoster !== s.poster}<img
+              onerror={() => (failedPoster = s.poster ?? null)}
               src={s.poster}
               alt=""
               referrerpolicy="no-referrer"
@@ -181,8 +208,9 @@
             <div class="r-title">{s.title ?? "Nothing playing"}</div>
           {/if}
           {#if s.episodeLabel}<div class="episode">{s.episodeLabel}</div>{/if}
-          {#if s.link}<div class="faint">
-              {s.link.source} · {s.link.qualityLabel}{s.link.proxied ? " · proxied" : ""}
+          {#if s.link}<div class="source-meta">
+              <span>{s.link.source}</span>
+              {#if s.link.qualityLabel}<span class="quality">{s.link.qualityLabel}</span>{/if}
             </div>{/if}
           {#if s.message}<div class={["msg", { err: s.status === "error" }]}>
               {s.message}
@@ -198,24 +226,26 @@
             min="0"
             max={Math.max(1, s.duration)}
             step="1"
-            value={scrub ?? s.position}
+            value={position}
+            style:--fill={`${seekPct}%`}
+            aria-valuetext={`${formatTime(position)} of ${formatTime(s.duration)}`}
             oninput={(e) => (scrub = +e.currentTarget.value)}
             onchange={(e) => {
               cmd("seek", { seconds: +e.currentTarget.value });
               scrub = null;
             }}
             aria-label="Seek"
-            disabled={s.duration <= 0}
+            disabled={!canControl || s.duration <= 0}
           />
           <div class="times">
-            <span>{formatTime(scrub ?? s.position)}</span><span
-              >-{formatTime(s.duration - (scrub ?? s.position))}</span
+            <span class="elapsed">{formatTime(position)}</span><span
+              >{formatTime(Math.max(0, s.duration - position))} remaining</span
             >
           </div>
         </div>
 
         {#if skipLabel}
-          <button class="skip-btn big" onclick={() => cmd("skip")}
+          <button class="skip-btn big" disabled={!canControl} onclick={() => cmd("skip")}
             ><FastForward size={18} strokeWidth={1.8} aria-hidden="true" />
             {skipLabel}</button
           >
@@ -225,7 +255,7 @@
           <button
             class="icon-btn lg"
             onclick={() => cmd("prev")}
-            disabled={!s.hasPrev}
+            disabled={!canControl || !s.hasPrev}
             aria-label="Previous episode"
             ><SkipBack size={26} strokeWidth={1.8} aria-hidden="true" /></button
           >
@@ -233,10 +263,15 @@
             class="icon-btn lg"
             onclick={() => cmd("seek", { seconds: -10, relative: true })}
             aria-label="Back 10 seconds"
-            ><RotateCcw size={28} strokeWidth={1.8} aria-hidden="true" /></button
+            title="Back 10 seconds"
+            disabled={!canControl || s.duration <= 0}
+            ><RotateCcw size={26} strokeWidth={1.8} aria-hidden="true" /><span class="seek-label"
+              >10s</span
+            ></button
           >
           <button
             class="play"
+            disabled={!canControl}
             onclick={() => cmd("toggle")}
             aria-label={s.paused ? "Play" : "Pause"}
           >
@@ -256,12 +291,16 @@
             class="icon-btn lg"
             onclick={() => cmd("seek", { seconds: 10, relative: true })}
             aria-label="Forward 10 seconds"
-            ><RotateCw size={28} strokeWidth={1.8} aria-hidden="true" /></button
+            title="Forward 10 seconds"
+            disabled={!canControl || s.duration <= 0}
+            ><RotateCw size={26} strokeWidth={1.8} aria-hidden="true" /><span class="seek-label"
+              >10s</span
+            ></button
           >
           <button
             class="icon-btn lg"
             onclick={() => cmd("next")}
-            disabled={!s.hasNext}
+            disabled={!canControl || !s.hasNext}
             aria-label="Next episode"
             ><SkipForward size={26} strokeWidth={1.8} aria-hidden="true" /></button
           >
@@ -274,19 +313,22 @@
             >
             <select
               onchange={(e) => cmd("track", { type: "audio", id: e.currentTarget.value })}
-              disabled={!s.audioTracks.length}
+              disabled={!canControl || !s.audioTracks.length}
             >
               {#each s.audioTracks as t (t.id)}<option value={String(t.id)} selected={t.selected}
                   >{trackLabel(t)}</option
                 >{/each}
-              {#if !s.audioTracks.length}<option>Audio</option>{/if}
+              {#if !s.audioTracks.length}<option>No audio tracks</option>{/if}
             </select>
           </label>
           <label>
             <span class="track-heading"
               ><Captions size={17} strokeWidth={1.8} aria-hidden="true" /> Subtitles</span
             >
-            <select onchange={(e) => cmd("track", { type: "sub", id: e.currentTarget.value })}>
+            <select
+              disabled={!canControl || !s.subTracks.length}
+              onchange={(e) => cmd("track", { type: "sub", id: e.currentTarget.value })}
+            >
               <option value="no" selected={!s.subTracks.some((t) => t.selected)}
                 >Subtitles off</option
               >
@@ -297,25 +339,33 @@
           </label>
           <label class="vol">
             <span class="track-heading"
-              ><Volume1 size={17} strokeWidth={1.8} aria-hidden="true" /> Volume</span
+              ><Volume1 size={17} strokeWidth={1.8} aria-hidden="true" /> Volume
+              <span class="volume-value">{Math.round(shownVolume)}%</span></span
             >
             <input
               type="range"
               min="0"
-              max={isMpv ? 130 : 100}
-              value={s.volume}
-              onchange={(e) => cmd("volume", { value: +e.currentTarget.value })}
+              max={maxVolume}
+              value={shownVolume}
+              style:--fill={`${Math.min(100, Math.max(0, (shownVolume / maxVolume) * 100))}%`}
+              aria-valuetext={`${Math.round(shownVolume)} percent`}
+              disabled={!canControl}
+              oninput={(e) => (volume = +e.currentTarget.value)}
+              onchange={(e) => {
+                cmd("volume", { value: +e.currentTarget.value });
+                volume = null;
+              }}
               aria-label="Volume"
             />
           </label>
         </div>
 
         <div class="actions">
-          <button class="btn" onclick={openSources}
+          <button class="btn source-action" disabled={!canSource} onclick={openSources}
             ><Layers size={18} strokeWidth={1.8} aria-hidden="true" /> Sources</button
           >
-          <button class="btn" onclick={() => cmd("stop")}
-            ><Square size={18} strokeWidth={1.8} aria-hidden="true" /> Stop</button
+          <button class="btn stop-action" disabled={!available} onclick={() => cmd("stop")}
+            ><Square size={18} strokeWidth={1.8} aria-hidden="true" /> Stop playback</button
           >
         </div>
       </div>
@@ -432,7 +482,7 @@
     border: 0;
     color: var(--text);
     z-index: 50;
-    background: radial-gradient(ellipse at 28% 20%, #25232a 0%, #15171d 40%, var(--bg) 75%);
+    background: var(--bg);
     display: flex;
     flex-direction: column;
     padding-bottom: var(--safe-b);
@@ -455,14 +505,24 @@
   header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 16px clamp(16px, 3vw, 40px);
+    gap: 12px;
+    flex-shrink: 0;
+    padding: 20px clamp(20px, 4vw, 56px);
     font-size: 13px;
   }
   header .icon-btn {
     background: rgb(255 255 255 / 0.05);
   }
+  .remote-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+  }
   .player-status {
+    margin-left: auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -470,6 +530,7 @@
     font-weight: 600;
   }
   .status-dot {
+    flex-shrink: 0;
     width: 7px;
     height: 7px;
     border-radius: 50%;
@@ -478,14 +539,17 @@
   .status-dot.online {
     background: var(--good);
   }
+  .status-dot.paused {
+    background: var(--accent);
+  }
   .body {
-    width: min(100%, 1020px);
+    width: min(100%, 1120px);
     margin: auto;
-    padding: 30px 36px 90px;
+    padding: 36px 48px 72px;
     display: grid;
     grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
     align-items: center;
-    gap: clamp(48px, 8vw, 110px);
+    gap: clamp(36px, 6vw, 80px);
   }
   .cover {
     width: 100%;
@@ -512,7 +576,7 @@
     display: flex;
     flex-direction: column;
     gap: 5px;
-    margin-bottom: 34px;
+    margin-bottom: 28px;
   }
   .r-title {
     font-size: clamp(28px, 3vw, 40px);
@@ -528,9 +592,23 @@
     color: var(--text);
     font-size: 15px;
   }
-  .faint {
+  .source-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
     color: var(--muted);
     font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+  .quality {
+    padding: 2px 7px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 650;
   }
   .msg {
     margin-top: 6px;
@@ -572,11 +650,15 @@
       transform 150ms ease;
     animation: bar-in 200ms ease-out both;
   }
-  .skip-btn:hover {
+  .skip-btn:hover:not(:disabled) {
     background: var(--accent-soft);
     color: var(--accent);
   }
-  .skip-btn:active {
+  .skip-btn:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+  .skip-btn:active:not(:disabled) {
     transform: scale(0.95);
   }
   .skip-btn.big {
@@ -588,15 +670,62 @@
   }
   .seek input,
   .vol input {
+    appearance: none;
+    display: block;
     width: 100%;
+    height: 28px;
     padding: 0;
-    accent-color: var(--accent);
-    background: none;
+    margin: 0;
     border: 0;
+    border-radius: 0;
+    background: transparent;
     cursor: pointer;
   }
-  .seek input:disabled {
+  .seek input::-webkit-slider-runnable-track,
+  .vol input::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 4px;
+    background: linear-gradient(to right, var(--accent) var(--fill), var(--surface-3) var(--fill));
+  }
+  .seek input::-moz-range-track,
+  .vol input::-moz-range-track {
+    height: 4px;
+    border-radius: 4px;
+    background: linear-gradient(to right, var(--accent) var(--fill), var(--surface-3) var(--fill));
+  }
+  .seek input::-webkit-slider-thumb,
+  .vol input::-webkit-slider-thumb {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .seek input::-moz-range-thumb,
+  .vol input::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  input[type="range"]:disabled {
     cursor: default;
+    opacity: 0.4;
+  }
+  .elapsed {
+    color: var(--text);
+  }
+  .seek-label {
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 600;
+  }
+  .controls .icon-btn.lg {
+    align-content: center;
+    gap: 3px;
   }
   .times {
     display: flex;
@@ -609,9 +738,9 @@
   .controls {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin: 20px 0 32px;
+    justify-content: center;
+    gap: clamp(12px, 2vw, 28px);
+    margin: 24px 0 32px;
   }
   .play {
     width: 72px;
@@ -626,12 +755,16 @@
       transform 0.15s,
       filter 0.15s;
   }
-  .play:hover {
+  .play:hover:not(:disabled) {
     filter: brightness(1.08);
     transform: scale(1.04);
   }
-  .play:active {
+  .play:active:not(:disabled) {
     transform: scale(0.92);
+  }
+  .play:disabled {
+    cursor: default;
+    opacity: 0.5;
   }
   .spinner.big {
     width: 30px;
@@ -661,10 +794,13 @@
     font-weight: 650;
   }
   .tracks select {
+    appearance: none;
     width: 100%;
     min-height: 44px;
     font-size: 13px;
     text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
   }
   .tracks select:disabled {
     opacity: 0.6;
@@ -672,8 +808,11 @@
   .vol {
     grid-column: 1 / -1;
   }
-  .vol input {
-    margin: 4px 0;
+  .volume-value {
+    margin-left: auto;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
   }
   .actions {
     display: flex;
@@ -682,11 +821,33 @@
   }
   .actions .btn {
     min-width: 112px;
+    font-size: 13px;
+  }
+  .actions .stop-action {
+    margin-left: auto;
+    color: var(--muted);
+    border-color: transparent;
+    background: transparent;
+  }
+  .actions .stop-action:hover:not(:disabled) {
+    background: var(--surface-2);
+    color: var(--text);
   }
   @media (max-width: 700px) {
     header {
       flex-shrink: 0;
       padding: max(8px, env(safe-area-inset-top)) 16px 8px;
+    }
+    .remote-label {
+      display: none;
+    }
+    .player-status {
+      font-size: 12px;
+      text-align: right;
+    }
+    .source-meta {
+      justify-content: center;
+      margin-top: 6px;
     }
     .body {
       display: flex;
@@ -716,6 +877,8 @@
       margin-top: 2px;
     }
     .controls {
+      justify-content: space-between;
+      gap: 4px;
       margin: 8px 0 14px;
     }
     .play {
