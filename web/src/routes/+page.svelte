@@ -2,6 +2,7 @@
   import { createQuery } from "@tanstack/svelte-query";
   import { api, titleHref } from "#lib/api";
   import { Layers, Search, Settings2 } from "@lucide/svelte";
+  import HomeShelf from "#lib/components/HomeShelf.svelte";
   import HomeRow from "#lib/components/HomeRow.svelte";
   import LoadingSkeleton from "#lib/components/LoadingSkeleton.svelte";
   import Poster from "#lib/components/Poster.svelte";
@@ -47,7 +48,9 @@
   }));
 </script>
 
-<div class="page">
+<svelte:head><title>Home · Cloudstream</title></svelte:head>
+
+<div class="page home">
   <div class="top">
     <div class="page-heading">
       <h1 class="page-title">Home</h1>
@@ -92,11 +95,12 @@
       >
     </div>
   {:else}
-    <ProviderPicker providers={withHome} {current} onchoose={choose} />
+    <div class="source-band">
+      <ProviderPicker providers={withHome} {current} onchoose={choose} />
+    </div>
 
     {#if continueQ.data?.length}
-      <h2 class="section-title">Continue watching</h2>
-      <div class="scroll-x">
+      <HomeShelf title="Continue watching" description="Pick up where you left off.">
         {#each continueQ.data as c (c.provider + c.url)}
           <Poster
             provider={c.provider}
@@ -106,10 +110,11 @@
             meta={c.episodeLabel ?? ""}
             progress={c.duration ? c.position / c.duration : null}
             href={titleHref(c.provider, c.url)}
+            horizontal
             showProvider
           />
         {/each}
-      </div>
+      </HomeShelf>
     {/if}
 
     {#if current}
@@ -117,9 +122,19 @@
         {#if sections.data}
           {#each sections.data as s (s.index)}
             <HomeRow provider={current.name} section={s} />
+          {:else}
+            <div class="empty">
+              <h2>No collections available</h2>
+              <p class="muted">Try another source to find something to watch.</p>
+              <button class="btn" onclick={() => sections.refetch()}>Refresh collections</button>
+            </div>
           {/each}
         {:else if sections.isError}
-          <p class="muted">{sections.error?.message}</p>
+          <div class="empty">
+            <h2>Couldn’t load collections</h2>
+            <p class="muted">{sections.error?.message}</p>
+            <button class="btn" onclick={() => sections.refetch()}>Try again</button>
+          </div>
         {:else}
           <LoadingSkeleton variant="home" showProviders={false} />
         {/if}
@@ -129,11 +144,49 @@
 </div>
 
 <style>
+  .home {
+    --card-w: 156px;
+    --card-w-h: 280px;
+  }
+  .source-band {
+    padding: 18px 20px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .source-band :global(.provider-picker) {
+    margin-bottom: 0;
+  }
+  .page-heading h1 {
+    font-size: clamp(32px, 4vw, 48px);
+    letter-spacing: -0.035em;
+    font-weight: 700;
+  }
+  .page-heading p {
+    margin-top: 8px;
+  }
+  @media (min-width: 900px) {
+    .home {
+      padding-top: 48px;
+      --card-w: 176px;
+      --card-w-h: 304px;
+    }
+  }
+  @media (max-width: 599px) {
+    .home {
+      --card-w: 140px;
+      --card-w-h: 248px;
+    }
+    .source-band {
+      padding: 12px;
+    }
+  }
+
   .top {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    margin-bottom: 24px;
+    margin-bottom: 28px;
     justify-content: space-between;
     gap: 12px;
   }
@@ -149,7 +202,7 @@
     margin-left: auto;
     padding: 4px 4px 4px 14px;
     color: var(--muted);
-    background: var(--surface-2);
+    background: var(--surface);
     border: 1px solid var(--line);
     border-radius: var(--radius-sm);
   }
@@ -174,12 +227,13 @@
     min-height: 38px;
     padding: 0 12px;
     border-radius: 5px;
-    color: var(--text);
+    color: var(--accent-ink);
+    background: var(--accent);
     font-size: 13px;
     font-weight: 600;
   }
   .browse-search button:hover {
-    background: var(--surface-3);
+    filter: brightness(1.08);
   }
   @media (max-width: 599px) {
     .browse-search {

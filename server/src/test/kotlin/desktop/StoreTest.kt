@@ -52,6 +52,32 @@ class StoreTest {
     }
 
     @Test
+    fun historyIncludesLatestEpisodeProgressEvenWhenCompletedOrUnder30Seconds() {
+        store.touchHistory("P", "show", "Show", null, "TvSeries", false)
+        store.touchHistory("P", "film", "Film", null, "Movie", false)
+        store.touchHistory("P", "new", "New", null, "Movie", false)
+        store.touchHistory("Other", "show", "Other show", null, "TvSeries", false)
+        store.saveProgress("P", "show", "s1e1", "S1E1", 300.0, 1400.0, false)
+        store.saveProgress("P", "show", "s1e2", "S1E2 · Episode 2", 1400.0, 1400.0, true)
+        // Ties must still produce exactly one history card, using the later saved row.
+        db.update("UPDATE progress SET updated = 100 WHERE provider = ? AND url = ?", "P", "show")
+        store.saveProgress("P", "film", "film", null, 10.0, 6000.0, false)
+
+        val entries = store.history()
+        assertEquals(4, entries.size)
+        val show = entries.single { it.provider == "P" && it.url == "show" }
+        assertEquals("S1E2 · Episode 2", show.episodeLabel)
+        assertEquals(1400.0, show.position)
+        assertEquals(1400.0, show.duration)
+        assertEquals(10.0, entries.single { it.url == "film" }.position)
+        for (entry in entries.filter { it.url == "new" || it.provider == "Other" }) {
+            assertNull(entry.episodeLabel)
+            assertEquals(0.0, entry.position)
+            assertEquals(0.0, entry.duration)
+        }
+    }
+
+    @Test
     fun nsfwContentIsNeverRecordedInHistory() {
         store.touchHistory("P", "a", "A", null, "Movie", false)
         store.touchHistory("P", "unknown", "Unknown type", null, null, false)

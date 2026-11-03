@@ -294,6 +294,9 @@ export interface HistoryEntry {
   poster: string | null;
   type: string | null;
   lastWatched: number;
+  episodeLabel?: string | null;
+  position?: number;
+  duration?: number;
 }
 
 export interface ContinueEntry {

@@ -341,6 +341,12 @@ the history.
 History never records NSFW content. `GET /api/history` and `GET /api/continue` always exclude NSFW entries,
 including older saved entries, regardless of the `show_nsfw` setting.
 
+`GET /api/history` includes `episodeLabel` (nullable), `position` and `duration` (seconds) from each title's
+most recently updated progress record, including completed episodes and playback under 30 seconds. Equal
+update timestamps use the later inserted progress row. Titles without progress return null/0/0. History
+ordering and limits still use `lastWatched`. The web Library uses these fields for episode labels and progress
+bars; an unknown or zero duration hides the bar.
+
 Normalize Cloudstream types into stable DTOs (`SearchItem`, `Details`, `Episode`, `Link`, `Subtitle`). The UI should
 never depend on Cloudstream's class shapes. Cache `load()` results and link lists for a few minutes, keyed by
 `(provider, url/data)`.

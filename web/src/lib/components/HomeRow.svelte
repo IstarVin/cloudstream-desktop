@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChevronRight } from "@lucide/svelte";
+  import HomeShelf from "./HomeShelf.svelte";
   import { createInfiniteQuery } from "@tanstack/svelte-query";
   import { homePagesOptions, mergeHomeRows } from "../home";
   import type { HomeSection } from "../types";
@@ -40,16 +40,10 @@
   {#if row.data}
     {#each rows as r (r.name)}
       {#if r.items.length}
-        <div class="section-heading">
-          <h2 class="section-title">{r.name || section.name}</h2>
-          <a
-            class="view-all"
-            href={`/home-section?${new URLSearchParams({ provider, section: String(section.index), row: r.name, name: r.name || section.name })}`}
-            aria-label={`View all ${r.name || section.name}`}
-            >View all <ChevronRight size={16} strokeWidth={1.8} aria-hidden="true" /></a
-          >
-        </div>
-        <div class="scroll-x">
+        <HomeShelf
+          title={r.name || section.name}
+          href={`/home-section?${new URLSearchParams({ provider, section: String(section.index), row: r.name, name: r.name || section.name })}`}
+        >
           {#each r.items as item (JSON.stringify([item.provider, item.url]))}
             <Poster
               provider={item.provider}
@@ -67,13 +61,16 @@
             horizontal
             onloadmore={loadMore}
           />
-        </div>
+        </HomeShelf>
       {/if}
     {/each}
   {:else}
     <h2 class="section-title">{section.name}</h2>
     {#if row.isError}
-      <p class="muted">Couldn't load this row: {row.error?.message}</p>
+      <div class="row-error">
+        <p class="muted">Couldn't load this row: {row.error?.message}</p>
+        <button class="btn" onclick={() => row.refetch()}>Try again</button>
+      </div>
     {:else}
       <LoadingSkeleton horizontal={section.horizontal} />
     {/if}
@@ -81,28 +78,18 @@
 </section>
 
 <style>
-  .section-heading {
+  .row-error {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
     gap: 16px;
-    margin: 32px 0 16px;
+    padding: 20px;
+    background: var(--surface);
+    border-radius: var(--radius);
   }
-  .section-heading .section-title {
+  .row-error p {
+    flex: 1;
     margin: 0;
-  }
-  .view-all {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    min-height: 44px;
-    flex-shrink: 0;
-    color: var(--accent);
-    font-size: 14px;
-    font-weight: 600;
-  }
-  .view-all:hover {
-    text-decoration: underline;
-    text-underline-offset: 4px;
+    overflow-wrap: anywhere;
   }
 </style>

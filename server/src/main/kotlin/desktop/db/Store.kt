@@ -25,9 +25,19 @@ class Store(private val db: Database) {
 
     fun history(limit: Int = 200): List<HistoryEntry> =
         db.query(
-            "SELECT provider, url, title, poster, type, last_watched FROM history WHERE nsfw = 0 AND (type IS NULL OR type != 'NSFW') ORDER BY last_watched DESC LIMIT ?",
+            """SELECT h.provider, h.url, h.title, h.poster, h.type, h.last_watched,
+                      p.label, COALESCE(p.position, 0), COALESCE(p.duration, 0)
+               FROM history h LEFT JOIN progress p ON p.rowid = (
+                   SELECT q.rowid FROM progress q WHERE q.provider = h.provider AND q.url = h.url
+                   ORDER BY q.updated DESC, q.rowid DESC LIMIT 1
+               )
+               WHERE h.nsfw = 0 AND (h.type IS NULL OR h.type != 'NSFW')
+               ORDER BY h.last_watched DESC LIMIT ?""",
             limit,
-        ) { HistoryEntry(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5), it.getLong(6)) }
+        ) {
+            HistoryEntry(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5),
+                it.getLong(6), it.getString(7), it.getDouble(8), it.getDouble(9))
+        }
 
     fun deleteHistory(provider: String, url: String) {
         db.update("DELETE FROM history WHERE provider = ? AND url = ?", provider, url)

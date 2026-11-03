@@ -1,5 +1,21 @@
 <script lang="ts">
-  import { Check, ChevronDown, Layers, Search, X } from "@lucide/svelte";
+  import {
+    Check,
+    ChevronDown,
+    Layers,
+    Search,
+    X,
+    Sparkles,
+    Film,
+    Tv,
+    Drama,
+    Smile,
+    Clapperboard,
+    Radio,
+    Download,
+    Shield,
+    Ellipsis,
+  } from "@lucide/svelte";
   import { CONTENT_TYPES, contentTypeLabels, matchesContentType } from "../content-types";
   import type { Provider } from "../types";
 
@@ -12,6 +28,19 @@
     current: Provider | undefined;
     onchoose: (name: string) => void;
   } = $props();
+
+  const categoryIcons = {
+    anime: Sparkles,
+    movies: Film,
+    series: Tv,
+    drama: Drama,
+    cartoons: Smile,
+    documentaries: Clapperboard,
+    live: Radio,
+    torrent: Download,
+    adult: Shield,
+    other: Ellipsis,
+  };
 
   const id = $props.id();
   let open = $state(false);
@@ -160,11 +189,15 @@
       </div>
       <div class="filters" role="group" aria-label="Filter sources by content type">
         {#each filters as filter (filter.id)}
+          {@const Icon = categoryIcons[filter.id]}
           <button
             class={["chip", { on: contentTypes.includes(filter.id) }]}
             aria-pressed={contentTypes.includes(filter.id)}
-            onclick={() => toggleFilter(filter.id)}>{filter.label}</button
+            onclick={() => toggleFilter(filter.id)}
           >
+            <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
+            <span>{filter.label}</span>
+          </button>
         {/each}
       </div>
       <div class="list-heading" role="status">
@@ -239,11 +272,12 @@
     align-items: center;
     gap: 12px;
     min-width: 0;
-    width: 340px;
+    width: 360px;
+    max-width: 100%;
     padding: 10px 12px;
     text-align: left;
-    background: var(--surface);
-    border: 1px solid var(--line);
+    background: var(--surface-2);
+    border: 1px solid transparent;
     border-radius: var(--radius);
   }
   .source-trigger:hover,
@@ -312,7 +346,29 @@
     margin-top: 16px;
   }
   .filters .chip {
-    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 15px;
+    line-height: 1;
+    font-weight: 550;
+    transition:
+      background-color 160ms,
+      border-color 160ms,
+      color 160ms;
+  }
+  .filters .chip span {
+    display: block;
+    line-height: 20px;
+  }
+  .filters .chip :global(svg) {
+    display: block;
+    flex: 0 0 16px;
+  }
+  .filters .chip:hover:not(.on) {
+    border-color: var(--muted);
   }
   .source-browser {
     margin-top: 16px;
@@ -420,6 +476,12 @@
   .no-sources p {
     margin: 0 0 16px;
     overflow-wrap: anywhere;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .filters .chip,
+    .source-trigger :global(.chevron) {
+      transition: none;
+    }
   }
   @media (max-width: 599px) {
     .toolbar {

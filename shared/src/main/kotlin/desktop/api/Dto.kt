@@ -203,6 +203,9 @@ data class HistoryEntry(
     val poster: String?,
     val type: String?,
     val lastWatched: Long,
+    val episodeLabel: String? = null,
+    val position: Double = 0.0,
+    val duration: Double = 0.0,
 )
 
 @Serializable

@@ -93,7 +93,7 @@
           <Trash2 size={16} strokeWidth={1.8} aria-hidden="true" /> Clear all
         </button>
       </div>
-      <div class="grid">
+      <div class="grid history-grid">
         {#each history.data as h (h.provider + h.url)}
           <div class="cell">
             <Poster
@@ -101,9 +101,12 @@
               url={h.url}
               name={h.title}
               poster={h.poster}
-              meta={ago(h.lastWatched)}
+              meta={h.episodeLabel ?? ""}
+              progress={h.duration ? (h.position ?? 0) / h.duration : null}
+              horizontal
               showProvider
             />
+            <p class="watched-at">{ago(h.lastWatched)}</p>
             <button
               class="forget"
               onclick={() => forget(h.provider, h.url)}
@@ -208,6 +211,16 @@
   }
   .library-loading {
     margin-top: 28px;
+  }
+  .grid.history-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+    gap: 24px 16px;
+    --card-w-h: 100%;
+  }
+  .watched-at {
+    margin: 3px 0 0;
+    color: var(--muted);
+    font-size: 12px;
   }
   .library-empty {
     max-width: 440px;
