@@ -22,6 +22,7 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
     private class Cached(val response: LoadResponse, val at: Long)
 
     private val loadCache = ConcurrentHashMap<Pair<String, String>, Cached>()
+    private val LOAD_TTL = 10 * 60_000L
 
     fun visibleProviders(): List<PluginHost.Provider> {
         val nsfw = settings.showNsfw
@@ -95,13 +96,15 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
         }.forEach { it.await() }
     }
 
-    /** `load()` through a 10-minute cache keyed by (provider, url). */
+    /** `load()` through a 10-minute cache keyed by (provider, url); expired entries are dropped on each call. */
     suspend fun loadRaw(name: String, url: String): Pair<PluginHost.Provider, LoadResponse> {
         val p = provider(name)
         val key = name to url
-        loadCache[key]?.takeIf { System.currentTimeMillis() - it.at < 10 * 60_000 }?.let { return p to it.response }
+        val now = System.currentTimeMillis()
+        loadCache.values.removeIf { now - it.at >= LOAD_TTL }
+        loadCache[key]?.let { return p to it.response }
         val r = guarded(p) { withTimeout(p.api.loadTimeoutMs ?: 30_000) { p.api.load(url) } } ?: throw NotFound("$name returned nothing for $url")
-        loadCache[key] = Cached(r, System.currentTimeMillis())
+        loadCache[key] = Cached(r, now)
         return p to r
     }
 

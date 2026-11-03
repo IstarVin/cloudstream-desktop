@@ -44,7 +44,11 @@ dependencies {
 
 application {
     mainClass.set("desktop.MainKt")
-    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+    // Without a cap the JVM may grow to a quarter of system RAM and keep it; the periodic GC hands idle heap back.
+    applicationDefaultJvmArgs = listOf(
+        "--enable-native-access=ALL-UNNAMED",
+        "-Xmx1g", "-XX:G1PeriodicGCInterval=30000", "-XX:MaxHeapFreeRatio=30", "-XX:MinHeapFreeRatio=10",
+    )
 }
 
 kotlin {

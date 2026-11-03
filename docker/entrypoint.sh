@@ -6,4 +6,4 @@ if [ ! -f "$conf" ]; then
     mkdir -p "$(dirname "$conf")"
     cp /app/default-config.toml "$conf"
 fi
-exec java --enable-native-access=ALL-UNNAMED -jar /app/cloudstream-desktop.jar "$@"
+exec java --enable-native-access=ALL-UNNAMED -Xmx1g -XX:G1PeriodicGCInterval=30000 -XX:MaxHeapFreeRatio=30 -XX:MinHeapFreeRatio=10 -jar /app/cloudstream-desktop.jar "$@"

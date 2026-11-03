@@ -8,7 +8,7 @@ After=graphical-session.target network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%h/.local/share/cloudstream-desktop
-ExecStart=/usr/bin/env java --enable-native-access=ALL-UNNAMED -jar %h/.local/share/cloudstream-desktop/cloudstream-desktop.jar serve
+ExecStart=/usr/bin/env java --enable-native-access=ALL-UNNAMED -Xmx1g -XX:G1PeriodicGCInterval=30000 -XX:MaxHeapFreeRatio=30 -XX:MinHeapFreeRatio=10 -jar %h/.local/share/cloudstream-desktop/cloudstream-desktop.jar serve
 Restart=on-failure
 RestartSec=5
 # The extensions repo is built with its own gradle wrapper; give it a sane PATH.
