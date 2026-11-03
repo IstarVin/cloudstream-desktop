@@ -119,6 +119,7 @@
           <SourceProfiles
             settings={settings.data}
             knownSources={sources.links.map((l) => l.source)}
+            showPreview={false}
           />
         {:else if settings.isError}
           <p class="err">
