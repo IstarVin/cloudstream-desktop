@@ -151,20 +151,9 @@
       <button class="icon-btn" onclick={() => (player.expanded = false)} aria-label="Close remote"
         ><ChevronDown size={22} strokeWidth={1.8} aria-hidden="true" /></button
       >
-      {#if player.playing.length > 1}
-        <select
-          class="player-status device-pick"
-          aria-label="Device"
-          value={player.device}
-          onchange={(e) => player.follow(e.currentTarget.value)}
-        >
-          {#each player.playing as d (d.id)}<option value={d.id}>{d.name}</option>{/each}
-        </select>
-      {:else}
-        <span class="player-status"
-          ><span class={["status-dot", { online: online }]}></span>{statusText}</span
-        >
-      {/if}
+      <span class="player-status"
+        ><span class={["status-dot", { online: online }]}></span>{statusText}</span
+      >
       <button class="icon-btn" onclick={openSources} aria-label="Sources"
         ><Layers size={22} strokeWidth={1.8} aria-hidden="true" /></button
       >
@@ -479,15 +468,6 @@
     gap: 8px;
     color: var(--muted);
     font-weight: 600;
-  }
-  .device-pick {
-    width: auto;
-    max-width: 55vw;
-    min-height: 36px;
-    padding: 0 10px;
-    background: var(--surface-2);
-    border: 1px solid var(--line);
-    border-radius: 999px;
   }
   .status-dot {
     width: 7px;

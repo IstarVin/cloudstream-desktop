@@ -18,25 +18,17 @@ const initial: PlayerState = {
 const isActive = (s: PlayerState | undefined) => !!s && (s.status !== "idle" || !!s.title);
 
 /**
- * The remote: the player on another device (the server's mpv, a TV, another browser), shared by the now-playing bar,
- * the remote and the sources sheet. Live state comes over the cast socket.
+ * The remote: the player on the device this browser is casting to (the one it has claimed), shared by the now-playing
+ * bar, the remote and the sources sheet. Live state comes over the cast socket. Other devices' players aren't shown
+ * here, so what someone else casts never gets in the way of playing on this one.
  */
 class Player {
-  /** The device last cast to or picked in the remote; while it's gone, the bar follows whatever else is playing. */
-  followed = $state<string | null>(null);
   /** Shows the full-screen remote. */
   expanded = $state(false);
 
-  /** Other devices with something playing (or just finished), mpv first. */
-  get playing() {
-    return cast.others.filter((d) => isActive(cast.states[d.id]));
-  }
-
-  /** The device the remote controls. */
+  /** The device the remote controls: the one the server lists as picked by this browser, or none. */
   get device(): string | null {
-    const f = this.followed;
-    if (f && cast.device(f) && (isActive(cast.states[f]) || !this.playing.length)) return f;
-    return this.playing[0]?.id ?? (f && cast.device(f) ? f : null);
+    return cast.others.find((d) => d.controller === cast.id)?.id ?? null;
   }
 
   get info() {
@@ -60,12 +52,10 @@ class Player {
     cast.start();
   }
 
-  follow(device: string) {
-    this.followed = device;
-  }
-
   command(cmd: string, body: Record<string, unknown> = {}) {
-    return api.castCommand(this.device ?? "mpv", cmd, body);
+    const device = this.device;
+    if (!device) return Promise.reject(new Error("Not casting to a device"));
+    return api.castCommand(device, cmd, body);
   }
 }
 

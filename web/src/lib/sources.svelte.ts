@@ -40,7 +40,6 @@ class Sources {
     }
     this.show(t);
     try {
-      player.follow(target);
       await api.castPlay(
         target,
         { provider: t.provider, url: t.url, data: t.data, startAt },
@@ -116,7 +115,6 @@ class Sources {
         startAt = remoteAt;
         await player.command("stop").catch(() => {});
       }
-      player.follow(target);
       await api.castPlay(
         target,
         {

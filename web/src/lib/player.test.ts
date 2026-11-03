@@ -23,40 +23,45 @@ const idle: PlayerState = {
   mpvRunning: false,
 };
 const state = (s: Partial<PlayerState>): PlayerState => ({ ...idle, ...s });
-const dev = (id: string, kind: DeviceInfo["kind"] = "tv"): DeviceInfo => ({
+const dev = (id: string, kind: DeviceInfo["kind"] = "tv", controller?: string): DeviceInfo => ({
   id,
   name: id.toUpperCase(),
   kind,
   receiver: true,
+  controller,
 });
+const me = () => dev(cast.id, "web");
 
 describe("player store (the remote)", () => {
-  it("follows whichever other device is playing, mpv first", () => {
-    cast.onFrame({ type: "devices", devices: [dev("mpv", "mpv"), dev("tv"), dev(cast.id, "web")] });
-    expect(player.active).toBe(false);
+  it("ignores devices playing for someone else, or for nobody", () => {
+    cast.onFrame({
+      type: "devices",
+      devices: [dev("mpv", "mpv", "other"), dev("tv"), me()],
+    });
+    cast.onFrame({ type: "state", device: "mpv", state: state({ status: "playing", title: "Up" }) });
+    cast.onFrame({ type: "state", device: "tv", state: state({ status: "playing", title: "Dune" }) });
     expect(player.device).toBe(null);
-
-    cast.onFrame({
-      type: "state",
-      device: "tv",
-      state: state({ status: "playing", title: "Dune" }),
-    });
-    expect(player.device).toBe("tv");
-    expect(player.state.title).toBe("Dune");
-
-    cast.onFrame({
-      type: "state",
-      device: "mpv",
-      state: state({ status: "resolving", title: "Up" }),
-    });
-    expect(player.device).toBe("mpv");
+    expect(player.active).toBe(false);
+    expect(player.state.title).toBeUndefined();
   });
 
-  it("keeps to the device cast to, and sends commands there", async () => {
-    player.follow("tv");
+  it("shows the device this browser has claimed, and sends commands there", async () => {
+    cast.onFrame({
+      type: "devices",
+      devices: [dev("mpv", "mpv", "other"), dev("tv", "tv", cast.id), me()],
+    });
     expect(player.device).toBe("tv");
+    expect(player.active).toBe(true);
+    expect(player.state.title).toBe("Dune");
     await player.command("seek", { seconds: 10, relative: true });
     expect(api.castCommand).toHaveBeenLastCalledWith("tv", "seek", { seconds: 10, relative: true });
+  });
+
+  it("won't send a command with no device claimed", async () => {
+    cast.onFrame({ type: "devices", devices: [dev("mpv", "mpv"), dev("tv"), me()] });
+    vi.mocked(api.castCommand).mockClear();
+    await expect(player.command("stop")).rejects.toThrow();
+    expect(api.castCommand).not.toHaveBeenCalled();
   });
 
   it("ignores its own state and drops devices that leave", () => {
@@ -67,12 +72,12 @@ describe("player store (the remote)", () => {
     });
     expect(cast.states[cast.id]).toBeUndefined();
 
-    cast.onFrame({ type: "devices", devices: [dev("mpv", "mpv"), dev(cast.id, "web")] });
+    cast.onFrame({ type: "devices", devices: [dev("mpv", "mpv"), me()] });
     expect(cast.states.tv).toBeUndefined();
-    expect(player.device).toBe("mpv");
   });
 
   it("keeps the bar up after playback finishes while the title is known", () => {
+    cast.onFrame({ type: "devices", devices: [dev("mpv", "mpv", cast.id), me()] });
     cast.onFrame({
       type: "state",
       device: "mpv",

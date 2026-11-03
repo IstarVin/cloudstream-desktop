@@ -1,0 +1,15 @@
+diff --git a/dist/worker/worker.js b/dist/worker/worker.js
+index 16640f02cc36dbc4263829c4c0418585833dc270..f312928774d330f4240d04a7f5699181efc91f7f 100644
+--- a/dist/worker/worker.js
++++ b/dist/worker/worker.js
+@@ -34,6 +34,10 @@ export class ASSRenderer {
+         // in rare cases the better texture-dedupe, drawing everything in one call, no fake stride and no page ordering
+         // can help it's performance, but those cases are rare
+         try {
++            // Android GPU drivers composite OffscreenCanvas WebGL as opaque black over the video.
++            if (/Android/i.test(self.navigator?.userAgent ?? '')) {
++                throw new Error('Android: use Canvas2D');
++            }
+             const testCanvas = new OffscreenCanvas(1, 1);
+             if (testCanvas.getContext('webgl2')) {
+                 this._gpurender = new WebGL2Renderer(ctrl);

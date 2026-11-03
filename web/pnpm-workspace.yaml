@@ -5,6 +5,8 @@ catalog:
   vite-plus: 1.4.0
 overrides:
   vite@*: "catalog:"
+patchedDependencies:
+  jassub: patches/jassub.patch
 peerDependencyRules:
   allowAny:
     - vite
