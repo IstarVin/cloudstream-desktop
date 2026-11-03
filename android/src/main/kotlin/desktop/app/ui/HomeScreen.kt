@@ -184,6 +184,7 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
                         modifier = Modifier.weight(1f, fill = false).widthIn(max = 480.dp),
                     )
                     IconButton(onClick = onManage, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Outlined.Extension, "Manage plugins") }
+                    CastButton()
                 }
             }
             status?.takeIf { it.building }?.let { s ->

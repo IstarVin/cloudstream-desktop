@@ -2,6 +2,10 @@ package desktop.app.data
 
 import desktop.api.AuthStatus
 import desktop.api.Bookmark
+import desktop.api.BrowserStatusDto
+import desktop.api.DeviceInfo
+import desktop.api.PlayRequest
+import desktop.api.PlayerCommand
 import desktop.api.BookmarkRequest
 import desktop.api.ContinueEntry
 import desktop.api.Details
@@ -46,6 +50,8 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
@@ -248,6 +254,39 @@ class Api(initial: ServerConfig?) {
 
     suspend fun savePluginSettings(name: String, settings: PluginSettingsDto): PluginSettingsDto =
         json.decodeFromString(call(Request.Builder().url(url("/api/plugins/${enc(name)}/settings")).put(body(json.encodeToString(settings))).build()))
+
+    suspend fun rebuildPlugins() {
+        post("/api/plugins/rebuild")
+    }
+
+    suspend fun buildLog(): String = call(Request.Builder().url(url("/api/plugins/build-log")).build())
+
+    // ---- the desktop's background browser (Cloudflare checks) ----------------------------------------------------
+
+    suspend fun browser(): BrowserStatusDto = get("/api/browser")
+    suspend fun solveCheck(id: String): BrowserStatusDto = json.decodeFromString(post("/api/browser/checks/${enc(id)}/solve"))
+    suspend fun dismissCheck(id: String): BrowserStatusDto =
+        json.decodeFromString(call(Request.Builder().url(url("/api/browser/checks/${enc(id)}")).delete().build()))
+    suspend fun stopBrowser(): BrowserStatusDto = json.decodeFromString(post("/api/browser/stop"))
+    suspend fun forgetClearance(host: String): BrowserStatusDto =
+        json.decodeFromString(call(Request.Builder().url(url("/api/browser/clearances", mapOf("host" to host))).delete().build()))
+
+    // ---- casting: the same play and commands, on any connected device ("mpv" is the desktop's) ------------------
+
+    suspend fun castDevices(): List<DeviceInfo> = get("/api/cast/devices")
+
+    suspend fun castPlay(device: String, req: PlayRequest, from: String?) {
+        send("POST", "/api/cast/${enc(device)}/play", req, mapOf("from" to from))
+    }
+
+    suspend fun castCommand(device: String, cmd: String, body: PlayerCommand = PlayerCommand()) {
+        send("POST", "/api/cast/${enc(device)}/${enc(cmd)}", body)
+    }
+
+    /** The casting socket. Pings keep it alive through idle Wi-Fi and notice a desktop that went away. */
+    fun castSocket(listener: WebSocketListener): WebSocket =
+        http.newBuilder().readTimeout(0, TimeUnit.SECONDS).pingInterval(20, TimeUnit.SECONDS).build()
+            .newWebSocket(Request.Builder().url(url("/api/cast")).build(), listener)
 
     private fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 }

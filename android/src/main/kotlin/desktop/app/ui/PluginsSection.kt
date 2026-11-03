@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.ExpandLess
@@ -106,11 +107,34 @@ class PluginsController(private val api: Api, private val scope: CoroutineScope,
     var filter by mutableStateOf(PluginFilter.All)
     var selected by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)
+    /** The desktop is building or loading plugins. */
+    var building by mutableStateOf(false)
+    /** The last gradle build's output, while shown. */
+    var buildLog by mutableStateOf<String?>(null)
 
     suspend fun load() {
         if (plugins is Load.Failed) plugins = Load.Loading
         plugins = runCatching { Load.Ok(api.plugins()) }.getOrElse { Load.Failed(it.userMessage()) }
         source = runCatching { api.pluginSource() }.getOrNull()
+        building = runCatching { api.status().building }.getOrDefault(building)
+    }
+
+    /** Dev mode: rebuilds the local extensions repo with gradle, then reloads the list once the desktop is done. */
+    fun rebuild() = run("Couldn't rebuild") {
+        api.rebuildPlugins()
+        building = true
+        tell("Rebuilding plugins…")
+        while (building) {
+            kotlinx.coroutines.delay(1500)
+            building = runCatching { api.status().building }.getOrDefault(false)
+        }
+        load()
+        if (buildLog != null) buildLog = api.buildLog()
+        tell("Rebuild finished")
+    }
+
+    fun toggleBuildLog() = run("Couldn't load the build log") {
+        buildLog = if (buildLog == null) api.buildLog().ifBlank { "No build output yet." } else null
     }
 
     private fun run(failure: String, block: suspend () -> Unit) = scope.launch {
@@ -230,6 +254,18 @@ private fun PluginSource(c: PluginsController, onRefresh: () -> Unit) {
             else Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp))
             Text(if (repo) "Check for updates" else "Refresh", Modifier.padding(start = 10.dp))
         }
+        if (source != null && !repo) OutlinedButton(
+            onClick = { c.rebuild() },
+            enabled = !c.busy && !c.building && source.devAvailable,
+            shape = RoundedCornerShape(8.dp),
+            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(containerColor = Palette.surface2, contentColor = Palette.text),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
+        ) {
+            if (c.building) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            else Icon(Icons.Outlined.Build, null, Modifier.size(18.dp))
+            Text(if (c.building) "Building…" else "Rebuild", Modifier.padding(start = 10.dp))
+        }
         HorizontalDivider(Modifier.padding(top = 8.dp, bottom = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
         Text("Plugin source", style = MaterialTheme.typography.labelLarge)
         Surface(color = Palette.surface2, contentColor = Palette.text, shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
@@ -246,7 +282,22 @@ private fun PluginSource(c: PluginsController, onRefresh: () -> Unit) {
             source?.let {
                 Text(if (repo) it.repoUrl else it.devPath, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
             }
-            Text("Plugins run on your desktop. Change the source or rebuild local plugins from desktop settings.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+            Text("Plugins run on your desktop. Change the source from desktop settings.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+            if (!repo) {
+                TextButton(onClick = { c.toggleBuildLog() }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp), modifier = Modifier.tvFocusIndicator()) {
+                    Text(if (c.buildLog == null) "Show build log" else "Hide build log")
+                }
+                c.buildLog?.let { log ->
+                    Surface(color = Palette.surface2, shape = RoundedCornerShape(8.dp)) {
+                        Text(
+                            log.takeLast(20_000),
+                            Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(rememberScrollState()).padding(12.dp),
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                            color = Palette.muted,
+                        )
+                    }
+                }
+            }
         }
         source?.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.danger) }
         HorizontalDivider(Modifier.padding(top = 8.dp, bottom = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)

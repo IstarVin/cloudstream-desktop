@@ -8,6 +8,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -104,6 +106,7 @@ private fun Root() {
         PairScreen(message = pairMessage) { config ->
             api.server = config
             scope.launch { context.app.prefs.setServer(config) }
+            context.app.cast.reconnect()
             pairMessage = null
             paired = true
         }
@@ -111,6 +114,7 @@ private fun Root() {
         MainScaffold(onUnpair = {
             api.server = null
             scope.launch { context.app.prefs.setServer(null) }
+            context.app.cast.stop()
             paired = false
         })
     }
@@ -186,8 +190,10 @@ private fun MainScaffold(onUnpair: () -> Unit) {
             // Peer tabs crossfade; details move along a shared axis, reversed for Back. A back gesture previews the
             // pop with Android's predictive-back motion (the detail shrinks away) and the same motion commits it.
             val pushes = { d: NavDestination? -> d?.hasRoute<TitleRoute>() == true || d?.hasRoute<SectionRoute>() == true }
+            Column(Modifier.weight(1f).fillMaxHeight()) {
+            BrowserChecks()
             NavHost(
-                nav, startDestination = HomeRoute, modifier = Modifier.weight(1f).fillMaxHeight().clipToBounds().focusGroup(),
+                nav, startDestination = HomeRoute, modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds().focusGroup(),
                 enterTransition = { motion.enter(detail = pushes(targetState.destination)) },
                 exitTransition = { motion.exit(detail = pushes(targetState.destination)) },
                 popEnterTransition = { motion.enter(detail = pushes(initialState.destination), back = true) },
@@ -213,6 +219,9 @@ private fun MainScaffold(onUnpair: () -> Unit) {
                     val r = it.toRoute<TitleRoute>()
                     TitleScreen(r.provider, r.url, onTitle = toTitle, onBack = { nav.popBackStack() })
                 }
+            }
+            // The remote for the device this one plays on, like the web UI's now-playing bar.
+            NowPlayingBar(onTitle = toTitle)
             }
         }
     }

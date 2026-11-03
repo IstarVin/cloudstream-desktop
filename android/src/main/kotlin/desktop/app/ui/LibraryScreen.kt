@@ -99,7 +99,7 @@ fun LibraryScreen(onTitle: (String, String) -> Unit, onBrowse: () -> Unit) {
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            ScreenHeading("Library")
+            ScreenHeading("Library") { CastButton() }
             PrimaryTabRow(selectedTabIndex = tab) {
                 Tab(tab == 0, { tab = 0 }, text = { Text("History") })
                 Tab(tab == 1, { tab = 1 }, text = { Text("Bookmarks") })

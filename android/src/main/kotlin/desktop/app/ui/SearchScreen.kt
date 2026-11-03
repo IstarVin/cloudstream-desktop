@@ -140,6 +140,7 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         // The field is the screen's header: nothing above it but the status bar.
+        Row(verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(
             query, { query = it },
             placeholder = { Text("Search movies, series, anime…") },
@@ -155,8 +156,10 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
             shape = MaterialTheme.shapes.large,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { run(query) }),
-            modifier = (Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 8.dp).semantics { contentDescription = "Search all sources" }).tvFocusIndicator(),
+            modifier = (Modifier.weight(1f).padding(horizontal = Gutter, vertical = 8.dp).semantics { contentDescription = "Search all sources" }).tvFocusIndicator(),
         )
+        CastButton(Modifier.padding(end = 8.dp))
+        }
         val showFilters = vm.lastQuery.isNotEmpty()
         if (showFilters) LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(listOf("All") + TYPE_GROUPS.keys) { label ->

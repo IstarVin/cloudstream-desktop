@@ -27,6 +27,9 @@ data class ServerSettings(
     @SerialName("proxy_all") val proxyAll: Boolean = false,
     /** prompt | auto | off */
     @SerialName("skip_segments") val skipSegments: String = "prompt",
+    @SerialName("mpv_extra_args") val mpvExtraArgs: List<String> = emptyList(),
+    /** headless | xvfb | headed */
+    @SerialName("chromium_mode") val chromiumMode: String = "headless",
 ) {
     val activeProfile: SourceProfile get() = sourceProfiles.firstOrNull { it.id == sourceProfile } ?: SourceProfile(sourceProfile)
 }
@@ -73,7 +76,25 @@ class Prefs(private val context: Context) {
         val resizeMode = intPreferencesKey("resize_mode")
         val pip = booleanPreferencesKey("pip")
         val recentSearches = stringPreferencesKey("recent_searches")
+        val castId = stringPreferencesKey("cast_id")
+        val castName = stringPreferencesKey("cast_name")
+        val castReceiver = booleanPreferencesKey("cast_receiver")
+        val playTarget = stringPreferencesKey("play_target")
     }
+
+    /** This device on the casting socket: its id (made once), its name if the user set one, and whether it takes casts. */
+    data class CastPrefs(val id: String, val name: String?, val receiver: Boolean, val playTarget: String?)
+
+    suspend fun cast(): CastPrefs {
+        var id: String? = null
+        context.store.edit { p -> id = p[K.castId] ?: java.util.UUID.randomUUID().toString().also { p[K.castId] = it } }
+        val p = context.store.data.first()
+        return CastPrefs(id!!, p[K.castName], p[K.castReceiver] ?: true, p[K.playTarget])
+    }
+
+    suspend fun setCastName(name: String?) = context.store.edit { if (name == null) it.remove(K.castName) else it[K.castName] = name }
+    suspend fun setCastReceiver(on: Boolean) = context.store.edit { it[K.castReceiver] = on }
+    suspend fun setPlayTarget(target: String?) = context.store.edit { if (target == null) it.remove(K.playTarget) else it[K.playTarget] = target }
 
     suspend fun server(): ServerConfig? =
         context.store.data.first()[K.server]?.let { runCatching { json.decodeFromString<ServerConfig>(it) }.getOrNull() }

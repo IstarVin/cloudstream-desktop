@@ -96,6 +96,7 @@ fun SectionScreen(provider: String, section: Int, row: String, name: String, onT
             TopAppBar(
                 title = { Text(row.ifBlank { name }) },
                 navigationIcon = { IconButton(onClick = onBack, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                actions = { CastButton() },
             )
         },
     ) { padding ->

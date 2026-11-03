@@ -18,11 +18,14 @@ import desktop.api.Details
 import desktop.api.Episode
 import desktop.api.Labels
 import desktop.api.LinkDto
+import desktop.api.PlayRequest
+import desktop.api.PlayerCommand
 import desktop.api.ProgressRequest
 import desktop.api.SubtitleDto
 import desktop.api.SubtitleFormat
 import desktop.app.app
 import desktop.app.data.ApiException
+import desktop.app.data.CastReceiver
 import desktop.app.data.ServerSettings
 import desktop.app.data.error
 import desktop.app.data.link
@@ -30,6 +33,8 @@ import desktop.app.data.subtitle
 import desktop.app.ui.episodeTitle
 import desktop.links.LinkRanking
 import desktop.player.AutoPlay
+import desktop.player.PlayerState
+import desktop.player.Track
 import desktop.player.SkipRange
 import desktop.player.SkipRule
 import desktop.player.SourceProfile
@@ -92,8 +97,9 @@ data class Session(
     val pickSource: Boolean = false,
 )
 
-class PlayerViewModel(application: Application) : AndroidViewModel(application) {
+class PlayerViewModel(application: Application) : AndroidViewModel(application), CastReceiver {
     private val api = application.app.api
+    private val cast = application.app.cast
     private val prefs = application.app.prefs
     private val appScope = application.app.scope
     val engine = Engine(application, api.http)
@@ -122,6 +128,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val subtitleFiles = mutableMapOf<String, Pair<File, SubtitleFormat>>()
     private var started = false
 
+    private val _closed = MutableStateFlow(false)
+    /** A device controlling this one sent Stop; the screen closes. */
+    val closed: StateFlow<Boolean> = _closed
+
     init {
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
@@ -143,19 +153,23 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             }
         })
         viewModelScope.launch { while (isActive) { tick(); delay(500) } }
+        cast.receiverPlayer = this
     }
 
-    /** Starts [data] of [details] once; later calls (a recreated activity) keep the running session. */
-    fun start(details: Details, data: String, at: Double?) {
+    /**
+     * Starts [data] of [details] once; later calls (a recreated activity) keep the running session. A cast or a move
+     * from another device may name the [linkId] to play and the [subtitleIds] chosen there.
+     */
+    fun start(details: Details, data: String, at: Double?, linkId: String? = null, subtitleIds: List<String> = emptyList()) {
         if (started) return
         started = true
         viewModelScope.launch {
             settings = runCatching { api.settings() }.getOrDefault(settings)
-            open(Item.of(details, data), at)
+            open(Item.of(details, data), at, linkId, subtitleIds)
         }
     }
 
-    private fun open(item: Item, at: Double?) {
+    private fun open(item: Item, at: Double?, linkId: String? = null, subtitleIds: List<String> = emptyList()) {
         saveProgress(force = true)
         linksJob?.cancel()
         pickJob?.cancel()
@@ -169,6 +183,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         skipped.clear()
         skipsRequested = false
         startAt = at
+        chosenSubs.addAll(subtitleIds)
         _session.value = Session(item = item, status = "resolving", message = "Finding links…")
 
         linksJob = viewModelScope.launch {
@@ -195,8 +210,31 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             }
             _session.update { it.copy(linksDone = true) }
         }
-        if (settings.autoplayBest) autoPick(fallback = false)
-        else _session.update { it.copy(message = "Choose a source", pickSource = true) }
+        when {
+            linkId != null -> pickWhenFound(linkId)
+            settings.autoplayBest -> autoPick(fallback = false)
+            else -> _session.update { it.copy(message = "Choose a source", pickSource = true) }
+        }
+    }
+
+    /** Plays the link another device picked once it streams in; auto-picks if it never does. */
+    private fun pickWhenFound(linkId: String) {
+        pickJob?.cancel()
+        pickJob = viewModelScope.launch {
+            while (isActive) {
+                val s = _session.value
+                val link = s.links.firstOrNull { it.id == linkId && it.playable }
+                if (link != null) {
+                    play(link)
+                    return@launch
+                }
+                if (s.linksDone) {
+                    autoPick(fallback = false)
+                    return@launch
+                }
+                delay(250)
+            }
+        }
     }
 
     /** Playable links the profile shows, best first. */
@@ -496,7 +534,126 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     override fun onCleared() {
         saveProgress(force = true)
+        if (cast.receiverPlayer === this) cast.receiverPlayer = null
         engine.release()
+    }
+
+    // ---- casting: this player as a device others control -------------------------------------------------------
+
+    /** Audio or text tracks, numbered from 1 in the order the stream lists them: the ids other devices see. */
+    private data class TrackRef(val id: Int, val group: Tracks.Group, val index: Int)
+
+    private fun trackRefs(type: Int): List<TrackRef> {
+        var n = 0
+        return player.currentTracks.groups.filter { it.type == type }.flatMap { g ->
+            (0 until g.length).filter { g.isTrackSupported(it) }.map { TrackRef(++n, g, it) }
+        }
+    }
+
+    override fun castState(): PlayerState {
+        val s = _session.value
+        val item = s.item ?: return PlayerState(paused = true)
+        val paused = !player.playWhenReady || s.status == "ended"
+        val status = when (s.status) {
+            "resolving", "loading" -> "resolving"
+            "error" -> "error"
+            else -> if (paused) "paused" else "playing"
+        }
+        fun tracks(type: Int, name: String) = trackRefs(type).map { r ->
+            val f = r.group.getTrackFormat(r.index)
+            Track(r.id, name, f.label, f.language, r.group.isTrackSelected(r.index), f.id?.contains(SUB_PREFIX) == true)
+        }
+        return PlayerState(
+            status = status,
+            message = s.message,
+            position = currentPosition(),
+            duration = duration(),
+            paused = paused,
+            volume = (player.volume * 100).toDouble(),
+            title = item.details.name,
+            episodeLabel = item.label,
+            provider = item.details.provider,
+            url = item.details.url,
+            data = item.data,
+            poster = item.episode?.poster ?: item.details.poster,
+            link = s.current,
+            audioTracks = tracks(C.TRACK_TYPE_AUDIO, "audio"),
+            subTracks = if (s.subtitlesOff) tracks(C.TRACK_TYPE_TEXT, "sub").map { it.copy(selected = false) } else tracks(C.TRACK_TYPE_TEXT, "sub"),
+            hasNext = item.hasNext,
+            hasPrev = item.hasPrev,
+            failedLinks = s.failed.toList(),
+            skip = s.skip,
+        )
+    }
+
+    /** Another device cast something here while the player is open: play it in place. */
+    override fun castPlay(req: PlayRequest) {
+        started = true
+        viewModelScope.launch {
+            val current = _session.value.item?.details
+            val details = if (current != null && current.provider == req.provider && current.url == req.url) current
+            else runCatching { api.details(req.provider, req.url) }.getOrElse { e ->
+                _session.update { it.copy(status = "error", message = "Couldn't load the title: ${e.message}") }
+                return@launch
+            }
+            settings = runCatching { api.settings() }.getOrDefault(settings)
+            open(Item.of(details, req.data), req.startAt, req.linkId, req.subtitleIds)
+        }
+    }
+
+    /** A command from a controlling device, with the meaning it has for the desktop's mpv. */
+    override fun castCommand(cmd: String, body: PlayerCommand) {
+        val s = _session.value
+        when (cmd) {
+            "toggle" -> {
+                if (player.playbackState == Player.STATE_ENDED) player.seekTo(0)
+                player.playWhenReady = !player.playWhenReady
+            }
+            "pause" -> player.playWhenReady = false
+            "resume" -> player.playWhenReady = true
+            "seek" -> {
+                val to = if (body.relative) currentPosition() + (body.seconds ?: 0.0) else body.seconds ?: 0.0
+                player.seekTo((to.coerceAtLeast(0.0) * 1000).toLong())
+            }
+            "volume" -> player.volume = ((body.value ?: 100.0) / 100).toFloat().coerceIn(0f, 1f)
+            "stop" -> {
+                saveProgress(force = true)
+                player.pause()
+                _closed.value = true
+            }
+            "next", "watched-next" -> next()
+            "prev" -> prev()
+            "episode" -> body.value?.toInt()?.let(::episode)
+            "skip" -> skip()
+            "track" -> castTrack(body.type, body.id)
+            "source" -> s.links.firstOrNull { it.id == body.linkId }?.let { play(it, currentPosition().takeIf { p -> p > 5 }) }
+            "sub-add" -> s.subtitles.firstOrNull { it.id == body.id }?.let(::selectSubtitle)
+        }
+    }
+
+    private fun castTrack(type: String?, id: String?) {
+        val n = id?.toIntOrNull()
+        when (type) {
+            "audio" -> trackRefs(C.TRACK_TYPE_AUDIO).firstOrNull { it.id == n }?.let { selectAudio(it.group, it.index) }
+            "sub" -> {
+                val ref = trackRefs(C.TRACK_TYPE_TEXT).firstOrNull { it.id == n } ?: return subtitlesOff()
+                val formatId = ref.group.getTrackFormat(ref.index).id.orEmpty()
+                val sideLoaded = _session.value.subtitles.firstOrNull { formatId.contains(SUB_PREFIX + it.id) }
+                if (sideLoaded != null) selectSubtitle(sideLoaded) else selectEmbedded(ref.group, ref.index)
+            }
+        }
+    }
+
+    /** What moving this episode to another device carries over: the link, the chosen subtitles and the position. */
+    fun handoff(): PlayRequest? {
+        val s = _session.value
+        val item = s.item ?: return null
+        return PlayRequest(
+            item.details.provider, item.details.url, item.data,
+            linkId = s.current?.id,
+            subtitleIds = chosenSubs.toList(),
+            startAt = currentPosition().takeIf { it > 5 },
+        )
     }
 
     companion object {

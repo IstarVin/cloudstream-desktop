@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material3.AlertDialog
@@ -86,6 +87,7 @@ import desktop.app.data.json
 import desktop.player.SourceProfile
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -100,6 +102,7 @@ private enum class SettingsTab(val label: String, val icon: ImageVector) {
     Playback("Playback", Icons.Outlined.PlayArrow),
     Priority("Source priority", Icons.Outlined.FormatListNumbered),
     Content("Content", Icons.Outlined.Shield),
+    Browser("Browser", Icons.Outlined.Language),
     Plugins("Plugins", Icons.Outlined.Layers),
     Desktop("Connection", Icons.Outlined.Computer),
 }
@@ -122,6 +125,7 @@ fun SettingsScreen(onUnpair: () -> Unit) {
     val priorityScroll = rememberLazyListState()
     val contentScroll = rememberLazyListState()
     val pluginsScroll = rememberLazyListState()
+    val browserScroll = rememberLazyListState()
     val currentSettings = (settings as? Load.Ok)?.value
     // Keep profile drafts while changing tabs, and while unrelated settings are saved.
     val profileDraft = remember(currentSettings?.sourceProfiles, currentSettings?.sourceProfile) {
@@ -190,6 +194,7 @@ fun SettingsScreen(onUnpair: () -> Unit) {
                     SettingsTab.Content -> contentScroll
                     SettingsTab.Desktop -> desktopScroll
                     SettingsTab.Plugins -> pluginsScroll
+                    SettingsTab.Browser -> browserScroll
                 },
                 contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 36.dp, bottom = 32.dp),
             ) {
@@ -197,12 +202,14 @@ fun SettingsScreen(onUnpair: () -> Unit) {
                     SettingsTab.Playback -> {
                         item { SettingsSectionTitle("Playback", "Customize playback on this device and your desktop.") }
                         item { SettingsNote("Saved on this device. Changes apply to its video player.") }
+                        item { Header("Casting", first = true) }
+                        item { CastingSettings() }
                         if (!tv) {
-                            item { Header("Gestures", first = true) }
+                            item { Header("Gestures") }
                             item { SwitchRow("Swipe to seek", player.swipeSeek, help = "Swipe left or right across the video.") { v -> updatePlayer { it.copy(swipeSeek = v) } } }
                             item { SwitchRow("Brightness gesture", player.brightnessGesture, help = "Swipe up or down on the left edge.") { v -> updatePlayer { it.copy(brightnessGesture = v) } } }
                             item { SwitchRow("Volume gesture", player.volumeGesture, help = "Swipe up or down on the right edge.") { v -> updatePlayer { it.copy(volumeGesture = v) } } }
-                        } else item { Header("Remote", first = true) }
+                        } else item { Header("Remote") }
                         item { ChoiceRow(if (tv) "Remote seek interval" else "Double-tap seek interval", listOf(5, 10, 15, 30), player.seekStep, { "${it}s" }) { v -> updatePlayer { it.copy(seekStep = v) } } }
                         if (!tv) item { ChoiceRow("Hold-to-play speed", listOf(1.5f, 2f, 3f), player.holdSpeed, { "${it}×" }) { v -> updatePlayer { it.copy(holdSpeed = v) } } }
                         item { Header("Subtitles") }
@@ -228,6 +235,19 @@ fun SettingsScreen(onUnpair: () -> Unit) {
                                 item {
                                     ChoiceRow("Openings and endings", listOf("prompt", "auto", "off"), v.skipSegments,
                                         { mapOf("prompt" to "Offer to skip", "auto" to "Skip", "off" to "Off").getValue(it) }) { save("skip_segments" to JsonPrimitive(it)) }
+                                }
+                                item { Header("Desktop mpv") }
+                                item {
+                                    SwitchRow("Send every stream through the proxy", v.proxyAll, help = "Only needed when a site rejects mpv's direct requests.") {
+                                        save("proxy_all" to JsonPrimitive(it))
+                                    }
+                                }
+                                item {
+                                    TextSettingRow(
+                                        "Extra mpv options", v.mpvExtraArgs.joinToString(" "),
+                                        help = "Applied the next time mpv starts, e.g. --profile=gpu-hq --fullscreen",
+                                        placeholder = "--fullscreen",
+                                    ) { text -> save("mpv_extra_args" to JsonArray(text.split(Regex("\\s+")).filter { it.isNotBlank() }.map(::JsonPrimitive))) }
                                 }
                             }
                         }
@@ -265,6 +285,15 @@ fun SettingsScreen(onUnpair: () -> Unit) {
                                     modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
                                 ) { Text("Unpair this device") }
                             }
+                        }
+                    }
+                    SettingsTab.Browser -> {
+                        item { SettingsSectionTitle("Browser", "Handle sites that need a real browser on the desktop.") }
+                        when (val s = settings) {
+                            Load.Loading -> item { Loading() }
+                            is Load.Failed -> item { ErrorBox(s.message, onRetry = { reload() }) }
+                            // The desktop stops a running browser, so the next request starts it in the new mode.
+                            is Load.Ok -> item { BrowserSettings(s.value) { mode -> save("chromium_mode" to JsonPrimitive(mode)) } }
                         }
                     }
                     SettingsTab.Plugins -> {

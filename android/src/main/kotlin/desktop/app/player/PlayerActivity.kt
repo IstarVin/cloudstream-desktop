@@ -31,6 +31,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.session.MediaSession
 import desktop.api.Details
+import desktop.api.PlayRequest
 import desktop.app.app
 import desktop.app.data.PlayerPrefs
 import desktop.app.ui.AppTheme
@@ -68,6 +69,9 @@ class PlayerActivity : ComponentActivity() {
         val provider = intent.getStringExtra(EXTRA_PROVIDER)!!
         val url = intent.getStringExtra(EXTRA_URL)!!
         val data = intent.getStringExtra(EXTRA_DATA)!!
+        val startAt = intent.getDoubleExtra(EXTRA_START_AT, Double.NaN).takeUnless { it.isNaN() }
+        val linkId = intent.getStringExtra(EXTRA_LINK)
+        val subtitleIds = intent.getStringArrayListExtra(EXTRA_SUBS).orEmpty()
         lifecycleScope.launch {
             prefs = app.prefs.player.first()
             val details = handoff?.takeIf { it.provider == provider && it.url == url }
@@ -76,8 +80,10 @@ class PlayerActivity : ComponentActivity() {
                     return@launch
                 }
             handoff = null
-            vm.start(details, data, null)
+            vm.start(details, data, startAt, linkId, subtitleIds)
         }
+        // A device controlling this one sent Stop.
+        lifecycleScope.launch { vm.closed.collect { if (it) finish() } }
 
         setContent {
             AppTheme {
@@ -162,18 +168,31 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_PROVIDER = "provider"
         private const val EXTRA_URL = "url"
         private const val EXTRA_DATA = "data"
+        private const val EXTRA_START_AT = "start_at"
+        private const val EXTRA_LINK = "link"
+        private const val EXTRA_SUBS = "subtitles"
 
         /** Details of the title being opened; too big for an Intent with long episode lists, so passed in memory. */
         private var handoff: Details? = null
 
         fun start(context: Context, details: Details, data: String) {
             handoff = details
-            context.startActivity(
-                Intent(context, PlayerActivity::class.java)
-                    .putExtra(EXTRA_PROVIDER, details.provider)
-                    .putExtra(EXTRA_URL, details.url)
-                    .putExtra(EXTRA_DATA, data),
-            )
+            context.startActivity(intent(context, PlayRequest(details.provider, details.url, data)))
         }
+
+        /** Plays a request from another device, or one moved here from another device's player. */
+        fun startCast(context: Context, req: PlayRequest) {
+            context.startActivity(intent(context, req).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+
+        private fun intent(context: Context, req: PlayRequest) = Intent(context, PlayerActivity::class.java)
+            .putExtra(EXTRA_PROVIDER, req.provider)
+            .putExtra(EXTRA_URL, req.url)
+            .putExtra(EXTRA_DATA, req.data)
+            .apply {
+                req.startAt?.let { putExtra(EXTRA_START_AT, it) }
+                req.linkId?.let { putExtra(EXTRA_LINK, it) }
+                if (req.subtitleIds.isNotEmpty()) putStringArrayListExtra(EXTRA_SUBS, ArrayList(req.subtitleIds))
+            }
     }
 }

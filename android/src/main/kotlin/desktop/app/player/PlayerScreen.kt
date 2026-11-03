@@ -109,6 +109,7 @@ import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import desktop.app.data.PlayerPrefs
 import desktop.app.ui.TabularNumbers
+import desktop.app.ui.MoveToDeviceButton
 import desktop.app.ui.Palette
 import desktop.app.ui.LocalTv
 import desktop.app.ui.tvFocusIndicator
@@ -590,6 +591,7 @@ private fun Controls(
                 val sub = listOfNotNull(item?.displayLabel, s.current?.let { "${it.source} · ${it.qualityLabel}" }).joinToString("  ·  ")
                 if (sub.isNotEmpty()) Text(sub, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            MoveToDeviceButton(vm, onMoved = onBack, onInteract = onInteract)
             TextButton(
                 onClick = { onInteract(); onResize() },
                 modifier = Modifier.heightIn(min = 48.dp).background(Palette.scrim, CircleShape).tvFocusIndicator(),

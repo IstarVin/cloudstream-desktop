@@ -40,6 +40,11 @@ on the desktop, so the server must be running and reachable on the LAN.
 ./gradlew :android:assembleDebug   # android/build/outputs/apk/debug/android-debug.apk; needs ANDROID_HOME or local.properties
 ```
 
+Like the web UI, the app joins casting while it's open: the cast button sends Play to the desktop's mpv, a browser
+tab or another phone/TV, with a now-playing bar and remote; other devices can cast to it (Settings → Playback →
+Casting); and the player's cast button continues the episode on another device. It also shows the desktop's
+Cloudflare Solve banner, and has the Browser settings and dev-mode Rebuild.
+
 Open the app and scan the code from Settings → Pair a phone on the desktop, or enter the address and token by hand. The
 module is only part of the build when an Android SDK is found, so server-only checkouts build as before.
 

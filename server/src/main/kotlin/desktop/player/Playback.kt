@@ -559,6 +559,17 @@ class Playback(
         if (st.duration > 0 && st.position > st.duration * 0.85) store.setWatched(s.item.provider, s.item.url, s.item.data, true)
     }
 
+    /**
+     * Distinguishing detail from a link name like `4KHDHub [Stream] HubCloud FSL · 1080p WEB-DL H.264 · 8.42 GB`:
+     * the server variant (`HubCloud FSL`) and the release details (`WEB-DL H.264 · 8.42 GB`), minus what the label already shows.
+     */
+    private fun sourceExtras(source: String, name: String, quality: String): String {
+        val parts = name.split(" · ")
+        val head = parts[0].removePrefix(source).replace(Regex("\\[[^\\]]*]"), "").trim()
+        val details = parts.drop(1).joinToString(" · ") { it.trim().removePrefix(quality).trim() }.trim()
+        return listOf(head, details).filter { it.isNotEmpty() }.joinToString(" · ", prefix = " · ").takeIf { it != " · " } ?: ""
+    }
+
     private suspend fun onScriptEvent(e: JsonObject) {
         val s = session
         when (e["type"]?.jsonPrimitive?.content) {
@@ -573,8 +584,8 @@ class Playback(
                     val quality = Mapper.qualityLabel(l.link.quality)
                     val failed = if (l.id in s.failed && l != s.link) " (failed)" else ""
                     val record = stats[l.link.source]?.let { "worked ${it.successes} of ${it.successes + it.failures}" } ?: "new"
-                    mapOf("id" to l.id, "label" to "${l.link.source} · $quality$failed", "current" to (l == s.link),
-                        "title" to l.link.source, "hint" to "$quality$failed · priority ${profile.priority(l.link.source, l.link.quality)} · $record")
+                    mapOf("id" to l.id, "label" to "${l.link.source} · $quality${sourceExtras(l.link.source, l.link.name, quality)}$failed", "current" to (l == s.link),
+                        "title" to "${l.link.source}${sourceExtras(l.link.source, l.link.name, quality)}", "hint" to "$quality$failed · priority ${profile.priority(l.link.source, l.link.quality)} · $record")
                 }
                 script("sources", mapOf("items" to list, "loading" to !s.set.done))
             }

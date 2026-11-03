@@ -97,7 +97,9 @@ import desktop.api.Details
 import desktop.api.Episode
 import desktop.api.ProgressRequest
 import desktop.app.app
+import desktop.app.data.PlayTargets
 import desktop.app.player.PlayerActivity
+import desktop.api.PlayRequest
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -149,6 +151,23 @@ fun TitleScreen(provider: String, url: String, onTitle: (String, String) -> Unit
         }
         load(quiet = true)
     }
+    /** Plays here, or on the device picked with the cast button, as the web UI does. */
+    fun play(d: Details, data: String) {
+        val cast = context.app.cast
+        val target = cast.effective()
+        if (target == PlayTargets.HERE) return PlayerActivity.start(context, d, data)
+        val name = cast.device(target)?.name ?: "the other device"
+        scope.launch {
+            try {
+                api.castPlay(target, PlayRequest(d.provider, d.url, data), cast.id)
+                snackbar.showSnackbar("Playing on $name")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                snackbar.showSnackbar("Couldn't play on $name: ${e.userMessage()}")
+            }
+        }
+    }
     LaunchedEffect(provider, url) { load() }
     // Back from the player: progress and watched marks changed.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { if (details is Load.Ok) load(quiet = true) }
@@ -168,7 +187,7 @@ fun TitleScreen(provider: String, url: String, onTitle: (String, String) -> Unit
                     d, episodes, dub,
                     onBack = onBack,
                     onDub = { dubChoice = it },
-                    onPlay = { data -> PlayerActivity.start(context, d, data) },
+                    onPlay = { data -> play(d, data) },
                     onTitle = onTitle,
                     onBookmark = { list ->
                         change("update your library") { api.setBookmark(BookmarkRequest(d.provider, d.url, d.name, d.poster, d.type, list)) }
@@ -437,6 +456,7 @@ private fun Hero(d: Details, onBack: () -> Unit) {
             }
         }
         BackButton(onBack)
+        CastButton(Modifier.align(Alignment.TopEnd), overImage = true)
     }
 }
 
