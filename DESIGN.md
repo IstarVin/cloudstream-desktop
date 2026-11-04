@@ -41,7 +41,7 @@ Use 8-unit spacing steps with 4-unit refinements. Artwork and source selectors h
 | Settings sidebar | Category strip on compact panes; category sidebar on wide panes |
 | Web dialogs and source pickers | Material bottom sheets; focus-contained dialogs on TV |
 
-Android layout decisions use available window/pane width, not device model. Keep the existing two-pane episode browser, predictive Back transitions, scroll restoration, touch refresh, system/keyboard insets and TV focus outlines. Do not copy web hover interactions onto touch screens.
+Android layout decisions use available window/pane width, not device model. Title details use one scrolling column with episodes below the show information on all window sizes and TV. Preserve predictive Back transitions, scroll restoration, touch refresh, system/keyboard insets and TV focus outlines. Do not copy web hover interactions onto touch screens.
 
 ## Component rules
 

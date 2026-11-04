@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -122,8 +121,6 @@ fun activeDub(d: Details, chosen: String?): String? {
     return chosen?.takeIf { it in dubs } ?: dubs.firstOrNull { it == "Subbed" } ?: dubs.firstOrNull()
 }
 
-/** Wide enough to put the title's details and its episodes side by side. */
-private val TwoPaneWidth = 840.dp
 private const val EpisodesPerPage = 20
 
 @Composable
@@ -210,7 +207,7 @@ private fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
     ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
 }
 
-/** One entry of the title page's lazy lists, so the pane that holds the episodes can scroll to one by identity. */
+/** One entry of the title page's lazy list, allowing episodes to be scrolled to by identity. */
 private sealed interface Part {
     val key: String
 
@@ -374,17 +371,8 @@ private fun TitleContent(
         }
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val summaryWidth = (maxWidth * 0.4f).coerceIn(340.dp, 440.dp)
-        if ((LocalTv.current || maxWidth >= TwoPaneWidth) && hasEpisodes) {
-            Row(Modifier.widthIn(max = 1280.dp).fillMaxSize().align(Alignment.TopCenter)) {
-                Pane(summary + cast, rememberLazyListState(), Modifier.width(summaryWidth).fillMaxHeight())
-                Box(Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant))
-                Pane(episodeParts + related, rememberLazyListState(), Modifier.weight(1f).fillMaxHeight())
-            }
-        } else {
-            Pane(summary + episodeParts + cast + related, rememberLazyListState(), Modifier.widthIn(max = 760.dp).fillMaxSize().align(Alignment.TopCenter))
-        }
+    Box(Modifier.fillMaxSize()) {
+        Pane(summary + episodeParts + cast + related, rememberLazyListState(), Modifier.widthIn(max = 760.dp).fillMaxSize().align(Alignment.TopCenter))
     }
 }
 
