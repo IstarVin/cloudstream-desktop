@@ -1,10 +1,16 @@
-# Server, web and Android checks on every push and pull request. Plugin builds stay local: they need the extensions repo and
+# Server, web and Android checks on main and pull requests. Release tags reuse these checks.
+# Plugin builds stay local: they need the extensions repo and
 # the Android SDK. The Chromium tests use the runner's preinstalled Google Chrome.
 name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:

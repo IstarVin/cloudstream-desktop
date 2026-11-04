@@ -27,7 +27,18 @@ Prerelease suffixes are supported; use exact versions to promote or advance prer
 `publish` requires exact versions and finished, committed notes. It creates annotated tags and atomically pushes
 main and the selected tags. It rejects existing versions and never overwrites tags. It does not run tests itself;
 the skill runs checks before publishing. A failed push can leave local tags; inspect local and remote state before
-retrying the same push. Main pushes also trigger the normal Docker development-image publish.
+retrying the same push.
+
+CI runs on main pushes and pull requests, not release tags, so pushing both component tags does not repeat the
+same checks. New commits cancel outdated CI runs for the same branch or pull request. Android tags still run
+the signed release build, tests, and lint.
+
+Docker skips development builds for main pushes that change only documentation, release notes, or agent guidance.
+Server tags always publish a versioned image; when the tagged commit is the current tip of main, that build also
+publishes `latest`. Other main changes still publish the development image, and a newer main push cancels an
+in-progress main build. A notes-only preparation commit pushed with both tags therefore runs CI once, the Android
+release once, and the server Docker release once. If the preparation commit also changes code or version files,
+the main push additionally builds a development image before the tag build.
 
 Both release workflows reject missing, empty, or TODO/TBD notes before building. Server release descriptions
 include the versioned Docker pull command and image digest. Main Docker builds do not require release notes.

@@ -4,6 +4,13 @@ Run Cloudstream plugins on your own server, browse from any device, and watch in
 your browser, or the Android app. One server hosts the plugins and keeps your library
 and watch progress together across desktop, phone, tablet, and Android TV.
 
+[![CI](https://github.com/IstarVin/cloudstream-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/IstarVin/cloudstream-desktop/actions/workflows/ci.yml)
+[![Docker](https://github.com/IstarVin/cloudstream-desktop/actions/workflows/docker.yml/badge.svg)](https://github.com/IstarVin/cloudstream-desktop/actions/workflows/docker.yml)
+
+[Quick start](#quick-start) · [Configuration](#configuration) ·
+[Development](#development) · [Troubleshooting](#troubleshooting) ·
+[Releases](https://github.com/IstarVin/cloudstream-desktop/releases)
+
 ## Features
 
 - **Browse and search across providers.** Explore provider home feeds, search multiple
@@ -47,15 +54,34 @@ receiving can be configured in **Settings → Playback → Casting**.
 
 ### Run from source
 
-You need a **JDK 17+** and **Vite+ (`vp`)** available on your PATH. Install **mpv 0.39+**
-for desktop playback; Chromium or Google Chrome is optional for providers that need it.
+You need **Git**, a **JDK 17+**, and the web toolchain. CI and Docker use **Node.js 26**
+and **pnpm 12.16.1**; the project installs Vite+ locally. Install **mpv 0.39+** for
+desktop playback; Chromium or Google Chrome is optional for providers that need it.
+The repository includes the Gradle wrapper, so a separate Gradle install is unnecessary.
 
 ```bash
+git clone https://github.com/IstarVin/cloudstream-desktop.git
+cd cloudstream-desktop
+npm install -g pnpm@12.16.1
+cd web
+pnpm install --frozen-lockfile
+cd ..
+export PATH="$PWD/web/node_modules/.bin:$PATH"
 ./gradlew :server:run
 ```
 
-The build installs web dependencies and bundles the UI. Open **http://127.0.0.1:6969**,
-choose your providers, and browse or search for a title.
+Run subsequent Gradle commands from the repository root with that PATH set. The build
+installs web dependencies and bundles the UI. Open **http://127.0.0.1:6969**, choose your
+providers, and browse or search for a title. Select an episode or movie, choose a player,
+and let auto-play pick a source or select one manually from **Sources**.
+
+To check that the server is reachable:
+
+```bash
+curl --fail http://127.0.0.1:6969/api/auth/status
+```
+
+This returns JSON describing authorization and loopback access without requiring a token.
 
 The first start writes `~/.config/cloudstream-desktop/config.toml`. Plugin loading
 uses a local extensions checkout when the configured path exists, otherwise the published
@@ -89,6 +115,11 @@ docker run -d --init --name cloudstream -p 6969:6969 --shm-size=1g \
 ```
 
 Or build the image locally with `docker compose up -d --build`.
+
+The `latest` image tracks the default branch. Versioned server releases publish
+`ghcr.io/istarvin/cloudstream-desktop:<version>`; see the release notes for the tag
+and image digest. With Compose, use `docker compose logs -f cloudstream` for logs
+and `docker compose exec cloudstream cat /data/cloudstream-desktop/token` for the token.
 
 Settings live in `/config/cloudstream-desktop/config.toml`, seeded from
 [`docker/config.toml`](docker/config.toml). Restart the container after editing the file.
@@ -144,6 +175,38 @@ The PWA still needs a reachable server. Its service worker caches a connection-h
 page with a retry button, rather than library data, pairing tokens, or streams.
 Updates activate after existing app windows and tabs close to avoid interrupting playback.
 
+## Configuration
+
+The first launch creates the config file. Edit it and restart the server to change
+startup settings. See the full [desktop defaults](server/src/main/resources/default-config.toml)
+and [Docker defaults](docker/config.toml).
+
+| Setting | Desktop default | Purpose |
+| --- | --- | --- |
+| `bind` | `"0.0.0.0:6969"` | Listen on all interfaces; set `"127.0.0.1:6969"` for access only from this computer |
+| `mpv.enabled` | `true` | Start mpv on the server; Docker defaults to `false` |
+| `mpv.path` | `"mpv"` | Executable name or full path |
+| `chromium.path` | `"chromium"` | Browser executable for providers that need it |
+| `chromium.mode` | `"headless"` | `headless`, `xvfb` (requires Xvfb), or `headed` (requires a display) |
+| `chromium.idle_minutes` | `10` | Stop Chromium after this many unused minutes |
+| `network.max_requests_per_host` | `2` | Limit concurrent plugin requests to each host |
+
+Settings marked `(UI)` in the config can also be changed in **Settings**. Values saved
+through the UI are stored in SQLite and take precedence over config file defaults,
+including after a restart. Plugin source and repository changes require loopback access
+from the server computer.
+
+### Data locations
+
+| Content | Desktop path | Container path |
+| --- | --- | --- |
+| Configuration | `~/.config/cloudstream-desktop/config.toml` | `/config/cloudstream-desktop/config.toml` |
+| Database, plugins, browser profile, pairing token | `~/.local/share/cloudstream-desktop/` | `/data/cloudstream-desktop/` |
+
+Desktop paths respect `XDG_CONFIG_HOME` and `XDG_DATA_HOME` when set. The SQLite database
+is `cloudstream.db` in the data directory. Stop the server before copying configuration
+and data for a consistent backup; keep both Docker volumes when replacing a container.
+
 ## Playback preferences
 
 Use **Settings → Source priority** or the **Sources** sheet to select and edit one of
@@ -163,6 +226,7 @@ Android includes the server's browser settings, Cloudflare Solve banner, and dev
 | --- | --- |
 | Server and shared tests | `./gradlew :shared:test :server:test` (Chromium tests skip when it is unavailable) |
 | Android build and lint | `./gradlew :android:assembleDebug :android:lintDebug` |
+| Android unit tests | `./gradlew :android:testDebugUnitTest` |
 | Android TV UI tests | `ANDROID_SERIAL=emulator-5556 ./gradlew :android:connectedDebugAndroidTest` |
 | Web UI with hot reload | `cd web && vp dev` (proxies `/api` to a running server) |
 | Web checks and tests | `cd web && vp check && vpr check && vp test` |
@@ -200,3 +264,41 @@ release helper and skill, signing secrets, tags, and publishing workflows.
 
 For architecture and design context, see the [project plan](docs/PLAN.md) and
 [design system](DESIGN.md).
+
+## Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| Gradle cannot find `vp` | Install web dependencies and add `web/node_modules/.bin` to PATH as shown in Quick start; keep that environment for the installer too |
+| Gradle cannot find the `android` project | Configure a valid SDK with `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or `sdk.dir` in root `local.properties`, then run Gradle again |
+| A phone or TV cannot connect | Use the server's LAN address, check the bind address and firewall for TCP 6969, and pair the device |
+| Docker asks the host browser to pair | Use the container token and pairing URL from the Docker instructions |
+| A config edit has no effect | Restart for startup settings; for UI settings, change the saved value in Settings because it overrides the file |
+| A provider fails to load or resolve links | Check plugin status and load errors in Settings; confirm Chromium is installed if that provider needs a browser, and use the Solve banner when offered |
+| Browser playback fails for a source | Try another source or play in mpv or Android; browser codec support varies |
+| The browser offers no PWA install option | Use localhost on the server computer or HTTPS with a trusted certificate on another device |
+
+For a Linux user-service installation, follow logs with
+`journalctl --user -u cloudstream-desktop -f`. Source runs log to the terminal;
+a container started with the `docker run` command above logs with
+`docker logs -f cloudstream`; under Compose use `docker compose logs -f cloudstream`.
+
+## Contributing and support
+
+Report bugs and request features through [GitHub Issues](https://github.com/IstarVin/cloudstream-desktop/issues).
+Include the client, server setup, reproduction steps, and relevant logs. Remove pairing
+tokens and other credentials before sharing logs or configuration.
+
+For code changes, follow the source setup above, keep changes focused, and run the
+relevant checks from the Development table before opening a pull request. Changes to
+source ranking must update the Kotlin and web implementations together and keep the
+shared cases in `testdata/` passing. See [source profiles](docs/SOURCE_PROFILES.md)
+for the scoring rules and [release documentation](docs/RELEASING.md) for publishing.
+
+## License and acknowledgments
+
+This repository does not currently include a license file. No project license is
+declared here; dependencies and third-party plugins retain their own licenses.
+
+Cloudstream Desktop builds on Cloudstream's plugin ecosystem, Ktor, SvelteKit,
+mpv, Android Media3, and libass.
