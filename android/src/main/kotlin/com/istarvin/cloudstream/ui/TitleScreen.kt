@@ -29,17 +29,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkBorder
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.CheckCircleOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -204,7 +204,7 @@ private fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
         onClick = onBack,
         modifier = modifier.padding(8.dp),
         colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = Palette.scrim, contentColor = Palette.onImage),
-    ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+    ) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
 }
 
 /** One entry of the title page's lazy list, allowing episodes to be scrolled to by identity. */
@@ -316,7 +316,7 @@ private fun TitleContent(
             }
             Part.EpisodesPagination -> EpisodePagination(currentPage, pageCount, ::changePage)
             Part.EpisodesEmpty -> EmptyState(
-                Icons.Filled.Search,
+                Icons.Rounded.Search,
                 if (filter.isNotBlank()) "No matching episodes" else "No episodes available",
                 if (filter.isNotBlank()) "Try another episode number or name." else "This source hasn't listed any episodes for this selection yet.",
                 actionLabel = if (filter.isNotBlank()) "Clear search" else null,
@@ -394,7 +394,7 @@ private fun Overview(plot: String, identity: String) {
             modifier = (Modifier.heightIn(min = 48.dp).semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }).tvFocusIndicator(),
         ) {
             Text(if (expanded) "Show less" else "Show more")
-            Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, null, Modifier.padding(start = 4.dp).size(18.dp))
+            Icon(if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, Modifier.padding(start = 4.dp).size(18.dp))
         }
     }
 }
@@ -433,7 +433,7 @@ private fun Hero(d: Details, onBack: () -> Unit) {
             ) {
                 d.score?.let { score ->
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Filled.Star, "Rating", tint = Palette.muted, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Rounded.Star, "Rating", tint = Palette.muted, modifier = Modifier.size(16.dp))
                         Text("%.1f".format(score), style = MaterialTheme.typography.labelMedium)
                     }
                 }
@@ -457,12 +457,12 @@ private fun Actions(d: Details, episodes: List<Episode>, next: Episode?, onPlay:
             when {
                 d.kind == "torrent" -> Text("Torrents aren't supported.", color = Palette.muted, modifier = Modifier.weight(1f))
                 d.movieData != null && episodes.isEmpty() -> Button(shape = MaterialTheme.shapes.small, onClick = { onPlay(d.movieData!!) }, modifier = play.tvFocusIndicator()) {
-                    Icon(Icons.Filled.PlayArrow, null)
+                    Icon(Icons.Rounded.PlayArrow, null)
                     val p = d.movieProgress
                     Text(if (resuming) "Resume" else if (d.kind == "live") "Watch live" else if (p?.watched == true) "Play again" else "Play", Modifier.padding(start = 8.dp))
                 }
                 next != null -> Button(shape = MaterialTheme.shapes.small, onClick = { onPlay(next.data) }, modifier = play.tvFocusIndicator()) {
-                    Icon(Icons.Filled.PlayArrow, null)
+                    Icon(Icons.Rounded.PlayArrow, null)
                     val p = next.progress
                     val label = episodeTitle(next.copy(name = null), episodes.indexOf(next))
                     Text(if (resuming) "Resume $label" else if (p?.watched == true) "Replay $label" else "Play $label", Modifier.padding(start = 8.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -535,10 +535,10 @@ private fun EpisodesHeader(
             RemoteTextField(
                 filter, onFilter,
                 label = { Text("Find an episode") },
-                leadingIcon = { Icon(Icons.Filled.Search, null) },
+                leadingIcon = { Icon(Icons.Rounded.Search, null) },
                 trailingIcon = {
                     if (filter.isNotEmpty()) IconButton(onClick = { onFilter("") }, modifier = Modifier.tvFocusIndicator()) {
-                        Icon(Icons.Filled.Close, "Clear episode search")
+                        Icon(Icons.Rounded.Close, "Clear episode search")
                     }
                 },
                 singleLine = true,
@@ -574,7 +574,7 @@ private fun EpisodePagination(page: Int, pageCount: Int, onPage: (Int) -> Unit) 
                 contentPadding = PaddingValues(horizontal = 8.dp),
             ) {
                 Text("Page ${page + 1} of $pageCount", maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                Icon(Icons.Filled.ExpandMore, "Choose page", Modifier.padding(start = 4.dp).size(18.dp))
+                Icon(Icons.Rounded.ExpandMore, "Choose page", Modifier.padding(start = 4.dp).size(18.dp))
             }
             DropdownMenu(
                 expanded = choosingPage,
@@ -587,7 +587,7 @@ private fun EpisodePagination(page: Int, pageCount: Int, onPage: (Int) -> Unit) 
                         text = { Text("Page ${target + 1}") },
                         onClick = { choosingPage = false; onPage(target) },
                         modifier = (Modifier.semantics { stateDescription = if (target == page) "Current page" else "" }).tvFocusIndicator(),
-                        trailingIcon = { if (target == page) Icon(Icons.Filled.CheckCircle, "Current page", tint = Palette.accent) },
+                        trailingIcon = { if (target == page) Icon(Icons.Rounded.CheckCircle, "Current page", tint = Palette.accent) },
                     )
                 }
             }
@@ -622,7 +622,7 @@ private fun EpisodeRow(e: Episode, index: Int, d: Details, isNext: Boolean, onPl
             Box(Modifier.width(thumbnailWidth).aspectRatio(16f / 9f).clip(MaterialTheme.shapes.small).background(Palette.surface)) {
                 AsyncImage(imageRequest(e.poster ?: d.background ?: d.poster, d.posterHeaders), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 Box(Modifier.align(Alignment.Center).size(28.dp).background(Palette.scrim, CircleShape), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.PlayArrow, null, tint = Palette.onImage, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Rounded.PlayArrow, null, tint = Palette.onImage, modifier = Modifier.size(20.dp))
                 }
                 if (p != null && p.duration > 0 && !p.watched) {
                     Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.Black.copy(alpha = 0.5f))) {
@@ -639,8 +639,8 @@ private fun EpisodeRow(e: Episode, index: Int, d: Details, isNext: Boolean, onPl
                 }
             }
             IconButton(onClick = onWatched, modifier = (Modifier.semantics { stateDescription = if (watched) "Watched" else "Not watched" }).tvFocusIndicator()) {
-                if (watched) Icon(Icons.Filled.CheckCircle, "Mark $title unwatched", tint = Palette.good)
-                else Icon(Icons.Outlined.CheckCircle, "Mark $title watched", tint = Palette.muted)
+                if (watched) Icon(Icons.Rounded.CheckCircle, "Mark $title unwatched", tint = Palette.good)
+                else Icon(Icons.Rounded.CheckCircleOutline, "Mark $title watched", tint = Palette.muted)
             }
         }
     }
@@ -656,7 +656,7 @@ private fun BookmarkMenu(current: String?, onPick: (String?) -> Unit) {
             modifier = Modifier.heightIn(min = 52.dp).semantics { stateDescription = list?.let { "Saved to $it" } ?: "Not in your library" },
             contentPadding = PaddingValues(horizontal = 16.dp),
         ) {
-            if (current != null) Icon(Icons.Filled.Bookmark, null, tint = Palette.accent) else Icon(Icons.Filled.BookmarkBorder, null)
+            if (current != null) Icon(Icons.Rounded.Bookmark, null, tint = Palette.accent) else Icon(Icons.Rounded.BookmarkBorder, null)
             Text(if (current != null) "Saved" else "Save", Modifier.padding(start = 8.dp), maxLines = 1)
         }
         DropdownMenu(open, { open = false }) {
@@ -664,7 +664,7 @@ private fun BookmarkMenu(current: String?, onPick: (String?) -> Unit) {
                 DropdownMenuItem(
                     text = { Text(text) },
                     onClick = { open = false; onPick(id) },
-                    trailingIcon = { if (id == current) Icon(Icons.Filled.CheckCircle, "Current list", tint = Palette.accent) },
+                    trailingIcon = { if (id == current) Icon(Icons.Rounded.CheckCircle, "Current list", tint = Palette.accent) },
                     modifier = Modifier.tvFocusIndicator(),
                 )
             }

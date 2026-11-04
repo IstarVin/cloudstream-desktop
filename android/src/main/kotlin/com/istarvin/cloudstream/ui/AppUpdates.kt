@@ -17,10 +17,10 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.outlined.SystemUpdate
+import androidx.compose.material.icons.rounded.CheckCircleOutline
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -188,10 +188,10 @@ internal fun AppUpdateContent(
                         if (busy) CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.dp)
                         else Icon(
                             when (state) {
-                                UpdateState.Current -> Icons.Outlined.CheckCircle
-                                is UpdateState.Failed -> Icons.Outlined.ErrorOutline
-                                is UpdateState.Available -> Icons.Outlined.Download
-                                else -> Icons.Outlined.SystemUpdate
+                                UpdateState.Current -> Icons.Rounded.CheckCircleOutline
+                                is UpdateState.Failed -> Icons.Rounded.ErrorOutline
+                                is UpdateState.Available -> Icons.Rounded.Download
+                                else -> Icons.Rounded.SystemUpdate
                             },
                             contentDescription = null,
                             tint = statusColor,

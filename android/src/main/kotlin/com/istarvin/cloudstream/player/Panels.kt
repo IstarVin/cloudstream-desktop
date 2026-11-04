@@ -5,11 +5,15 @@ package com.istarvin.cloudstream.player
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -29,8 +33,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -81,16 +86,19 @@ private fun SidePanel(onDismiss: () -> Unit, widthFraction: Float = 0.5f, conten
     val focus = remember { FocusRequester() }
     LaunchedEffect(tv) { if (tv) { withFrameNanos { }; focus.requestFocus() } }
     val body: @Composable () -> Unit = {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f))
+        BoxWithConstraints(Modifier.fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.End))
+            .padding(12.dp)
+            .background(Color.Black.copy(alpha = 0.2f))
             .focusProperties { canFocus = false }.clickable(scrim, null, onClick = onDismiss)) {
             Column(
-                Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(widthFraction)
-                    .background(Palette.surface)
+                Modifier.align(Alignment.CenterEnd).fillMaxHeight()
+                    .width(if (widthFraction <= 0.5f) maxWidth.coerceAtMost(360.dp) else maxWidth * widthFraction)
+                    .background(Palette.surface.copy(alpha = 0.94f), RoundedCornerShape(16.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
                     .focusProperties { canFocus = false }
                     .clickable(panel, null) {}
                     .focusRequester(focus).focusGroup()
-                    // Only the edges the panel touches: the right one and the top and bottom.
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.End))
                     .padding(vertical = 8.dp),
                 content = content,
             )
@@ -101,15 +109,21 @@ private fun SidePanel(onDismiss: () -> Unit, widthFraction: Float = 0.5f, conten
 }
 
 @Composable
-private fun PanelTitle(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Palette.text, modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+private fun PanelTitle(text: String, modifier: Modifier = Modifier, onDismiss: (() -> Unit)? = null) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Palette.text,
+            modifier = Modifier.weight(1f).padding(horizontal = 16.dp, vertical = 8.dp))
+        if (onDismiss != null) IconButton(onClick = onDismiss, modifier = Modifier.tvFocusIndicator()) {
+            Icon(Icons.Rounded.Close, "Close panel", tint = Palette.text)
+        }
+    }
 }
 
 @Composable
 private fun Choice(title: String, detail: String? = null, selected: Boolean, badges: List<Pair<String, Color>> = emptyList(), dim: Boolean = false, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().tvFocusIndicator().clickable(onClick = onClick)
-            .background(if (selected) Palette.accent.copy(alpha = 0.14f) else Color.Transparent)
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp).heightIn(min = 48.dp).tvFocusIndicator().clickable(onClick = onClick)
+            .background(if (selected) Palette.accent.copy(alpha = 0.14f) else Color.Transparent, RoundedCornerShape(8.dp))
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -123,7 +137,7 @@ private fun Choice(title: String, detail: String? = null, selected: Boolean, bad
             }
             if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
-        if (selected) Icon(Icons.Filled.Check, null, tint = Palette.accent)
+        if (selected) Icon(Icons.Rounded.Check, null, tint = Palette.accent)
     }
 }
 
@@ -152,8 +166,11 @@ fun SourcesPanel(vm: PlayerViewModel, s: Session, onDismiss: () -> Unit) {
             Column(Modifier.weight(1.4f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     PanelTitle("Sources", Modifier.weight(1f))
+                    IconButton(onClick = onDismiss, modifier = Modifier.tvFocusIndicator()) {
+                        Icon(Icons.Rounded.Close, "Close panel", tint = Palette.text)
+                    }
                     IconButton(onClick = { link = s.current?.id; vm.reloadLinks() }, enabled = s.linksDone, modifier = Modifier.tvFocusIndicator()) {
-                        Icon(Icons.Filled.Refresh, "Reload links", tint = Palette.muted)
+                        Icon(Icons.Rounded.Refresh, "Reload links", tint = Palette.muted)
                     }
                     if (hidden > 0) TextButton(onClick = { showHidden = !showHidden }, modifier = Modifier.tvFocusIndicator()) {
                         Text(if (showHidden) "Hide $hidden" else "$hidden hidden by profile")
@@ -281,7 +298,7 @@ fun TracksPanel(vm: PlayerViewModel, s: Session, onDismiss: () -> Unit) {
             }
             VerticalDivider()
             Column(Modifier.weight(1f)) {
-                PanelTitle("Audio")
+                PanelTitle("Audio", onDismiss = onDismiss)
                 LazyColumn {
                     tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.forEach { group ->
                         for (i in 0 until group.length) {
@@ -315,7 +332,7 @@ fun VideoTracksPanel(vm: PlayerViewModel, onDismiss: () -> Unit) {
     val groups = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
     val automatic = player.trackSelectionParameters.overrides.values.none { it.type == C.TRACK_TYPE_VIDEO }
     SidePanel(onDismiss) {
-        PanelTitle("Video tracks")
+        PanelTitle("Video quality", onDismiss = onDismiss)
         LazyColumn {
             item {
                 Choice("Auto", selected = automatic) { vm.selectVideo(); onDismiss() }
@@ -350,7 +367,7 @@ fun EpisodesPanel(vm: PlayerViewModel, s: Session, onDismiss: () -> Unit) {
     val item = s.item ?: return
     val state = rememberLazyListState(initialFirstVisibleItemIndex = (item.index - 2).coerceAtLeast(0))
     SidePanel(onDismiss, widthFraction = 0.5f) {
-        PanelTitle("Episodes")
+        PanelTitle("Episodes", onDismiss = onDismiss)
         LazyColumn(state = state) {
             items(item.episodes.size) { i ->
                 val e = item.episodes[i]
@@ -372,7 +389,7 @@ fun EpisodesPanel(vm: PlayerViewModel, s: Session, onDismiss: () -> Unit) {
 fun SpeedPanel(player: Player, onDismiss: () -> Unit) {
     val speeds = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f)
     SidePanel(onDismiss, widthFraction = 0.35f) {
-        PanelTitle("Speed")
+        PanelTitle("Speed", onDismiss = onDismiss)
         LazyColumn {
             items(speeds) { v ->
                 Choice("${formatSpeed(v)}×", selected = player.playbackParameters.speed == v) {

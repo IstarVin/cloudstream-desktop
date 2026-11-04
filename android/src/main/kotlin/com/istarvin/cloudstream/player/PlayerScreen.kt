@@ -40,23 +40,23 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AspectRatio
-import androidx.compose.material.icons.filled.BrightnessMedium
-import androidx.compose.material.icons.filled.ClosedCaption
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
-import androidx.compose.material.icons.filled.Source
-import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.VideoSettings
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.AspectRatio
+import androidx.compose.material.icons.rounded.BrightnessMedium
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
+import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.Monitor
+import androidx.compose.material.icons.rounded.ClosedCaption
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -447,7 +447,7 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
                 IconButton(
                     onClick = { locked = false },
                     modifier = Modifier.align(Alignment.CenterStart).safeDrawingPadding().padding(16.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape).tvFocusIndicator(),
-                ) { Icon(Icons.Filled.LockOpen, "Unlock", tint = Color.White) }
+                ) { Icon(Icons.Rounded.LockOpen, "Unlock", tint = Color.White) }
             }
 
             // Skip opening / ending, shown even without the controls.
@@ -518,7 +518,7 @@ private fun Feedback(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("${formatSpeed(holdSpeed)}×", color = Color.White, fontWeight = FontWeight.SemiBold)
-                Icon(Icons.Filled.FastForward, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Icon(Icons.Rounded.FastForward, null, tint = Color.White, modifier = Modifier.size(18.dp))
             }
         }
         if (scrubTarget != null) {
@@ -550,7 +550,7 @@ private fun Feedback(
                     Box(Modifier.width(6.dp).fillMaxHeight(value).background(Palette.accent, RoundedCornerShape(3.dp)))
                 }
                 Spacer(Modifier.height(8.dp))
-                Icon(if (brightness) Icons.Filled.BrightnessMedium else Icons.AutoMirrored.Filled.VolumeUp, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                Icon(if (brightness) Icons.Rounded.BrightnessMedium else Icons.AutoMirrored.Rounded.VolumeUp, null, tint = Color.White, modifier = Modifier.size(20.dp))
             }
         }
     }
@@ -581,9 +581,11 @@ private fun Controls(
     val player = vm.player
     val item = s.item
     var tracks by remember(player) { mutableStateOf(player.currentTracks) }
+    var videoSize by remember(player) { mutableStateOf(player.videoSize) }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onTracksChanged(currentTracks: Tracks) { tracks = currentTracks }
+            override fun onVideoSizeChanged(size: androidx.media3.common.VideoSize) { videoSize = size }
         }
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
@@ -592,42 +594,46 @@ private fun Controls(
         .sumOf { group -> (0 until group.length).count { group.isTrackSupported(it) } } > 1
     Box(
         Modifier.fillMaxSize().background(
-            Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.8f), 0.3f to Color.Transparent, 0.55f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.92f)),
+            Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.65f), 0.22f to Color.Transparent, 0.62f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.8f)),
         ),
     ) {
         // Top: back, title, source.
         Row(
-            Modifier.fillMaxWidth().safeDrawingPadding().padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxWidth().safeDrawingPadding().padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White) }
-            Column(Modifier.weight(1f)) {
-                Text(item?.details?.name.orEmpty(), color = Color.White, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val sub = listOfNotNull(item?.displayLabel, s.current?.let { "${it.source} · ${it.qualityLabel}" }).joinToString("  ·  ")
+            IconButton(onClick = onBack, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = Color.White) }
+            Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
+                Text(item?.details?.name.orEmpty(), color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val sub = listOfNotNull(
+                    item?.displayLabel,
+                    s.current?.let { "${it.source} ${it.qualityLabel}" },
+                    videoSize.takeIf { it.width > 0 && it.height > 0 }?.let { "${it.width}×${it.height}" },
+                ).joinToString(" · ")
                 if (sub.isNotEmpty()) Text(sub, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             MoveToDeviceButton(vm, onMoved = onBack, onInteract = onInteract)
             TextButton(
                 onClick = { onInteract(); onResize() },
-                modifier = Modifier.heightIn(min = 48.dp).background(Palette.scrim, CircleShape).tvFocusIndicator(),
+                modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             ) {
-                Icon(Icons.Filled.AspectRatio, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                Icon(Icons.Rounded.AspectRatio, null, tint = Color.White, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(resizeLabel, color = Color.White)
             }
         }
 
         // Center: previous, play/pause, next.
-        if (s.status != "error") Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(40.dp)) {
-            RoundButton(Icons.Filled.SkipPrevious, "Previous episode", enabled = item?.hasPrev == true, size = 48) { onInteract(); vm.prev() }
+        if (s.status != "error") Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(48.dp)) {
+            RoundButton(Icons.Rounded.SkipPrevious, "Previous episode", enabled = item?.hasPrev == true, size = 56) { onInteract(); vm.prev() }
             if (busy) {
                 Box(Modifier.size(72.dp).semantics { contentDescription = "Loading" }, contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Palette.accent)
                 }
             } else RoundButton(
-                if (s.status == "ended" && s.upNext == null) Icons.Filled.Replay else if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                if (s.status == "ended" && s.upNext == null) Icons.Rounded.Replay else if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                 if (s.status == "ended") "Replay" else if (playing) "Pause" else "Play",
                 size = 72,
                 prominent = true,
@@ -640,13 +646,13 @@ private fun Controls(
                     else -> player.play()
                 }
             }
-            RoundButton(Icons.Filled.SkipNext, "Next episode", enabled = item?.hasNext == true, size = 48) { onInteract(); vm.next() }
+            RoundButton(Icons.Rounded.SkipNext, "Next episode", enabled = item?.hasNext == true, size = 56) { onInteract(); vm.next() }
         }
 
         // The timeline gets the full width; stable time labels sit above it.
         Column(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().safeDrawingPadding()
-                .padding(horizontal = 24.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(
@@ -661,19 +667,30 @@ private fun Controls(
             }
             SeekBar(position, duration, buffered, s.skips, onScrub, seekStep, Modifier.fillMaxWidth())
             BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val actionCount = (if (LocalTv.current) 3 else 4) + (if (item != null && item.episodes.isNotEmpty()) 1 else 0) +
-                    (if (hasMultipleVideoTracks) 1 else 0)
-                val actionWidth = (maxWidth / actionCount).coerceAtLeast(88.dp)
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                    if (!LocalTv.current) ActionButton(Icons.Filled.Lock, "Lock", Modifier.width(actionWidth), onClick = onLock)
-                    ActionButton(Icons.Filled.Speed, "Speed ${formatSpeed(speed)}×", Modifier.width(actionWidth)) { onSheet(Sheet.Speed) }
-                    ActionButton(Icons.Filled.ClosedCaption, "Audio & subs", Modifier.width(actionWidth).semantics { contentDescription = "Subtitles & audio" }) { onSheet(Sheet.Subtitles) }
-                    ActionButton(Icons.Filled.Source, "Sources", Modifier.width(actionWidth)) { onSheet(Sheet.Sources) }
-                    if (item != null && item.episodes.isNotEmpty()) {
-                        ActionButton(Icons.AutoMirrored.Filled.PlaylistPlay, "Episodes", Modifier.width(actionWidth)) { onSheet(Sheet.Episodes) }
+                // Match the web toolbar: native utility at the left, playback settings at the right.
+                // Narrow windows use named icon targets; larger windows show inline labels.
+                val showLabels = maxWidth >= 700.dp || LocalTv.current
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    if (!LocalTv.current) {
+                        IconButton(onClick = onLock, modifier = Modifier.tvFocusIndicator()) {
+                            Icon(Icons.Rounded.Lock, "Lock controls", tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
                     }
-                    if (hasMultipleVideoTracks) {
-                        ActionButton(Icons.Filled.VideoSettings, "Tracks", Modifier.width(actionWidth)) { onSheet(Sheet.VideoTracks) }
+                    Row(
+                        Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ActionButton(Icons.Rounded.Speed, if (speed == 1f) "Speed" else "${formatSpeed(speed)}×", showLabel = showLabels) { onSheet(Sheet.Speed) }
+                        ActionButton(Icons.Rounded.Layers, "Sources", showLabel = showLabels) { onSheet(Sheet.Sources) }
+                        ActionButton(Icons.Rounded.ClosedCaption, "Audio & subs", showLabel = showLabels,
+                            modifier = Modifier.semantics { contentDescription = "Subtitles & audio" }) { onSheet(Sheet.Subtitles) }
+                        if (hasMultipleVideoTracks) {
+                            ActionButton(Icons.Rounded.Monitor, "Quality", showLabel = showLabels) { onSheet(Sheet.VideoTracks) }
+                        }
+                        if (item != null && item.episodes.isNotEmpty()) {
+                            ActionButton(Icons.AutoMirrored.Rounded.PlaylistPlay, "Episodes", showLabel = showLabels) { onSheet(Sheet.Episodes) }
+                        }
                     }
                 }
             }
@@ -695,28 +712,28 @@ private fun RoundButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier.size(size.dp).tvFocusIndicator().background(
-            if (prominent) Color.White else Palette.scrim.copy(alpha = if (enabled) 0.55f else 0.25f), CircleShape,
+            if (prominent) Color.Black.copy(alpha = 0.35f) else Color.Transparent, CircleShape,
         ),
     ) {
         Icon(
             icon, label,
-            tint = if (prominent) Palette.bg else Color.White.copy(alpha = if (enabled) 1f else 0.3f),
+            tint = Color.White.copy(alpha = if (enabled) 1f else 0.35f),
             modifier = Modifier.size(if (prominent) 36.dp else 24.dp),
         )
     }
 }
 
 @Composable
-private fun ActionButton(icon: ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun ActionButton(icon: ImageVector, label: String, modifier: Modifier = Modifier, showLabel: Boolean = true, onClick: () -> Unit) {
     TextButton(
         onClick = onClick,
-        modifier = (modifier.heightIn(min = 56.dp)).tvFocusIndicator(),
-        shape = RoundedCornerShape(8.dp),
+        modifier = modifier.heightIn(min = 48.dp).tvFocusIndicator(),
+        shape = CircleShape,
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Icon(icon, null, tint = Color.White, modifier = Modifier.size(22.dp))
-            Text(label, color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(icon, if (showLabel) null else label, tint = Color.White, modifier = Modifier.size(20.dp))
+            if (showLabel) Text(label, color = Color.White, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

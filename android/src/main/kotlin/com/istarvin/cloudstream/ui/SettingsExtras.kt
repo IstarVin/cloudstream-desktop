@@ -12,7 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -115,7 +115,7 @@ internal fun BrowserSettings(settings: ServerSettings, onMode: (String) -> Unit)
                 Text("Chromium passes Cloudflare checks and loads pages that need a real browser. ${browserState(b)}.",
                     Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                 if (b.running) OutlinedButton(shape = MaterialTheme.shapes.small, onClick = { act { api.stopBrowser() } }, modifier = Modifier.padding(start = 12.dp).tvFocusIndicator()) {
-                    Icon(Icons.Filled.Stop, null, Modifier.size(16.dp)); Text("Stop", Modifier.padding(start = 6.dp))
+                    Icon(Icons.Rounded.Stop, null, Modifier.size(16.dp)); Text("Stop", Modifier.padding(start = 6.dp))
                 }
             }
             b.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.danger) }

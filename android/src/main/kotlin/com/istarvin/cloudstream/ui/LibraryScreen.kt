@@ -19,9 +19,9 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.rounded.BookmarkBorder
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -121,7 +121,7 @@ fun LibraryScreen(onTitle: (String, String) -> Unit, onBrowse: () -> Unit) {
                     is Load.Failed -> ErrorBox(h.message, onRetry = { reload() })
                     is Load.Ok -> if (h.value.isEmpty()) grid {
                         item(span = { GridItemSpan(maxLineSpan) }) {
-                            EmptyState(Icons.Filled.History, "Nothing watched yet", "Titles you play will appear here, ready to pick up where you left off.", actionLabel = "Browse titles", onAction = onBrowse)
+                            EmptyState(Icons.Rounded.History, "Nothing watched yet", "Titles you play will appear here, ready to pick up where you left off.", actionLabel = "Browse titles", onAction = onBrowse)
                         }
                     } else grid {
                         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -140,7 +140,7 @@ fun LibraryScreen(onTitle: (String, String) -> Unit, onBrowse: () -> Unit) {
                                     modifier = Modifier.align(Alignment.TopEnd).tvFocusIndicator(),
                                 ) {
                                     Box(Modifier.size(28.dp).background(Palette.scrim, CircleShape), contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Filled.Close, "Forget ${e.title}", tint = Palette.onImage, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Rounded.Close, "Forget ${e.title}", tint = Palette.onImage, modifier = Modifier.size(16.dp))
                                     }
                                 }
                             }
@@ -162,7 +162,7 @@ fun LibraryScreen(onTitle: (String, String) -> Unit, onBrowse: () -> Unit) {
                         }
                         val shown = b.value.filter { list == null || it.list == list }
                         if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                            EmptyState(Icons.Filled.BookmarkBorder, "No bookmarks yet", "Save a title to a list from its detail page to find it here.", actionLabel = "Browse titles", onAction = onBrowse)
+                            EmptyState(Icons.Rounded.BookmarkBorder, "No bookmarks yet", "Save a title to a list from its detail page to find it here.", actionLabel = "Browse titles", onAction = onBrowse)
                         }
                         items(shown, key = { it.provider + it.url }) { e ->
                             Poster(e.title, e.poster, width = null,

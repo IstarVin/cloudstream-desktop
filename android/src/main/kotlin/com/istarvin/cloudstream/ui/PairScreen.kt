@@ -19,9 +19,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.TextButton
@@ -130,7 +130,7 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
                 Box(
                     Modifier.size(56.dp).clip(MaterialTheme.shapes.large).background(Palette.accent),
                     contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Filled.PlayArrow, null, tint = Palette.accentInk, modifier = Modifier.size(32.dp)) }
+                ) { Icon(Icons.Rounded.PlayArrow, null, tint = Palette.accentInk, modifier = Modifier.size(32.dp)) }
                 Text("Cloudstream", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
                 Text(
                     "Watch on your ${if (tv) "TV" else "phone"}, with the sources and library from your desktop. Both need to be on the same network.",
@@ -165,7 +165,7 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
                         enabled = !checking,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator(),
                     ) {
-                        Icon(Icons.Filled.QrCodeScanner, null)
+                        Icon(Icons.Rounded.QrCodeScanner, null)
                         Text("Scan pairing code", Modifier.padding(start = 8.dp))
                     }
                     if (!tv) TextButton(onClick = { manual = !manual }, enabled = !checking, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp).tvFocusIndicator()) {
@@ -199,7 +199,7 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
                 if (checking) LinearProgressIndicator(Modifier.fillMaxWidth())
                 error?.let {
                     Row(Modifier.semantics { liveRegion = LiveRegionMode.Assertive }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Outlined.ErrorOutline, null, tint = Palette.danger, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Rounded.ErrorOutline, null, tint = Palette.danger, modifier = Modifier.size(20.dp))
                         Text(it, color = Palette.danger, style = MaterialTheme.typography.bodyMedium)
                     }
                 }

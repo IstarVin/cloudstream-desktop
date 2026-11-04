@@ -17,11 +17,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -145,11 +145,11 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
             placeholder = { Text("Search movies, series, anime…") },
             leadingIcon = {
                 IconButton(onClick = { run(query) }, enabled = query.isNotBlank(), modifier = Modifier.tvFocusIndicator()) {
-                    Icon(Icons.Filled.Search, "Search")
+                    Icon(Icons.Rounded.Search, "Search")
                 }
             },
             trailingIcon = {
-                if (query.isNotEmpty()) IconButton(onClick = { query = "" }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Clear, "Clear search text") }
+                if (query.isNotEmpty()) IconButton(onClick = { query = "" }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Rounded.Clear, "Clear search text") }
             },
             singleLine = true,
             shape = MaterialTheme.shapes.small,
@@ -166,7 +166,7 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
                     selected = type == value,
                     onClick = { type = value },
                     label = { Text(label) },
-                    leadingIcon = if (type == value) ({ Icon(Icons.Filled.Check, null, Modifier.size(16.dp)) }) else null,
+                    leadingIcon = if (type == value) ({ Icon(Icons.Rounded.Check, null, Modifier.size(16.dp)) }) else null,
                     modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
                 )
             }
@@ -188,7 +188,7 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
             if (searching && visible.isEmpty()) item { CatalogLoading() }
             if (!searching && vm.lastQuery.isEmpty()) {
                 if (recents.isEmpty()) item {
-                    EmptyState(Icons.Filled.Search, "Find your next watch", "Search every enabled source at once, then narrow the results by content type.")
+                    EmptyState(Icons.Rounded.Search, "Find your next watch", "Search every enabled source at once, then narrow the results by content type.")
                 } else {
                     item {
                         Row(Modifier.fillMaxWidth().padding(start = Gutter, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -202,7 +202,7 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            Icon(Icons.Filled.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Icon(Icons.Rounded.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(r, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
@@ -225,9 +225,9 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
             }
             if (!searching && vm.lastQuery.isNotEmpty() && visible.isEmpty()) {
                 if (results.isNotEmpty()) item {
-                    EmptyState(Icons.Filled.Search, "No results of this type", "Try another content type to see more of your results.", actionLabel = "Show all results", onAction = { type = null })
+                    EmptyState(Icons.Rounded.Search, "No results of this type", "Try another content type to see more of your results.", actionLabel = "Show all results", onAction = { type = null })
                 } else if (errors.isEmpty()) item {
-                    EmptyState(Icons.Filled.Search, "No titles found", "Nothing matched “${vm.lastQuery}”. Try another title or a different spelling.")
+                    EmptyState(Icons.Rounded.Search, "No titles found", "Nothing matched “${vm.lastQuery}”. Try another title or a different spelling.")
                 }
             }
             if (errors.isNotEmpty()) {
@@ -238,7 +238,7 @@ fun SearchScreen(initial: String, onTitle: (String, String) -> Unit) {
                             Text(provider)
                             Text(error, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                         }
-                        IconButton(onClick = { vm.search(vm.lastQuery, only = provider.takeUnless { it == "Search" }) }, enabled = !searching, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Refresh, "Retry $provider") }
+                        IconButton(onClick = { vm.search(vm.lastQuery, only = provider.takeUnless { it == "Search" }) }, enabled = !searching, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Rounded.Refresh, "Retry $provider") }
                     }
                 }
             }

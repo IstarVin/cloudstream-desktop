@@ -26,25 +26,25 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.Cancel
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.LiveTv
-import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SmartDisplay
-import androidx.compose.material.icons.filled.Theaters
-import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.automirrored.rounded.TrendingUp
+import androidx.compose.material.icons.rounded.Cancel
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.LiveTv
+import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.RestartAlt
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SmartDisplay
+import androidx.compose.material.icons.rounded.Theaters
+import androidx.compose.material.icons.rounded.Tv
+import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -92,7 +92,7 @@ private fun SourceIcon(provider: ProviderDto?, size: Dp = 40.dp) {
         contentAlignment = Alignment.Center,
     ) {
         val fallback: @Composable () -> Unit = {
-            Icon(Icons.Filled.Layers, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+            Icon(Icons.Rounded.Layers, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
         }
         val request = imageRequest(provider?.iconUrl)
         if (request == null) fallback() else SubcomposeAsyncImage(
@@ -125,7 +125,7 @@ fun SourceSelector(current: ProviderDto?, onClick: () -> Unit, modifier: Modifie
                     maxLines = 1,
                 )
             }
-            Icon(Icons.Filled.ExpandMore, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.Rounded.ExpandMore, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -166,17 +166,17 @@ fun ProviderPicker(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Choose a source", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
-                IconButton(onClick = onDismiss, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Close, "Close source picker") }
+                IconButton(onClick = onDismiss, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Rounded.Close, "Close source picker") }
             }
             RemoteTextField(
                 value = query,
                 onValueChange = { query = it },
                 label = { Text("Find a source") },
                 placeholder = { Text("Name, plugin or language") },
-                leadingIcon = { Icon(Icons.Filled.Search, null) },
+                leadingIcon = { Icon(Icons.Rounded.Search, null) },
                 trailingIcon = {
                     if (query.isNotEmpty()) IconButton(onClick = { query = "" }, modifier = Modifier.tvFocusIndicator()) {
-                        Icon(Icons.Filled.Cancel, "Clear search", modifier = Modifier.size(20.dp))
+                        Icon(Icons.Rounded.Cancel, "Clear search", modifier = Modifier.size(20.dp))
                     }
                 },
                 singleLine = true,
@@ -210,7 +210,7 @@ fun ProviderPicker(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.padding(bottom = 4.dp),
                             ) {
-                                Icon(Icons.Filled.Layers, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Rounded.Layers, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                                 Text("Content types", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             if (LocalTv.current) {
@@ -228,7 +228,7 @@ fun ProviderPicker(
                                 Modifier.padding(top = 8.dp, bottom = if (LocalTv.current) 4.dp else 16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Icon(Icons.Filled.Info, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Rounded.Info, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                                 Text("Select multiple. Leave empty to show every source.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
@@ -238,7 +238,7 @@ fun ProviderPicker(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Icon(Icons.Filled.Groups, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Rounded.Groups, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             Text(
                                 "${shown.size} ${if (shown.size == 1) "source" else "sources"}${if (categories.isEmpty() && query.isBlank()) " available" else " matching"}",
                                 style = MaterialTheme.typography.bodySmall,
@@ -246,7 +246,7 @@ fun ProviderPicker(
                                 modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
                             )
                             if (hasFilters) TextButton(onClick = resetFilters, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.tvFocusIndicator()) {
-                                Icon(Icons.Filled.RestartAlt, null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Rounded.RestartAlt, null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.size(6.dp))
                                 Text("Reset filters", style = MaterialTheme.typography.labelMedium)
                             }
@@ -325,23 +325,23 @@ private fun SourceRow(provider: ProviderDto, selected: Boolean, onClick: () -> U
                     .then(if (selected) Modifier else Modifier.border(1.5.dp, colors.outline, CircleShape)),
                 contentAlignment = Alignment.Center,
             ) {
-                if (selected) Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
+                if (selected) Icon(Icons.Rounded.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
             }
         }
     }
 }
 
 private fun contentTypeIcon(id: String): ImageVector = when (id) {
-    "anime" -> Icons.Filled.PlayArrow
-    "movies" -> Icons.Filled.Movie
-    "series" -> Icons.Filled.Tv
-    "drama" -> Icons.Filled.Theaters
-    "cartoons" -> Icons.Filled.SmartDisplay
-    "documentaries" -> Icons.Filled.VideoLibrary
-    "live" -> Icons.AutoMirrored.Filled.TrendingUp
-    "torrent" -> Icons.Filled.Download
-    "adult" -> Icons.Filled.Person
-    else -> Icons.Filled.LiveTv
+    "anime" -> Icons.Rounded.PlayArrow
+    "movies" -> Icons.Rounded.Movie
+    "series" -> Icons.Rounded.Tv
+    "drama" -> Icons.Rounded.Theaters
+    "cartoons" -> Icons.Rounded.SmartDisplay
+    "documentaries" -> Icons.Rounded.VideoLibrary
+    "live" -> Icons.AutoMirrored.Rounded.TrendingUp
+    "torrent" -> Icons.Rounded.Download
+    "adult" -> Icons.Rounded.Person
+    else -> Icons.Rounded.LiveTv
 }
 
 @Composable

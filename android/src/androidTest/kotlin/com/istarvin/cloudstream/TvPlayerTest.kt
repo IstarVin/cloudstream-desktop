@@ -56,8 +56,8 @@ class TvPlayerTest {
         compose.onNodeWithContentDescription("Play").assertIsFocused()
         compose.runOnIdle { assertEquals(false, vm.player.playWhenReady) }
 
-        compose.onNodeWithText("Speed 1×").performSemanticsAction(SemanticsActions.RequestFocus)
-        compose.onNodeWithText("Speed 1×").performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.onNodeWithText("Speed").performSemanticsAction(SemanticsActions.RequestFocus)
+        compose.onNodeWithText("Speed").performKeyInput { pressKey(Key.DirectionCenter) }
         compose.onNodeWithText("0.25×").assertIsFocused()
         captureTvScreen("tv-player-speed")
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)

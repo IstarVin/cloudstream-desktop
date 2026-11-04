@@ -5,7 +5,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,10 +23,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.VideoLibrary
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.outlined.Extension
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.VideoLibrary
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -173,7 +173,7 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
         RemoteTextField(
             value = query, onValueChange = { query = it },
             placeholder = { Text("Search titles…", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            leadingIcon = { Icon(Icons.Filled.Search, null, tint = Palette.muted) },
+            leadingIcon = { Icon(Icons.Rounded.Search, null, tint = Palette.muted) },
             trailingIcon = {
                 Button(shape = MaterialTheme.shapes.small, onClick = { onSearch(query.trim()) }, modifier = Modifier.padding(end = 6.dp).tvFocusIndicator(), contentPadding = PaddingValues(horizontal = 14.dp)) { Text("Go") }
             },
@@ -190,7 +190,7 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
                 ScreenHeading("Home", subtitle = "Your next watch starts here.") {
                     if (tv) {
                         IconButton(onClick = { vm.load() }, enabled = !refreshing, modifier = Modifier.tvFocusIndicator()) {
-                            Icon(Icons.Filled.Refresh, "Refresh home")
+                            Icon(Icons.Rounded.Refresh, "Refresh home")
                         }
                     }
                     if (LocalCatalogLayout.current.expanded) HomeSearch(Modifier.width(320.dp))
@@ -211,7 +211,7 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
                         if (LocalCatalogLayout.current.expanded) {
                             Spacer(Modifier.weight(1f))
                             TextButton(onClick = onManage, modifier = Modifier.tvFocusIndicator(), colors = ButtonDefaults.textButtonColors(contentColor = Palette.muted)) { Text("Manage plugins") }
-                        } else IconButton(onClick = onManage, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Outlined.Extension, "Manage plugins", tint = Palette.muted) }
+                        } else IconButton(onClick = onManage, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Rounded.Extension, "Manage plugins", tint = Palette.muted) }
                     }
                 }
             }
@@ -251,7 +251,7 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
                     is Load.Ok -> {
                         if (s.value.isEmpty()) item {
                             EmptyState(
-                                Icons.Filled.VideoLibrary,
+                                Icons.Rounded.VideoLibrary,
                                 if (provider == null) "Start with a source" else "No collections available",
                                 if (provider == null) "Enable a plugin with a home page to start browsing." else "This source has no home collections right now. Try another source.",
                                 actionLabel = if (provider == null) "Manage plugins" else "Change source",
@@ -345,7 +345,7 @@ private fun HomeSectionRows(vm: HomeViewModel, section: HomeSection, onTitle: (S
                         Spacer(Modifier.width(8.dp))
                         TextButton(colors = ButtonDefaults.textButtonColors(contentColor = Palette.muted), onClick = { onMore(row.name) }, modifier = (Modifier.heightIn(min = 48.dp).semantics { contentDescription = "See all ${row.name}" }).tvFocusIndicator()) {
                             Text("See all")
-                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(18.dp))
                         }
                     }
                     LazyRow(state = list, contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -22,8 +22,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -181,7 +181,7 @@ fun ErrorBox(message: String, modifier: Modifier = Modifier, onRetry: (() -> Uni
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         val offline = message == UNREACHABLE
-        Icon(if (offline) Icons.Outlined.CloudOff else Icons.Outlined.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(28.dp))
+        Icon(if (offline) Icons.Rounded.CloudOff else Icons.Rounded.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(28.dp))
         Text(
             if (offline) "Desktop unreachable" else "Something went wrong",
             style = MaterialTheme.typography.titleMedium,

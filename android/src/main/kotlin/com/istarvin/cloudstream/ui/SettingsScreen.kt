@@ -23,18 +23,18 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.FormatListNumbered
-import androidx.compose.material.icons.outlined.Shield
-import androidx.compose.material.icons.outlined.Language
-import androidx.compose.material.icons.outlined.Layers
-import androidx.compose.material.icons.outlined.SystemUpdate
-import androidx.compose.material.icons.outlined.Computer
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Remove
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.FormatListNumbered
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.SystemUpdate
+import androidx.compose.material.icons.rounded.Computer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -102,13 +102,13 @@ private val QUALITY_LABELS = mapOf(
 )
 
 private enum class SettingsTab(val label: String, val icon: ImageVector) {
-    Playback("Playback", Icons.Outlined.PlayArrow),
-    Priority("Source priority", Icons.Outlined.FormatListNumbered),
-    Content("Content", Icons.Outlined.Shield),
-    Browser("Browser", Icons.Outlined.Language),
-    Plugins("Plugins", Icons.Outlined.Layers),
-    Desktop("Connection", Icons.Outlined.Computer),
-    Updates("App updates", Icons.Outlined.SystemUpdate),
+    Playback("Playback", Icons.Rounded.PlayArrow),
+    Priority("Source priority", Icons.Rounded.FormatListNumbered),
+    Content("Content", Icons.Rounded.Shield),
+    Browser("Browser", Icons.Rounded.Language),
+    Plugins("Plugins", Icons.Rounded.Layers),
+    Desktop("Connection", Icons.Rounded.Computer),
+    Updates("App updates", Icons.Rounded.SystemUpdate),
 }
 
 @Composable
@@ -523,7 +523,7 @@ private fun ProfileEditor(settings: ServerSettings, draft: ProfileDraft, onSave:
             style = MaterialTheme.typography.bodySmall, color = Palette.muted)
         TextButton(onClick = { expanded = !expanded }, modifier = Modifier.tvFocusIndicator()) {
             Text(if (expanded) "Hide priorities and filters" else "Edit priorities and filters")
-            Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, null)
+            Icon(if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
         }
         if (expanded) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -537,7 +537,7 @@ private fun ProfileEditor(settings: ServerSettings, draft: ProfileDraft, onSave:
                 p.sourcePriorities.toSortedMap().forEach { (source, n) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Stepper(source, n, Modifier.weight(1f)) { v -> edit { it.copy(sourcePriorities = it.sourcePriorities + (source to v)) } }
-                        IconButton(onClick = { edit { it.copy(sourcePriorities = it.sourcePriorities - source) } }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Delete, "Remove $source") }
+                        IconButton(onClick = { edit { it.copy(sourcePriorities = it.sourcePriorities - source) } }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Rounded.Delete, "Remove $source") }
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -562,8 +562,8 @@ private fun ProfileEditor(settings: ServerSettings, draft: ProfileDraft, onSave:
 private fun Stepper(label: String, value: Int, modifier: Modifier = Modifier, onChange: (Int) -> Unit) {
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f))
-        IconButton(onClick = { onChange((value - 1).coerceAtLeast(-1000)) }, enabled = value > -1000, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Remove, "Lower $label priority") }
+        IconButton(onClick = { onChange((value - 1).coerceAtLeast(-1000)) }, enabled = value > -1000, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Rounded.Remove, "Lower $label priority") }
         Text("$value", Modifier.widthIn(min = 48.dp), style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"), textAlign = TextAlign.Center)
-        IconButton(onClick = { onChange((value + 1).coerceAtMost(1000)) }, enabled = value < 1000, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Add, "Raise $label priority") }
+        IconButton(onClick = { onChange((value + 1).coerceAtMost(1000)) }, enabled = value < 1000, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Rounded.Add, "Raise $label priority") }
     }
 }

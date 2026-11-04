@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -86,7 +86,7 @@ private fun CheckCard(c: BrowserCheckDto, onSolve: () -> Unit, onDismiss: () -> 
         modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
     ) {
         Row(Modifier.heightIn(min = 56.dp).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(Icons.Filled.Warning, null, Modifier.size(20.dp), tint = Palette.danger)
+            Icon(Icons.Rounded.Warning, null, Modifier.size(20.dp), tint = Palette.danger)
             Column(Modifier.weight(1f)) {
                 Text(c.host, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
                 Text(
@@ -97,7 +97,7 @@ private fun CheckCard(c: BrowserCheckDto, onSolve: () -> Unit, onDismiss: () -> 
             }
             if (c.solving) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             else Button(shape = MaterialTheme.shapes.small, onClick = onSolve, modifier = Modifier.tvFocusIndicator()) { Text("Solve") }
-            IconButton(onClick = onDismiss, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Close, "Dismiss") }
+            IconButton(onClick = onDismiss, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Rounded.Close, "Dismiss") }
         }
     }
 }

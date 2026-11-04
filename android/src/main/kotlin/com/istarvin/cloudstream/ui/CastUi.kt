@@ -25,28 +25,28 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeDown
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.Cast
-import androidx.compose.material.icons.filled.CastConnected
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ClosedCaption
-import androidx.compose.material.icons.filled.DesktopWindows
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.Forward10
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Replay10
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.Source
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.automirrored.rounded.VolumeDown
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.Cast
+import androidx.compose.material.icons.rounded.CastConnected
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ClosedCaption
+import androidx.compose.material.icons.rounded.DesktopWindows
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.Forward10
+import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Replay10
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Source
+import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.Tv
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -111,10 +111,10 @@ import kotlinx.coroutines.launch
 
 /** The icon for a kind of player; null is this device. */
 fun deviceIcon(kind: DeviceKind?, self: DeviceKind): ImageVector = when (kind ?: self) {
-    DeviceKind.MPV -> Icons.Filled.DesktopWindows
-    DeviceKind.WEB -> Icons.Filled.Language
-    DeviceKind.TV -> Icons.Filled.Tv
-    DeviceKind.PHONE -> Icons.Filled.PhoneAndroid
+    DeviceKind.MPV -> Icons.Rounded.DesktopWindows
+    DeviceKind.WEB -> Icons.Rounded.Language
+    DeviceKind.TV -> Icons.Rounded.Tv
+    DeviceKind.PHONE -> Icons.Rounded.PhoneAndroid
 }
 
 /**
@@ -134,7 +134,7 @@ fun CastButton(modifier: Modifier = Modifier, overImage: Boolean = false) {
     val label = options.firstOrNull { it.id == effective }?.label ?: cast.hereLabel
     val remote = effective != PlayTargets.HERE
     var open by rememberSaveable { mutableStateOf(false) }
-    val icon = if (remote) Icons.Filled.CastConnected else Icons.Filled.Cast
+    val icon = if (remote) Icons.Rounded.CastConnected else Icons.Rounded.Cast
     if (overImage) FilledTonalIconButton(
         onClick = { open = true },
         modifier = modifier.padding(8.dp),
@@ -172,7 +172,7 @@ fun PlayOnSheet(
                 Icon(deviceIcon(o.kind, self), null, tint = color)
                 Text(o.label, Modifier.weight(1f), color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (o.busy) Text("In use", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
-                if (on) Icon(Icons.Filled.Check, null, tint = Palette.accent)
+                if (on) Icon(Icons.Rounded.Check, null, tint = Palette.accent)
             }
         }
         val note = when {
@@ -198,7 +198,7 @@ fun MoveToDeviceButton(vm: PlayerViewModel, onMoved: () -> Unit, onInteract: () 
     if (options.size < 2) return
     val scope = rememberCoroutineScope()
     var open by remember { mutableStateOf(false) }
-    IconButton(onClick = { onInteract(); open = true }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Cast, "Play on another device", tint = Color.White) }
+    IconButton(onClick = { onInteract(); open = true }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Rounded.Cast, "Play on another device", tint = Color.White) }
     if (open) PlayOnSheet(options, PlayTargets.HERE, connected, cast.kind, title = "Continue on", onDismiss = { open = false }, onPick = { target ->
         open = false
         if (target == PlayTargets.HERE) return@PlayOnSheet
@@ -262,9 +262,9 @@ fun NowPlayingBar(onTitle: (String, String) -> Unit) {
                 if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 skipLabel(s)?.let { TextButton(onClick = { command("skip", PlayerCommand()) }) { Text(it) } }
                 IconButton(onClick = { command("toggle", PlayerCommand()) }, enabled = !busy) {
-                    Icon(if (s.paused) Icons.Filled.PlayArrow else Icons.Filled.Pause, if (s.paused) "Play" else "Pause")
+                    Icon(if (s.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, if (s.paused) "Play" else "Pause")
                 }
-                if (s.hasNext) IconButton(onClick = { command("next", PlayerCommand()) }) { Icon(Icons.Filled.SkipNext, "Next episode") }
+                if (s.hasNext) IconButton(onClick = { command("next", PlayerCommand()) }) { Icon(Icons.Rounded.SkipNext, "Next episode") }
             }
             LinearProgressIndicator(
                 progress = { if (s.duration > 0) (s.position / s.duration).toFloat().coerceIn(0f, 1f) else 0f },
@@ -336,34 +336,34 @@ private fun RemoteSheet(device: DeviceInfo, s: PlayerState, command: (String, Pl
 
             skipLabel(s)?.let { label ->
                 OutlinedButton(shape = MaterialTheme.shapes.small, onClick = { command("skip", PlayerCommand()) }, modifier = Modifier.fillMaxWidth().tvFocusIndicator()) {
-                    Icon(Icons.Filled.FastForward, null, Modifier.size(18.dp))
+                    Icon(Icons.Rounded.FastForward, null, Modifier.size(18.dp))
                     Text(label, Modifier.padding(start = 8.dp))
                 }
             }
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { command("prev", PlayerCommand()) }, enabled = s.hasPrev, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.SkipPrevious, "Previous episode") }
-                IconButton(onClick = { command("seek", PlayerCommand(seconds = -10.0, relative = true)) }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Replay10, "Back 10 seconds") }
+                IconButton(onClick = { command("prev", PlayerCommand()) }, enabled = s.hasPrev, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Rounded.SkipPrevious, "Previous episode") }
+                IconButton(onClick = { command("seek", PlayerCommand(seconds = -10.0, relative = true)) }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Rounded.Replay10, "Back 10 seconds") }
                 FilledIconButton(onClick = { command("toggle", PlayerCommand()) }, enabled = !busy, modifier = Modifier.size(64.dp).tvFocusIndicator()) {
                     if (busy) CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.dp, color = LocalContentColor.current)
-                    else Icon(if (s.paused) Icons.Filled.PlayArrow else Icons.Filled.Pause, if (s.paused) "Play" else "Pause", Modifier.size(34.dp))
+                    else Icon(if (s.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, if (s.paused) "Play" else "Pause", Modifier.size(34.dp))
                 }
-                IconButton(onClick = { command("seek", PlayerCommand(seconds = 10.0, relative = true)) }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Forward10, "Forward 10 seconds") }
-                IconButton(onClick = { command("next", PlayerCommand()) }, enabled = s.hasNext, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.SkipNext, "Next episode") }
+                IconButton(onClick = { command("seek", PlayerCommand(seconds = 10.0, relative = true)) }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Rounded.Forward10, "Forward 10 seconds") }
+                IconButton(onClick = { command("next", PlayerCommand()) }, enabled = s.hasNext, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Rounded.SkipNext, "Next episode") }
             }
 
             Surface(color = Palette.surface2, shape = RoundedCornerShape(16.dp)) {
                 Column {
-                    TrackMenu("Audio", Icons.AutoMirrored.Filled.VolumeUp, s.audioTracks, offLabel = null) { command("track", PlayerCommand(type = "audio", id = it)) }
+                    TrackMenu("Audio", Icons.AutoMirrored.Rounded.VolumeUp, s.audioTracks, offLabel = null) { command("track", PlayerCommand(type = "audio", id = it)) }
                     HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                    TrackMenu("Subtitles", Icons.Filled.ClosedCaption, s.subTracks, offLabel = "Subtitles off") { command("track", PlayerCommand(type = "sub", id = it)) }
+                    TrackMenu("Subtitles", Icons.Rounded.ClosedCaption, s.subTracks, offLabel = "Subtitles off") { command("track", PlayerCommand(type = "sub", id = it)) }
                 }
             }
 
             var volume by remember { mutableStateOf<Float?>(null) }
             val maxVolume = if (isMpv) 130f else 100f
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.AutoMirrored.Filled.VolumeDown, null, tint = Palette.muted)
+                Icon(Icons.AutoMirrored.Rounded.VolumeDown, null, tint = Palette.muted)
                 Slider(
                     value = (volume ?: s.volume.toFloat()).coerceIn(0f, maxVolume),
                     onValueChange = { volume = it },
@@ -378,7 +378,7 @@ private fun RemoteSheet(device: DeviceInfo, s: PlayerState, command: (String, Pl
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(shape = MaterialTheme.shapes.small, onClick = { sources = true }, enabled = s.provider != null && s.data != null, modifier = Modifier.weight(1f).tvFocusIndicator(), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp)) {
-                    RemoteActionLabel(Icons.Filled.Source, "Sources")
+                    RemoteActionLabel(Icons.Rounded.Source, "Sources")
                 }
                 val p = s.provider
                 val u = s.url
@@ -393,7 +393,7 @@ private fun RemoteSheet(device: DeviceInfo, s: PlayerState, command: (String, Pl
                     RemoteActionLabel(deviceIcon(null, cast.kind), "Play here")
                 }
                 OutlinedButton(shape = MaterialTheme.shapes.small, onClick = { command("stop", PlayerCommand()) }, modifier = Modifier.weight(1f).tvFocusIndicator(), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 12.dp)) {
-                    RemoteActionLabel(Icons.Filled.Stop, "Stop")
+                    RemoteActionLabel(Icons.Rounded.Stop, "Stop")
                 }
             }
         }
@@ -431,7 +431,7 @@ private fun TrackMenu(label: String, icon: ImageVector, tracks: List<Track>, off
                     Text(label, style = MaterialTheme.typography.labelMedium, color = Palette.muted)
                     Text(current, style = MaterialTheme.typography.bodyMedium, color = Palette.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
-                Icon(Icons.Outlined.ExpandMore, null, Modifier.size(18.dp), tint = Palette.muted)
+                Icon(Icons.Rounded.ExpandMore, null, Modifier.size(18.dp), tint = Palette.muted)
             }
         }
         DropdownMenu(open, onDismissRequest = { open = false }) {
@@ -439,7 +439,7 @@ private fun TrackMenu(label: String, icon: ImageVector, tracks: List<Track>, off
             tracks.forEach { t ->
                 DropdownMenuItem(
                     text = { Text(trackLabel(t)) },
-                    trailingIcon = if (t.selected) ({ Icon(Icons.Filled.Check, null) }) else null,
+                    trailingIcon = if (t.selected) ({ Icon(Icons.Rounded.Check, null) }) else null,
                     onClick = { open = false; onPick(t.id.toString()) },
                 )
             }
@@ -489,10 +489,10 @@ private fun RemoteSourcesSheet(device: DeviceInfo, provider: String, data: Strin
                 )
             }
             IconButton(onClick = { reloads++ }, enabled = done, modifier = Modifier.tvFocusIndicator()) {
-                Icon(Icons.Filled.Refresh, "Reload links")
+                Icon(Icons.Rounded.Refresh, "Reload links")
             }
             IconButton(onClick = onDismiss, modifier = Modifier.tvFocusIndicator()) {
-                Icon(Icons.Filled.Close, "Close sources")
+                Icon(Icons.Rounded.Close, "Close sources")
             }
         }
         if (!done) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
@@ -554,7 +554,7 @@ private fun SourceRow(title: String, detail: String?, selected: Boolean, dim: Bo
                     Text(quality, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                 }
                 if (quality != null) Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                    if (selected) Icon(Icons.Filled.Check, null, Modifier.size(20.dp), tint = Palette.accent)
+                    if (selected) Icon(Icons.Rounded.Check, null, Modifier.size(20.dp), tint = Palette.accent)
                 }
             }
             if (!detail.isNullOrBlank()) Text(detail, style = MaterialTheme.typography.bodySmall, color = if (selected) Palette.text.copy(alpha = 0.8f) else Palette.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)

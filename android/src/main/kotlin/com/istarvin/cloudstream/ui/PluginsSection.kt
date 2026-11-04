@@ -20,15 +20,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.Build
-import androidx.compose.material.icons.outlined.Extension
-import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.ExpandLess
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
@@ -202,8 +202,8 @@ fun LazyListScope.pluginItems(c: PluginsController, onRetry: () -> Unit) {
                 RemoteTextField(
                     c.query, { c.query = it },
                     placeholder = { Text("Search plugins or providers") },
-                    leadingIcon = { Icon(Icons.Filled.Search, null) },
-                    trailingIcon = { if (c.query.isNotEmpty()) IconButton(onClick = { c.query = "" }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Filled.Close, "Clear search") } },
+                    leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                    trailingIcon = { if (c.query.isNotEmpty()) IconButton(onClick = { c.query = "" }, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.Rounded.Close, "Clear search") } },
                     singleLine = true,
                     shape = MaterialTheme.shapes.small,
                     colors = OutlinedTextFieldDefaults.colors(
@@ -250,7 +250,7 @@ private fun PluginSource(c: PluginsController, onRefresh: () -> Unit) {
             modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
         ) {
             if (c.busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-            else Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp))
+            else Icon(Icons.Rounded.Refresh, null, Modifier.size(18.dp))
             Text(if (repo) "Check for updates" else "Refresh", Modifier.padding(start = 10.dp))
         }
         if (source != null && !repo) OutlinedButton(shape = MaterialTheme.shapes.small,
@@ -261,7 +261,7 @@ private fun PluginSource(c: PluginsController, onRefresh: () -> Unit) {
             modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
         ) {
             if (c.building) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-            else Icon(Icons.Outlined.Build, null, Modifier.size(18.dp))
+            else Icon(Icons.Rounded.Build, null, Modifier.size(18.dp))
             Text(if (c.building) "Building…" else "Rebuild", Modifier.padding(start = 10.dp))
         }
         HorizontalDivider(Modifier.padding(top = 8.dp, bottom = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
@@ -274,7 +274,7 @@ private fun PluginSource(c: PluginsController, onRefresh: () -> Unit) {
         }
         TextButton(onClick = { expanded = !expanded }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp), modifier = Modifier.tvFocusIndicator()) {
             Text(if (repo) "Repository details" else "Local build details", color = Palette.muted)
-            Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null, Modifier.padding(start = 8.dp).size(18.dp), tint = Palette.muted)
+            Icon(if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, Modifier.padding(start = 8.dp).size(18.dp), tint = Palette.muted)
         }
         if (expanded) {
             source?.let {
@@ -313,7 +313,7 @@ private fun PluginFilterMenu(c: PluginsController, updates: Int, issues: Int) {
         ) {
             Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(c.filter.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                Icon(Icons.Outlined.ExpandMore, null, Modifier.size(18.dp), tint = Palette.muted)
+                Icon(Icons.Rounded.ExpandMore, null, Modifier.size(18.dp), tint = Palette.muted)
             }
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -342,7 +342,7 @@ private fun PluginRow(p: PluginDto, onOpen: () -> Unit, onToggle: (Boolean) -> U
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Box(Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)).background(Palette.surface2), contentAlignment = Alignment.Center) {
-                val fallback: @Composable () -> Unit = { Icon(Icons.Outlined.Extension, null, Modifier.size(28.dp), tint = Palette.muted) }
+                val fallback: @Composable () -> Unit = { Icon(Icons.Rounded.Extension, null, Modifier.size(28.dp), tint = Palette.muted) }
                 val request = imageRequest(p.iconUrl)
                 if (request == null) fallback() else SubcomposeAsyncImage(
                     model = request, contentDescription = null, modifier = Modifier.fillMaxSize().padding(4.dp),
@@ -352,7 +352,7 @@ private fun PluginRow(p: PluginDto, onOpen: () -> Unit, onToggle: (Boolean) -> U
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(p.name, modifier = Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Icon(Icons.Outlined.ExpandMore, null, Modifier.size(16.dp), tint = Palette.muted)
+                    Icon(Icons.Rounded.ExpandMore, null, Modifier.size(16.dp), tint = Palette.muted)
                 }
                 Text(
                     pluginSummary(p), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -395,7 +395,7 @@ fun PluginSheet(c: PluginsController, api: Api, tell: (String) -> Unit) {
                     Text(pluginSummary(p).ifBlank { "Loaded" }, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                 }
                 IconButton(onClick = { c.selected = null }, modifier = Modifier.tvFocusIndicator()) {
-                    Icon(Icons.Filled.Close, "Close plugin details")
+                    Icon(Icons.Rounded.Close, "Close plugin details")
                 }
             }
             p.description?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = Palette.muted, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)) }
@@ -481,7 +481,7 @@ private fun PluginSettingsForm(p: PluginDto, api: Api, tell: (String) -> Unit) {
                             keyboardOptions = KeyboardOptions(keyboardType = if (f.type == "int") KeyboardType.Number else KeyboardType.Text, autoCorrectEnabled = false),
                             trailingIcon = if (secret) ({
                                 IconButton(onClick = { revealed[id] = !shown }, modifier = Modifier.tvFocusIndicator()) {
-                                    Icon(if (shown) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, if (shown) "Hide ${f.label}" else "Show ${f.label}")
+                                    Icon(if (shown) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, if (shown) "Hide ${f.label}" else "Show ${f.label}")
                                 }
                             }) else null,
                             modifier = Modifier.fillMaxWidth(),

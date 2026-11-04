@@ -33,11 +33,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.VideoLibrary
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.HorizontalDivider
@@ -138,10 +138,10 @@ private data class Tab(val label: String, val icon: ImageVector, val route: Any)
 private fun MainScaffold(onUnpair: () -> Unit) {
     val nav = rememberNavController()
     val tabs = listOf(
-        Tab("Home", Icons.Outlined.Home, HomeRoute),
-        Tab("Search", Icons.Outlined.Search, SearchRoute()),
-        Tab("Library", Icons.Outlined.VideoLibrary, LibraryRoute),
-        Tab("Settings", Icons.Outlined.Settings, SettingsRoute),
+        Tab("Home", Icons.Rounded.Home, HomeRoute),
+        Tab("Search", Icons.Rounded.Search, SearchRoute()),
+        Tab("Library", Icons.Rounded.VideoLibrary, LibraryRoute),
+        Tab("Settings", Icons.Rounded.Settings, SettingsRoute),
     )
     val entry by nav.currentBackStackEntryAsState()
     val dest = entry?.destination
@@ -197,7 +197,7 @@ private fun MainScaffold(onUnpair: () -> Unit) {
             ) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = if (tv) Arrangement.Center else Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Filled.PlayArrow, null, tint = Palette.accent, modifier = Modifier.size(24.dp))
+                    Icon(Icons.Rounded.PlayArrow, null, tint = Palette.accent, modifier = Modifier.size(24.dp))
                     if (!tv) Text("Cloudstream", style = MaterialTheme.typography.titleMedium)
                 }
                 Spacer(Modifier.height(12.dp))

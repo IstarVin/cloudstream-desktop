@@ -9,8 +9,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -117,7 +117,7 @@ fun SectionScreen(provider: String, section: Int, row: String, name: String, onT
         topBar = {
             TopAppBar(
                 title = { Text(row.ifBlank { name }) },
-                navigationIcon = { IconButton(onClick = onBack, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                navigationIcon = { IconButton(onClick = onBack, modifier = Modifier.tvFocusIndicator()) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } },
                 actions = { CastButton() },
             )
         },
@@ -137,7 +137,7 @@ fun SectionScreen(provider: String, section: Int, row: String, name: String, onT
             if (loading) item(span = { GridItemSpan(maxLineSpan) }) { Loading() }
             error?.let { item(span = { GridItemSpan(maxLineSpan) }) { ErrorBox(it, onRetry = { more() }) } }
             if (!loading && error == null && pages.isNotEmpty() && items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                EmptyState(Icons.Filled.VideoLibrary, "No titles available", "This collection is empty right now. Go back to browse another collection.", actionLabel = "Back to browsing", onAction = onBack)
+                EmptyState(Icons.Rounded.VideoLibrary, "No titles available", "This collection is empty right now. Go back to browse another collection.", actionLabel = "Back to browsing", onAction = onBack)
             }
         }
     }
