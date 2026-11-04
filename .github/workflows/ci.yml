@@ -12,6 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Release tooling tests
+        run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
+
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -69,3 +72,10 @@ jobs:
 
       - name: Build and lint the app
         run: ./gradlew --console=plain :android:assembleDebug :android:lintDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-debug-apk
+          path: android/build/outputs/apk/debug/android-debug.apk
+          if-no-files-found: error

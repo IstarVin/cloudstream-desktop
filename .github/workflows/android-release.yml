@@ -41,6 +41,15 @@ jobs:
           ref: refs/tags/${{ env.RELEASE_TAG }}
           persist-credentials: false
 
+      - name: Validate release notes
+        shell: bash
+        run: |
+          notes="release-notes/$RELEASE_TAG.md"
+          if [[ ! -s "$notes" ]] || ! grep -q '[^[:space:]]' "$notes" || grep -Eiq '\b(TODO|TBD)\b' "$notes"; then
+            echo "::error::Commit finished release notes in $notes before tagging."
+            exit 1
+          fi
+
       - name: Prepare release keystore
         shell: bash
         env:
@@ -102,7 +111,8 @@ jobs:
             flags+=(--prerelease)
           fi
           gh release create "$RELEASE_TAG" dist/*.apk dist/SHA256SUMS \
-            --verify-tag --title "Android $VERSION_NAME" --generate-notes "${flags[@]}"
+            --verify-tag --title "Android $VERSION_NAME" \
+            --notes-file "release-notes/$RELEASE_TAG.md" "${flags[@]}"
 
       - name: Remove release keystore
         if: always()

@@ -5,6 +5,7 @@ build/
 *.iml
 local.properties
 node_modules/
+__pycache__/
 /server/src/main/resources/web/
 
 # Android signing

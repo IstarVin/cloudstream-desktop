@@ -1,5 +1,9 @@
 .git
 .github
+.agents
+.claude
+release-notes
+scripts
 .gradle
 .kotlin
 .vscode
