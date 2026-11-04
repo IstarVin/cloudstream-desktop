@@ -11,7 +11,7 @@
 
     <!-- The desktop serves plain HTTP on the LAN. -->
     <application
-        android:name="desktop.app.App"
+        android:name="com.istarvin.cloudstream.App"
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
@@ -32,7 +32,7 @@
         </provider>
 
         <activity
-            android:name="desktop.app.ui.MainActivity"
+            android:name="com.istarvin.cloudstream.ui.MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -43,7 +43,7 @@
         </activity>
 
         <activity
-            android:name="desktop.app.player.PlayerActivity"
+            android:name="com.istarvin.cloudstream.player.PlayerActivity"
             android:exported="false"
             android:launchMode="singleTask"
             android:supportsPictureInPicture="true"

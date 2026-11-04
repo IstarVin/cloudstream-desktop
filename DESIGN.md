@@ -18,7 +18,7 @@ The web implementation is the visual reference for both clients. Catalog browsin
 | Divider | White at 10% | Subtle separation and artwork borders |
 | Success / error | `#53D3A3` / `#FF6170` | Status feedback |
 
-Source tokens live in `web/src/app.css`; Android maps them to Material roles in `android/src/main/kotlin/desktop/app/ui/Theme.kt`. Keep this brand palette fixed rather than replacing it with wallpaper-derived colors. Text over artwork uses white and a dark scrim.
+Source tokens live in `web/src/app.css`; Android maps them to Material roles in `android/src/main/kotlin/com/istarvin/cloudstream/ui/Theme.kt`. Keep this brand palette fixed rather than replacing it with wallpaper-derived colors. Text over artwork uses white and a dark scrim.
 
 Use the platform sans-serif family, bold page headings, strong section headings, semibold poster labels and quieter metadata. Web headings scale with viewport width. Android uses scalable `sp`: 30/36 for page headings, 36/42 on expanded catalog panes, 20/26 for section headings, 14/20 for poster labels, and 13/18 for supporting text. TV retains its larger body and label scale. Page and section headings use slight negative tracking; body text uses the platform defaults.
 

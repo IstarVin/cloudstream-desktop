@@ -22,17 +22,17 @@ val releaseStoreFile = signingValue("ANDROID_KEYSTORE_FILE", "storeFile")
 val jvmVersion = libs.versions.jvm.get().toInt()
 
 android {
-    namespace = "desktop.app"
+    namespace = "com.istarvin.cloudstream"
     compileSdk = 37
     ndkVersion = "30.0.16248370"
 
     defaultConfig {
-        applicationId = "cloudstream.desktop.app"
+        applicationId = "com.istarvin.cloudstream"
         minSdk = 26
         targetSdk = 37
         versionCode = providers.gradleProperty("androidVersionCode").orElse("1").get().toInt()
         versionName = providers.gradleProperty("androidVersionName").orElse("0.1").get()
-        testInstrumentationRunner = "desktop.app.TvTestRunner"
+        testInstrumentationRunner = "com.istarvin.cloudstream.TvTestRunner"
     }
 
     signingConfigs {
