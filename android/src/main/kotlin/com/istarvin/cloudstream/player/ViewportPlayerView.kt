@@ -11,12 +11,17 @@ import androidx.core.view.children
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import io.github.peerless2012.ass.media.widget.AssSubtitleView
+import kotlin.math.roundToInt
 
 /** Keeps captions in the visible viewport while the video is fitted, stretched or cropped. */
 internal class ViewportPlayerView(context: Context) : PlayerView(context) {
     private val videoFrame = findViewById<AspectRatioFrameLayout>(androidx.media3.ui.R.id.exo_content_frame)
+    // SubtitleView creates its text renderer before libass attaches a separate overlay.
+    private val textSubtitleOutput = subtitleView?.getChildAt(0)
+    private var subtitleBottomFraction = 0f
 
     init {
+        textSubtitleOutput?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateSubtitlePadding() }
         // Keep the original SubtitleView so PlayerView still delivers cues to it and libass
         // can attach its overlay, but remove it from the frame that changes aspect ratio.
         subtitleView?.let { subtitles ->
@@ -45,6 +50,21 @@ internal class ViewportPlayerView(context: Context) : PlayerView(context) {
         lp.height = h
         lp.gravity = Gravity.CENTER
         overlay.layoutParams = lp
+    }
+
+    /** Applies the safe area to explicit VTT line positions as well as unpositioned text cues. */
+    fun setSubtitleBottomPaddingFraction(fraction: Float) {
+        subtitleBottomFraction = fraction
+        // Media3's fractional margin only applies to cues with no line position. VTT's
+        // automatic lines are already numbered (-1, -2, ...), so pad the text canvas instead.
+        subtitleView?.setBottomPaddingFraction(0f)
+        updateSubtitlePadding()
+    }
+
+    private fun updateSubtitlePadding() {
+        textSubtitleOutput?.let { output ->
+            output.setPadding(0, 0, 0, (output.height * subtitleBottomFraction).roundToInt())
+        }
     }
 
     fun setVideoScale(scale: Float) {

@@ -53,6 +53,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import java.io.File
+import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 
 /** One title being played: its episodes (one dub for anime) and which one is current; movies have none. */
 data class Item(val details: Details, val episodes: List<Episode>, val index: Int, val data: String) {
@@ -88,6 +90,7 @@ data class Session(
     /** The side-loaded subtitle on screen, or null for an embedded track or none. */
     val subtitle: String? = null,
     val subtitlesOff: Boolean = false,
+    val subtitleError: String? = null,
     val skips: List<SkipRange> = emptyList(),
     /** The opening/ending the position is in, while the player offers to skip it. */
     val skip: SkipRange? = null,
@@ -125,7 +128,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
     /** Subtitles explicitly chosen in the picker this episode. */
     private val chosenSubs = mutableListOf<String>()
     /** Side-loaded subtitles, downloaded once, by id: the file and its format. */
-    private val subtitleFiles = mutableMapOf<String, Pair<File, SubtitleFormat>>()
+    private val subtitleFiles = ConcurrentHashMap<String, Pair<File, SubtitleFormat>>()
+    private val failedSubtitles = ConcurrentHashMap.newKeySet<String>()
+    private var subtitleJob: Job? = null
+    @Volatile private var subtitleGeneration = 0
+    private var embeddedSubtitleChosen = false
     private var started = false
 
     private val _closed = MutableStateFlow(false)
@@ -136,7 +143,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 when (state) {
-                    Player.STATE_READY -> if (_session.value.status == "loading") _session.update { it.copy(status = "playing", message = null) }
+                    Player.STATE_READY -> {
+                        if (_session.value.status == "loading") _session.update { it.copy(status = "playing", message = null) }
+                        maybeAddSubtitle()
+                    }
                     Player.STATE_ENDED -> onEnded()
                     else -> {}
                 }
@@ -179,7 +189,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
         player.clearMediaItems()
         tried.clear()
         chosenSubs.clear()
+        subtitleGeneration++
+        subtitleJob?.cancel()
         subtitleFiles.clear()
+        failedSubtitles.clear()
+        embeddedSubtitleChosen = false
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .build()
         skipped.clear()
         skipsRequested = false
         startAt = at
@@ -219,6 +237,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
             if (_session.value.links.isEmpty()) _session.update { it.copy(status = "error", message = "Couldn't load links: ${e.message}") }
         }
         _session.update { it.copy(linksDone = true) }
+        maybeAddSubtitle()
     }
 
     /** Runs the plugin's `loadLinks` again for the current episode, without interrupting what's playing. */
@@ -287,6 +306,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
     /** Plays [link], from the current position when switching sources mid-episode. */
     fun play(link: LinkDto, from: Double? = null) {
         pickJob?.cancel()
+        subtitleJob?.cancel()
         val s = _session.value
         val item = s.item ?: return
         val at = from ?: startAt
@@ -299,6 +319,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
                 val direct = prefs.player.first().directLinks
                 val stream = api.stream(link.id, direct)
                 val subs = subtitleConfigs(defaultSubtitles(link))
+                if (subs.none { it.id == SUB_PREFIX + _session.value.subtitle }) {
+                    _session.update { it.copy(subtitle = null) }
+                }
                 val media = engine.item(stream, api.resolve(stream.url), subs, listOfNotNull(item.details.name, item.displayLabel).joinToString(" · "))
                 player.setMediaItem(media, ((at ?: 0.0) * 1000).toLong().coerceAtLeast(0))
                 player.prepare()
@@ -337,7 +360,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
     /** Chosen ones, plus up to three in the preferred language; the first of those is shown unless it's a dub. */
     private fun defaultSubtitles(link: LinkDto): List<SubtitleDto> {
         val s = _session.value
-        val preferred = s.subtitles.filter { it.id !in chosenSubs && SubtitlePreference.preferredLanguage(it.lang) }
+        val preferred = s.subtitles.filter { it.id !in chosenSubs && it.id !in failedSubtitles && SubtitlePreference.preferredLanguage(it.lang) }
         val auto = SubtitlePreference.order(preferred, link.source, link.name, s.linksDone) { it.lang }.take(3)
         val chosen = s.subtitles.filter { it.id in chosenSubs }
         if (s.subtitle == null && !s.subtitlesOff) {
@@ -351,26 +374,34 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
     private fun maybeAddSubtitle() {
         val s = _session.value
         val link = s.current ?: return
-        if (s.status != "playing" || s.subtitle != null || s.subtitlesOff || s.item?.episode?.dub == "Dubbed") return
-        val pick = SubtitlePreference.order(s.subtitles.filter { SubtitlePreference.preferredLanguage(it.lang) }, link.source, link.name, s.linksDone) { it.lang }
+        if (s.status != "playing" || s.subtitle != null || s.subtitlesOff || embeddedSubtitleChosen || subtitleJob?.isActive == true || s.item?.episode?.dub == "Dubbed") return
+        val pick = SubtitlePreference.order(s.subtitles.filter { it.id !in failedSubtitles && SubtitlePreference.preferredLanguage(it.lang) }, link.source, link.name, s.linksDone) { it.lang }
             .firstOrNull() ?: return
-        selectSubtitle(pick)
+        selectSubtitle(pick, automatic = true)
     }
 
     /** Downloads side-loaded subtitles once; the server sniffs the format and serves it with the right type. */
     private suspend fun subtitleConfigs(subs: List<SubtitleDto>): List<MediaItem.SubtitleConfiguration> = withContext(Dispatchers.IO) {
+        val generation = subtitleGeneration
         val dir = File(getApplication<Application>().cacheDir, "subs").apply { mkdirs() }
         subs.mapNotNull { sub ->
             val (file, format) = subtitleFiles[sub.id] ?: runCatching {
                 api.http.newCall(Request.Builder().url(api.subtitleUrl(sub)).build()).execute().use { res ->
-                    if (!res.isSuccessful) return@runCatching null
+                    if (!res.isSuccessful) throw IOException("Subtitle server answered ${res.code}")
                     val type = res.header("Content-Type").orEmpty().substringBefore(';').trim()
                     val format = SubtitleFormat.entries.firstOrNull { it.mime == type } ?: SubtitleFormat.SRT
                     val f = File(dir, "${sub.id}.${format.extension}")
                     f.writeBytes(res.body.bytes())
-                    (f to format).also { subtitleFiles[sub.id] = it }
+                    (f to format).also { if (generation == subtitleGeneration) subtitleFiles[sub.id] = it }
+                }
+            }.onFailure { error ->
+                android.util.Log.w("Player", "Couldn't load subtitle ${sub.id}", error)
+                if (generation == subtitleGeneration) {
+                    failedSubtitles.add(sub.id)
+                    _session.update { it.copy(subtitleError = "Couldn't load ${sub.lang}. Select it to retry.") }
                 }
             }.getOrNull() ?: return@mapNotNull null
+            if (generation == subtitleGeneration) failedSubtitles.remove(sub.id)
             MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(file))
                 .setId(SUB_PREFIX + sub.id)
                 .setMimeType(format.mime)
@@ -382,18 +413,32 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
     }
 
     /** Shows a side-loaded subtitle: re-opens the stream with it added, at the same position. */
-    fun selectSubtitle(sub: SubtitleDto) {
-        if (sub.id !in chosenSubs) chosenSubs.add(sub.id)
-        _session.update { it.copy(subtitle = sub.id, subtitlesOff = false) }
-        val loaded = player.currentMediaItem?.localConfiguration?.subtitleConfigurations?.any { it.id == SUB_PREFIX + sub.id } == true
+    fun selectSubtitle(sub: SubtitleDto, automatic: Boolean = false) {
+        subtitleJob?.cancel()
+        if (!automatic && sub.id !in chosenSubs) chosenSubs.add(sub.id)
+        val current = player.currentMediaItem ?: return
+        val loaded = current.localConfiguration?.subtitleConfigurations?.any { it.id == SUB_PREFIX + sub.id } == true
         if (loaded) {
+            embeddedSubtitleChosen = false
+            _session.update { it.copy(subtitle = sub.id, subtitlesOff = false, subtitleError = null) }
             applySubtitleChoice(player.currentTracks)
             return
         }
-        val current = player.currentMediaItem ?: return
-        viewModelScope.launch {
-            val configs = current.localConfiguration?.subtitleConfigurations.orEmpty() + subtitleConfigs(listOf(sub))
+        subtitleJob = viewModelScope.launch {
+            val added = subtitleConfigs(listOf(sub))
+            if (added.isEmpty()) {
+                if (automatic) {
+                    subtitleJob = null
+                    maybeAddSubtitle()
+                }
+                return@launch
+            }
+            // A source/episode switch must not be undone by an old download finishing.
+            if (player.currentMediaItem !== current) return@launch
+            val configs = current.localConfiguration?.subtitleConfigurations.orEmpty() + added
             val pos = player.currentPosition
+            embeddedSubtitleChosen = false
+            _session.update { it.copy(subtitle = sub.id, subtitlesOff = false, subtitleError = null) }
             player.setMediaItem(current.buildUpon().setSubtitleConfigurations(configs).build(), pos)
             player.prepare()
         }
@@ -401,7 +446,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
 
     /** Shows an embedded text track (from the stream itself). */
     fun selectEmbedded(group: Tracks.Group, index: Int) {
-        _session.update { it.copy(subtitle = null, subtitlesOff = false) }
+        subtitleJob?.cancel()
+        embeddedSubtitleChosen = true
+        _session.update { it.copy(subtitle = null, subtitlesOff = false, subtitleError = null) }
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
             .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index))
@@ -409,7 +456,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
     }
 
     fun subtitlesOff() {
-        _session.update { it.copy(subtitle = null, subtitlesOff = true) }
+        subtitleJob?.cancel()
+        _session.update { it.copy(subtitle = null, subtitlesOff = true, subtitleError = null) }
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
     }
 
@@ -419,14 +467,22 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
             .build()
     }
 
+    /** A null group restores adaptive video selection. */
+    fun selectVideo(group: Tracks.Group? = null, index: Int = 0) {
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+            .apply { if (group != null) setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index)) }
+            .build()
+    }
+
     private fun applySubtitleChoice(tracks: Tracks) {
         val s = _session.value
         val id = s.subtitle ?: return
         val group = tracks.groups.firstOrNull { g ->
-            g.type == C.TRACK_TYPE_TEXT && (0 until g.length).any { g.getTrackFormat(it).id?.contains(SUB_PREFIX + id) == true }
+            g.type == C.TRACK_TYPE_TEXT && (0 until g.length).any { g.getTrackFormat(it).id?.substringAfterLast(':') == SUB_PREFIX + id }
         } ?: return
         if (group.isSelected) return
-        val index = (0 until group.length).first { group.getTrackFormat(it).id?.contains(SUB_PREFIX + id) == true }
+        val index = (0 until group.length).first { group.getTrackFormat(it).id?.substringAfterLast(':') == SUB_PREFIX + id }
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
             .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index))

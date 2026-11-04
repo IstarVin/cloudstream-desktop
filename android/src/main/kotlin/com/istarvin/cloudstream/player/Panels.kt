@@ -195,6 +195,7 @@ fun SourcesPanel(vm: PlayerViewModel, s: Session, onDismiss: () -> Unit) {
             VerticalDivider()
             Column(Modifier.weight(1f)) {
                 PanelTitle("Subtitles")
+                s.subtitleError?.let { Text(it, color = Palette.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
                 LazyColumn(Modifier.weight(1f)) {
                     subtitleChoices(vm, s, selected = subtitle, onPick = { subtitle = it })
                 }
@@ -227,7 +228,7 @@ private fun applySubtitle(vm: PlayerViewModel, s: Session, choice: String?) {
             val (g, i) = choice.removePrefix(EMBEDDED).split(':').map { it.toInt() }
             vm.player.currentTracks.groups.getOrNull(g)?.let { vm.selectEmbedded(it, i) }
         }
-        choice != s.subtitle -> s.subtitles.firstOrNull { it.id == choice }?.let(vm::selectSubtitle)
+        choice != s.subtitle || s.subtitleError != null -> s.subtitles.firstOrNull { it.id == choice }?.let(vm::selectSubtitle)
     }
 }
 
@@ -270,6 +271,7 @@ fun TracksPanel(vm: PlayerViewModel, s: Session, onDismiss: () -> Unit) {
         Row(Modifier.weight(1f)) {
             Column(Modifier.weight(1f)) {
                 PanelTitle("Subtitles")
+                s.subtitleError?.let { Text(it, color = Palette.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
                 LazyColumn {
                     subtitleChoices(vm, s, selected = if (s.subtitlesOff) OFF else s.subtitle) { choice ->
                         applySubtitle(vm, s, choice)
@@ -291,6 +293,50 @@ fun TracksPanel(vm: PlayerViewModel, s: Session, onDismiss: () -> Unit) {
                                     selected = group.isTrackSelected(i),
                                 ) { vm.selectAudio(group, i) }
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun VideoTracksPanel(vm: PlayerViewModel, onDismiss: () -> Unit) {
+    val player = vm.player
+    var tracks by remember(player) { mutableStateOf(player.currentTracks) }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onTracksChanged(currentTracks: Tracks) { tracks = currentTracks }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+    val groups = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
+    val automatic = player.trackSelectionParameters.overrides.values.none { it.type == C.TRACK_TYPE_VIDEO }
+    SidePanel(onDismiss) {
+        PanelTitle("Video tracks")
+        LazyColumn {
+            item {
+                Choice("Auto", selected = automatic) { vm.selectVideo(); onDismiss() }
+            }
+            var trackNumber = 0
+            groups.forEach { group ->
+                for (i in 0 until group.length) {
+                    if (!group.isTrackSupported(i)) continue
+                    val format = group.getTrackFormat(i)
+                    val title = format.label ?: format.height.takeIf { it > 0 }?.let { "${it}p" }
+                        ?: "Track ${++trackNumber}"
+                    val detail = listOfNotNull(
+                        if (format.width > 0 && format.height > 0) "${format.width} × ${format.height}" else null,
+                        format.frameRate.takeIf { it > 0 }?.let { "${formatSpeed(it)} fps" },
+                        format.bitrate.takeIf { it > 0 }?.let { "${formatSpeed(it / 1_000_000f)} Mbps" },
+                        format.codecs ?: format.sampleMimeType?.substringAfter('/'),
+                    ).joinToString(" · ").ifEmpty { null }
+                    item {
+                        Choice(title, detail = detail, selected = !automatic && group.isTrackSelected(i)) {
+                            vm.selectVideo(group, i)
+                            onDismiss()
                         }
                     }
                 }

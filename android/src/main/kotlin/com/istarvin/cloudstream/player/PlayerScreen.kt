@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.VideoSettings
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -104,6 +105,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import com.istarvin.cloudstream.data.PlayerPrefs
@@ -126,7 +129,7 @@ private val RESIZE_MODES = listOf(
 )
 
 /** Which sheet is open over the video. */
-enum class Sheet { Sources, Subtitles, Episodes, Speed }
+enum class Sheet { Sources, Subtitles, Episodes, Speed, VideoTracks }
 
 @Composable
 fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResizeMode: (Int) -> Unit, onBack: () -> Unit) {
@@ -359,9 +362,9 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
                             null,
                         ),
                     )
-                    setFractionalTextSize(SubtitleViewDefaults.TEXT_SIZE * prefs.subtitleScale)
+                    setFractionalTextSize(SubtitleViewDefaults.TEXT_SIZE * prefs.subtitleScale, true)
                     // Clear of the control bar while it shows.
-                    setBottomPaddingFraction(if (controls && !locked && !inPip) 0.2f else prefs.subtitleBottom)
+                    view.setSubtitleBottomPaddingFraction(if (controls && !locked && !inPip) 0.2f else prefs.subtitleBottom)
                     setApplyEmbeddedStyles(true)
                 }
             },
@@ -475,6 +478,7 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
                 Sheet.Subtitles -> TracksPanel(vm, s, onDismiss = { sheet = null })
                 Sheet.Episodes -> EpisodesPanel(vm, s, onDismiss = { sheet = null })
                 Sheet.Speed -> SpeedPanel(player, onDismiss = { sheet = null })
+                Sheet.VideoTracks -> VideoTracksPanel(vm, onDismiss = { sheet = null })
                 null -> {}
             }
         }
@@ -576,6 +580,16 @@ private fun Controls(
 ) {
     val player = vm.player
     val item = s.item
+    var tracks by remember(player) { mutableStateOf(player.currentTracks) }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onTracksChanged(currentTracks: Tracks) { tracks = currentTracks }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+    val hasMultipleVideoTracks = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
+        .sumOf { group -> (0 until group.length).count { group.isTrackSupported(it) } } > 1
     Box(
         Modifier.fillMaxSize().background(
             Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.8f), 0.3f to Color.Transparent, 0.55f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.92f)),
@@ -648,7 +662,7 @@ private fun Controls(
             SeekBar(position, duration, buffered, s.skips, onScrub, seekStep, Modifier.fillMaxWidth())
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val actionCount = (if (LocalTv.current) 3 else 4) + (if (item != null && item.episodes.isNotEmpty()) 1 else 0) +
-                    (if (item?.hasNext == true) 1 else 0)
+                    (if (hasMultipleVideoTracks) 1 else 0)
                 val actionWidth = (maxWidth / actionCount).coerceAtLeast(88.dp)
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
                     if (!LocalTv.current) ActionButton(Icons.Filled.Lock, "Lock", Modifier.width(actionWidth), onClick = onLock)
@@ -658,8 +672,8 @@ private fun Controls(
                     if (item != null && item.episodes.isNotEmpty()) {
                         ActionButton(Icons.AutoMirrored.Filled.PlaylistPlay, "Episodes", Modifier.width(actionWidth)) { onSheet(Sheet.Episodes) }
                     }
-                    if (item?.hasNext == true) {
-                        ActionButton(Icons.Filled.SkipNext, "Next", Modifier.width(actionWidth)) { onInteract(); vm.next() }
+                    if (hasMultipleVideoTracks) {
+                        ActionButton(Icons.Filled.VideoSettings, "Tracks", Modifier.width(actionWidth)) { onSheet(Sheet.VideoTracks) }
                     }
                 }
             }
