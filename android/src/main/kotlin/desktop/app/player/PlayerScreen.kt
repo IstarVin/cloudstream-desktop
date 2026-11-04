@@ -89,7 +89,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -106,7 +105,6 @@ import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
-import androidx.media3.ui.PlayerView
 import desktop.app.data.PlayerPrefs
 import desktop.app.ui.TabularNumbers
 import desktop.app.ui.MoveToDeviceButton
@@ -334,7 +332,7 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
         .focusable(tv && (!controls || buffering || s.status in listOf("resolving", "loading")))) {
         AndroidView(
             factory = { ctx ->
-                PlayerView(ctx).apply {
+                ViewportPlayerView(ctx).apply {
                     useController = false
                     isFocusable = false
                     descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
@@ -347,6 +345,7 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
             },
             update = { view ->
                 view.resizeMode = RESIZE_MODES[resizeIndex].first
+                view.setVideoScale(pinch)
                 view.subtitleView?.apply {
                     setStyle(
                         CaptionStyleCompat(
@@ -364,7 +363,7 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
                     setApplyEmbeddedStyles(true)
                 }
             },
-            modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = pinch; scaleY = pinch },
+            modifier = Modifier.fillMaxSize(),
         )
 
         if (!inPip && !tv) {

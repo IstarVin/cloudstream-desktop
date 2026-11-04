@@ -120,11 +120,11 @@ class StreamProxy {
         return PROTECTION_ELEMENT.replace(rebased, "")
     }
 
-    private fun path(token: String, url: String): String {
+    private fun path(token: String, url: String, compact: Boolean = false): String {
         val name = runCatching { URI(url).path }.getOrNull().orEmpty().substringAfterLast('/').takeIf { it.contains('.') }?.let { "/" + it.take(60) } ?: ""
         val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(url.toByteArray())
         val target = targets[token]
-        if (encoded.length <= MAX_ENCODED || target == null) return "/proxy/$token/$encoded$name"
+        if ((!compact && encoded.length <= MAX_ENCODED) || target == null) return "/proxy/$token/$encoded$name"
         val alias = MessageDigest.getInstance("SHA-256").digest(url.toByteArray())
             .let { Base64.getUrlEncoder().withoutPadding().encodeToString(it).take(22) }
         target.aliases[alias] = url
@@ -136,7 +136,19 @@ class StreamProxy {
 
     suspend fun serve(call: ApplicationCall, token: String, encoded: String) {
         val target = targets[token] ?: return call.respondText("Unknown proxy token", status = HttpStatusCode.NotFound)
-        val url = url(target, encoded) ?: return call.respondText("Unknown proxy alias", status = HttpStatusCode.NotFound)
+        val source = url(target, encoded) ?: return call.respondText("Unknown proxy alias", status = HttpStatusCode.NotFound)
+        var templateIndex = 0
+        var invalidTemplate = false
+        val url = DASH_TEMPLATE.replace(source) { m ->
+            if (m.value == "\$\$") "\$" else {
+                val value = call.request.queryParameters["__dash${templateIndex++}"]
+                if (value == null || !DASH_VALUE.matches(value)) {
+                    invalidTemplate = true
+                    ""
+                } else value
+            }
+        }
+        if (invalidTemplate) return call.respondText("Invalid DASH template values", status = HttpStatusCode.BadRequest)
         target.documents[url]?.let { return respondDocument(call, it) }
         target.playlists[url]?.let { return call.respondText(it, ContentType.parse("application/vnd.apple.mpegurl")) }
         if (url.startsWith("data:", true)) {
@@ -299,16 +311,19 @@ class StreamProxy {
 
     /**
      * Points the explicit segment URLs of a DASH manifest (`SegmentURL@media`, `Initialization@sourceURL`) back at this
-     * proxy, so they carry the link's headers. Templates (`$Number$`) are left alone.
+     * proxy, so they carry the link's headers. Template variables stay visible in query parameters for the player
+     * to expand; the upstream template itself remains encoded in the proxy path.
      */
-    fun rewriteMpd(mpd: String, base: String, token: String): String {
+    fun rewriteMpd(mpd: String, base: String, token: String, compact: Boolean = false): String {
         val baseUri = URI(base)
         return MPD_URL.replace(withClearKeyProtection(withSegmentDuration(mpd))) { m ->
             val ref = m.groupValues[2].replace("&amp;", "&")
-            if ('$' in ref) return@replace m.value
             val uri = baseUri.resolve(ref)
             if (!uri.scheme.equals("http", true) && !uri.scheme.equals("https", true)) return@replace m.value
-            """${m.groupValues[1]}="${path(token, uri.toString()).replace("&", "&amp;")}""""
+            val variables = DASH_TEMPLATE.findAll(uri.toString()).filter { it.value != "\$\$" }.toList()
+            val query = variables.mapIndexed { i, variable -> "__dash$i=${variable.value}" }.joinToString("&")
+            val proxied = path(token, uri.toString(), compact) + if (query.isEmpty()) "" else "?$query"
+            """${m.groupValues[1]}="${proxied.replace("&", "&amp;")}""""
         }
     }
 
@@ -328,8 +343,34 @@ class StreamProxy {
         val parts = splitPeriods(mpd.first)?.takeIf { it.size > 1 } ?: return@withContext null
         parts.mapIndexed { i, part ->
             val name = "mpd:///period-$i.mpd"
-            target.documents[name] = rewriteMpd(part, mpd.second, token)
+            // FFmpeg sizes SegmentList URL buffers from the manifest URL, ignoring the segment URL lengths.
+            // These synthetic manifest URLs are short; encoded CDN paths can overflow that buffer.
+            target.documents[name] = periodSegments(rewriteMpd(part, mpd.second, token, compact = true), token, i)
             path(token, name)
+        }
+    }
+
+    /** FFmpeg seeks SegmentLists by duration alone, ignoring their timeline and presentation offset. A template
+     * makes it use the actual timeline, including the nonzero media timestamps of later NBA replay periods. */
+    private fun periodSegments(mpd: String, token: String, period: Int): String {
+        val target = targets.getValue(token)
+        var list = 0
+        return SEGMENT_LIST.replace(mpd) { match ->
+            val index = list++
+            val body = match.groupValues[2]
+            if ("mediaRange=" in body || "range=" in body) return@replace match.value
+            val timeline = SEGMENT_TIMELINE.find(body)?.value ?: return@replace match.value
+            val init = INITIALIZATION_URL.find(body)?.groupValues?.get(1) ?: return@replace match.value
+            val segments = SEGMENT_URL.findAll(body).map { it.groupValues[1] }.toList()
+            if (segments.isEmpty()) return@replace match.value
+            val urls = segments.map { ref ->
+                if (!ref.startsWith("/proxy/$token/")) return@replace match.value
+                url(target, ref.removePrefix("/proxy/$token/").substringBefore('/')) ?: return@replace match.value
+            }
+            val prefix = "period-$period-list-$index-"
+            urls.forEachIndexed { n, url -> target.aliases["$prefix$n"] = url }
+            val attrs = Regex("""\s(?:duration|startNumber)="[^"]*"""").replace(match.groupValues[1], "")
+            """<SegmentTemplate$attrs startNumber="0" initialization="$init" media="/proxy/$token/~$prefix${'$'}Number${'$'}/segment.m4s">$timeline</SegmentTemplate>"""
         }
     }
 
@@ -401,6 +442,9 @@ class StreamProxy {
 
         private val RANGE = Regex("""bytes=(\d+)-(\d*)""")
         private val SEGMENT_LIST = Regex("""<SegmentList\b([^>]*)>(.*?)</SegmentList>""", RegexOption.DOT_MATCHES_ALL)
+        private val SEGMENT_TIMELINE = Regex("""<SegmentTimeline\b[^>]*>.*?</SegmentTimeline>""", RegexOption.DOT_MATCHES_ALL)
+        private val INITIALIZATION_URL = Regex("""<Initialization\b[^>]*\bsourceURL="([^"]+)"""")
+        private val SEGMENT_URL = Regex("""<SegmentURL\b[^>]*\bmedia="([^"]+)"""")
         private val TIMELINE_D = Regex("""<S\b[^>]*\sd="(\d+)"""")
 
         /**
@@ -420,6 +464,8 @@ class StreamProxy {
         private val TEMPLATE_ATTR = Regex("""\b(media|initialization)="[^"]*[$]""")
         private const val CLEARKEY_SCHEME = "urn:uuid:e2719d58-a985-b3c9-781a-b030af78d30e"
         private val CENC_PROTECTION = Regex("""<ContentProtection\b[^>]*mp4protection:2011[^>]*/>""")
+        private val ADAPTATION_SET = Regex("""(<AdaptationSet\b[^>]*>)(.*?)(</AdaptationSet>)""", RegexOption.DOT_MATCHES_ALL)
+        private val REPRESENTATION = Regex("""<Representation\b[^>]*(?:/>|>.*?</Representation>)""", RegexOption.DOT_MATCHES_ALL)
 
         /**
          * Players decrypting with a ClearKey only use the streams whose manifest names that key system: dash.js drops a
@@ -427,8 +473,20 @@ class StreamProxy {
          * `cenc` protection element (key id, no scheme of its own) and no ClearKey one, adds the ClearKey element.
          */
         fun withClearKeyProtection(mpd: String): String {
-            if (CLEARKEY_SCHEME in mpd) return mpd
-            return CENC_PROTECTION.replace(mpd) { it.value + """<ContentProtection schemeIdUri="$CLEARKEY_SCHEME"/>""" }
+            val clearKey = """<ContentProtection schemeIdUri="$CLEARKEY_SCHEME"/>"""
+            val named = if (CLEARKEY_SCHEME in mpd) mpd else CENC_PROTECTION.replace(mpd) { it.value + clearKey }
+            // dash.js reads protection from AdaptationSet, not Representation. Amazon's live feeds put it on
+            // every rendition instead, so the player otherwise falls back to the Widevine/PlayReady segment PSSH.
+            // Only lift a shared descriptor: clear renditions or different keys must not inherit one another's key.
+            return ADAPTATION_SET.replace(named) { set ->
+                val body = set.groupValues[2]
+                val representations = REPRESENTATION.findAll(body).toList()
+                val own = REPRESENTATION.replace(body, "")
+                if (CENC_PROTECTION.containsMatchIn(own) || representations.isEmpty()) return@replace set.value
+                val protections = representations.map { CENC_PROTECTION.find(it.value)?.value }
+                val common = protections.first()?.takeIf { p -> protections.all { it == p } } ?: return@replace set.value
+                set.groupValues[1] + common + clearKey + body + set.groupValues[3]
+            }
         }
 
         private val PERIOD = Regex("""<Period\b.*?</Period>""", RegexOption.DOT_MATCHES_ALL)
@@ -450,7 +508,9 @@ class StreamProxy {
         }
 
         private val URI_ATTR = Regex("""URI="([^"]+)"""")
-        private val MPD_URL = Regex("""\b(media|sourceURL)="([^"]+)"""")
+        private val MPD_URL = Regex("""\b(media|sourceURL|initialization)="([^"]+)"""")
+        private val DASH_TEMPLATE = Regex("""\$(?:RepresentationID|Number|Bandwidth|Time)(?:%0\d+d)?\$|\$\$""")
+        private val DASH_VALUE = Regex("[A-Za-z0-9_.-]{1,256}")
 
         /** Leaves room under ffmpeg's 4096 for the server address, the token and the file name. */
         private const val MAX_ENCODED = 2048

@@ -418,10 +418,13 @@ class WebPlayer {
         },
         onTracks: () => this.syncTracks(),
       });
-      video.play().catch(() => {
-        // Autoplay with sound can be blocked until the user interacts; they press play.
-        this.paused = true;
-      });
+      // dash.js starts playback once its stream is initialized. Calling play here emits the play event before
+      // its manifest updater is listening, so a live feed never refreshes and stops after its initial segments.
+      if (this.engine.kind !== "dash")
+        video.play().catch(() => {
+          // Autoplay with sound can be blocked until the user interacts; they press play.
+          this.paused = true;
+        });
       void this.applyDefaultSubtitles(link);
     } catch (e) {
       if (session !== this.session) return;

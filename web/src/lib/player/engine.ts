@@ -267,7 +267,13 @@ async function attachDash(
       });
   }
   player.updateSettings({
-    streaming: { buffer: { bufferTimeAtTopQuality: 60, bufferToKeep: 30 } },
+    streaming: {
+      buffer: { bufferTimeAtTopQuality: 60, bufferToKeep: 30 },
+      // Some live feeds suggest only two seconds while publishing their manifest every five seconds.
+      // Stay far enough behind the edge to keep audio and video buffered between manifest updates.
+      delay: { liveDelay: 15, useSuggestedPresentationDelay: false },
+      text: { defaultEnabled: false },
+    },
   });
   const events = dashjs.MediaPlayer.events;
   player.on(events.ERROR, (e: { error?: { message?: string } | string }) =>
@@ -280,7 +286,12 @@ async function attachDash(
     events.QUALITY_CHANGE_RENDERED,
   ])
     player.on(ev, () => cb.onTracks());
-  player.initialize(video, stream.url, true, startAt > 0 ? startAt : undefined);
+  player.initialize(
+    video,
+    new URL(stream.url, document.baseURI).href,
+    true,
+    startAt > 0 ? startAt : undefined,
+  );
   player.enableText(false);
   let chosen = -1;
   const audio = () => player.getTracksFor("audio");

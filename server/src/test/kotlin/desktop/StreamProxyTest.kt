@@ -18,8 +18,107 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class StreamProxyTest {
+    @Test
+    fun splitPeriodsKeepNonzeroSegmentTimelinesSeekable() {
+        LocalServer { ex ->
+            if (ex.requestURI.path.endsWith(".mpd")) {
+                fun period(time: Int) = """<Period duration="PT8S"><AdaptationSet><Representation id="video"><SegmentList timescale="90000" presentationTimeOffset="$time"><Initialization sourceURL="init.m4s"/><SegmentTimeline><S t="$time" d="360000" r="1"/></SegmentTimeline><SegmentURL media="first.m4s"/><SegmentURL media="second.m4s"/></SegmentList></Representation></AdaptationSet></Period>"""
+                ex.respond(200, "<?xml version=\"1.0\"?><MPD>${period(0)}${period(45938393)}</MPD>", "application/dash+xml")
+            } else ex.respond(200, ex.requestURI.path, "video/mp4")
+        }.use { upstream ->
+            val proxy = StreamProxy()
+            val periods = runBlocking { proxy.periodPaths(proxy.register("${upstream.url}/main.mpd", emptyMap(), null)) }!!
+            testApplication {
+                routing { get("/proxy/{token}/{encoded}/{name?}") { proxy.serve(call, call.parameters["token"]!!, call.parameters["encoded"]!!) } }
+                val manifest = client.get(periods[1]).bodyAsText()
+                assertTrue("<SegmentList" !in manifest && "<SegmentTemplate" in manifest)
+                assertTrue("presentationTimeOffset=\"45938393\"" in manifest && "t=\"45938393\"" in manifest)
+                val media = Regex("""\bmedia="([^"]+)"""").find(manifest)!!.groupValues[1]
+                assertEquals("/first.m4s", client.get(media.replace("\$Number\$", "0")).bodyAsText())
+                assertEquals("/second.m4s", client.get(media.replace("\$Number\$", "1")).bodyAsText())
+            }
+        }
+    }
+
+    @Test
+    fun splitPeriodsUseCompactSegmentUrls() {
+        val mediaPath = "/" + "long-cdn-path/".repeat(30)
+        val seen = ConcurrentHashMap<String, String>()
+        LocalServer { ex ->
+            seen[ex.requestURI.path] = ex.requestHeaders.getFirst("Referer").orEmpty()
+            if (ex.requestURI.path.endsWith(".mpd")) {
+                val period = """<Period duration="PT4S"><AdaptationSet><Representation id="video"><SegmentList duration="4"><Initialization sourceURL="${mediaPath}init.m4s"/><SegmentURL media="${mediaPath}segment.m4s"/></SegmentList></Representation></AdaptationSet></Period>"""
+                ex.respond(200, "<?xml version=\"1.0\"?><MPD>$period$period</MPD>", "application/dash+xml")
+            } else ex.respond(200, "media", "video/mp4")
+        }.use { upstream ->
+            val proxy = StreamProxy()
+            val path = proxy.register("${upstream.url}/main.mpd", mapOf("Referer" to "https://embed.example/"), null)
+            val periods = runBlocking { proxy.periodPaths(path) }!!
+            assertEquals(2, periods.size)
+            testApplication {
+                routing { get("/proxy/{token}/{encoded}/{name?}") { proxy.serve(call, call.parameters["token"]!!, call.parameters["encoded"]!!) } }
+                for (period in periods) {
+                    val manifest = client.get(period).bodyAsText()
+                    for (match in Regex("""(?:sourceURL|media)="([^"]+)"""").findAll(manifest)) {
+                        val segment = match.groupValues[1]
+                        assertTrue(segment.length < 128, "FFmpeg's SegmentList buffer must fit the segment: $segment")
+                        assertEquals("media", client.get(segment).bodyAsText())
+                    }
+                }
+            }
+            assertEquals("https://embed.example/", seen["${mediaPath}segment.m4s"])
+        }
+    }
+
+    @Test
+    fun exposesSharedRepresentationProtectionToDashPlayers() {
+        val cenc = """<ContentProtection schemeIdUri="urn:mpeg:dash:mp4protection:2011" value="cenc" xmlns:cenc="urn:mpeg:cenc:2013" cenc:default_KID="3290efe4-c5cf-6716-5e84-6a0742c22cd9"/>"""
+        val clearKey = """<ContentProtection schemeIdUri="urn:uuid:e2719d58-a985-b3c9-781a-b030af78d30e"/>"""
+        fun manifest(second: String) = "<MPD><Period><AdaptationSet><Representation id=\"1\">$cenc</Representation>" +
+            "<Representation id=\"2\">$second</Representation></AdaptationSet>" +
+            "<AdaptationSet mimeType=\"application/mp4\"><Representation id=\"text\"/></AdaptationSet></Period></MPD>"
+        val out = StreamProxy.withClearKeyProtection(manifest(cenc))
+        assertTrue("<AdaptationSet>$cenc$clearKey<Representation" in out)
+        assertTrue("<AdaptationSet mimeType=\"application/mp4\"><Representation" in out, "text stays unencrypted")
+        assertEquals(out, StreamProxy.withClearKeyProtection(out))
+        for (second in listOf("", cenc.replace("3290efe4", "00000000"))) {
+            assertTrue("<AdaptationSet><Representation" in StreamProxy.withClearKeyProtection(manifest(second)), "don't lift mixed protection")
+        }
+        val alreadyNamed = manifest(cenc).replace(cenc, cenc + clearKey)
+        assertTrue("<AdaptationSet>$cenc$clearKey<Representation" in StreamProxy.withClearKeyProtection(alreadyNamed))
+    }
+
     private fun decode(line: String) =
         String(Base64.getUrlDecoder().decode(line.removePrefix("/proxy/tok/").substringBefore('/')))
+
+    @Test
+    fun servesDashTemplatesAndInitializationWithTheOriginalHeaders() {
+        val requests = ConcurrentHashMap<String, String>()
+        LocalServer { ex ->
+            requests[ex.requestURI.toString()] = ex.requestHeaders.getFirst("Referer").orEmpty()
+            if (ex.requestURI.path.endsWith(".mpd")) {
+                val manifest = """<MPD><Period><AdaptationSet><Representation id="video">
+                    <SegmentTemplate media="v/${'$'}RepresentationID${'$'}/${'$'}Number%05d${'$'}.m4s?sig=a&amp;b=c"
+                        initialization="v/${'$'}RepresentationID${'$'}/init.mp4"/>
+                    </Representation></AdaptationSet></Period></MPD>""".trimIndent()
+                ex.respond(200, manifest, "application/dash+xml")
+            } else ex.respond(200, "media", "video/mp4")
+        }.use { upstream ->
+            val proxy = StreamProxy()
+            testApplication {
+                routing { get("/proxy/{token}/{encoded}/{name?}") { proxy.serve(call, call.parameters["token"]!!, call.parameters["encoded"]!!) } }
+                val manifest = client.get(proxy.register("${upstream.url}/live/main.mpd", mapOf("Referer" to "https://embed.example/"), null)).bodyAsText()
+                fun attribute(name: String) = Regex("""\b$name="([^"]+)"""").find(manifest)!!.groupValues[1].replace("&amp;", "&")
+                val media = attribute("media").replace("\$RepresentationID\$", "video").replace("\$Number%05d\$", "00042")
+                val init = attribute("initialization").replace("\$RepresentationID\$", "video")
+                assertEquals("media", client.get(media).bodyAsText())
+                assertEquals("media", client.get(init).bodyAsText())
+                assertEquals("https://embed.example/", requests["/live/v/video/00042.m4s?sig=a&b=c"])
+                assertEquals("https://embed.example/", requests["/live/v/video/init.mp4"])
+                assertEquals(io.ktor.http.HttpStatusCode.BadRequest, client.get(attribute("media").substringBefore('?')).status)
+            }
+        }
+    }
 
     @Test
     fun rewritesSegmentsKeysAndVariants() {

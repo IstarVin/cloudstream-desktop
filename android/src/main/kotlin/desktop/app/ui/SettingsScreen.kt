@@ -121,9 +121,8 @@ fun SettingsScreen(onUnpair: () -> Unit) {
     var confirmUnpair by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val player by prefs.player.collectAsState(PlayerPrefs())
-    val savedTab by prefs.settingsTab.collectAsState(initial = null)
-    val tab = SettingsTab.entries.firstOrNull { it.name == savedTab } ?: SettingsTab.Plugins
-    fun selectTab(tab: SettingsTab) { scope.launch { prefs.setSettingsTab(tab.name) } }
+    var tab by rememberSaveable { mutableStateOf(SettingsTab.Playback) }
+    fun selectTab(selected: SettingsTab) { tab = selected }
     val phoneScroll = rememberLazyListState()
     val desktopScroll = rememberLazyListState()
     val priorityScroll = rememberLazyListState()

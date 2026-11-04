@@ -41,7 +41,7 @@ import java.util.UUID
  * ExoPlayer with libass for ASS/SSA subtitles (side-loaded and inside MKV), HLS, DASH and ClearKey, fetching through
  * the app's OkHttp client so requests to the desktop carry the pairing token.
  *
- * ASS renders in an OpenGL overlay on top of the [SubtitleView] ([attach]), at the surface's resolution, so styles,
+ * ASS renders in an OpenGL overlay on top of the [SubtitleView] ([attach]), at the viewport's resolution, so styles,
  * positions and animations come out as in mpv. Other formats render as ordinary cues in the same view.
  */
 class Engine(context: Context, http: OkHttpClient) {

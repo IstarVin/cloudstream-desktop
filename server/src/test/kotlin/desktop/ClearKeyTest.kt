@@ -43,8 +43,8 @@ class ClearKeyTest {
         val mpd = """<SegmentList><Initialization sourceURL="https://cdn.example/i.mp4?a=1&amp;b=2"/><SegmentURL media="s-1.m4s"/>""" +
             """<SegmentURL media="$"/><SegmentTemplate media="$" /></SegmentList>""".replace("$\"", "\$Number\$\"")
         val out = StreamProxy().rewriteMpd(mpd, "https://cdn.example/dir/a.mpd", "tok")
-        assertEquals(2, Regex("/proxy/tok/").findAll(out).count(), out)
-        assertEquals(2, out.split("\$Number\$").size - 1, out)
+        assertEquals(4, Regex("/proxy/tok/").findAll(out).count(), out)
+        assertEquals(2, Regex("""\?__dash0=\${'$'}Number\${'$'}""").findAll(out).count(), "players expand the templates in the proxy query")
     }
 
     @Test
