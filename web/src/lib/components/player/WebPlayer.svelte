@@ -70,6 +70,23 @@
   // Fit / fill / zoom: scaling the stage keeps libass's canvas lined up with the picture.
   let box = $state({ w: 0, h: 0 });
   let natural = $state({ w: 0, h: 0 });
+  // Text subtitles follow the visible picture, excluding letterboxing. Zoom and stretch fill the box.
+  const picture = $derived.by(() => {
+    const fit = natural.w && natural.h ? Math.min(box.w / natural.w, box.h / natural.h) : 0;
+    const w = fit && pref.resizeMode === "fit" ? natural.w * fit : box.w;
+    const h = fit && pref.resizeMode === "fit" ? natural.h * fit : box.h;
+    return { w, h, x: (box.w - w) / 2, y: (box.h - h) / 2 };
+  });
+  // Normalize to a landscape frame so portrait videos also leave enough width for a subtitle line.
+  const subtitleSize = $derived(
+    Math.max(12, Math.min(46, Math.min(picture.h, (picture.w * 9) / 16) * 0.046)),
+  );
+  const subtitleBottom = $derived(
+    Math.min(
+      Math.max(picture.y + picture.h * 0.06, controls ? 150 : 0),
+      picture.y + picture.h * 0.35,
+    ),
+  );
   const stageTransform = $derived.by(() => {
     const { w, h } = box;
     const { w: vw, h: vh } = natural;
@@ -107,12 +124,17 @@
     }, 1000);
   }
   $effect(() => {
+    if (holding) {
+      controls = false;
+      clearTimeout(hideTimer);
+      return;
+    }
     // Holding the video still for a swipe-seek isn't a pause worth showing the controls for.
     if (p.scrubbing) return;
     if (p.paused || panel || p.status !== "playing") {
       controls = true;
       clearTimeout(hideTimer);
-    } else poke();
+    } else if (controls) poke();
   });
 
   // The sources sheet opens on its own when auto-play is off or every link failed.
@@ -176,12 +198,13 @@
     },
     sideTap: tapSeekBy,
     holdStart() {
-      if (!video || video.paused) return;
+      if (!video) return;
       holding = true;
       controls = false;
       clearTimeout(hideTimer);
       rateBeforeHold = video.playbackRate;
       video.playbackRate = pref.holdSpeed;
+      if (video.paused) p.toggle();
     },
     holdEnd() {
       if (!holding || !video) return;
@@ -512,6 +535,7 @@
     bind:clientWidth={box.w}
     bind:clientHeight={box.h}
     style:--sub-scale={pref.subtitleScale}
+    style:--sub-size="{subtitleSize}px"
     style:--lift="{dock.lift}px"
     style:transform={drag ? `translate(${drag.x}px, ${drag.y}px)` : null}
   >
@@ -551,8 +575,11 @@
     </div>
 
     <div
-      class={["subs", { raised: controls, boxed: pref.subtitleBackground }]}
+      class={["subs", { boxed: pref.subtitleBackground }]}
       bind:this={cueBox}
+      style:left="{picture.x + picture.w * 0.06}px"
+      style:right="{picture.x + picture.w * 0.06}px"
+      style:bottom="{subtitleBottom}px"
       aria-live="off"
     ></div>
 
@@ -695,16 +722,6 @@
               ><PictureInPicture2 size={20} strokeWidth={1.8} aria-hidden="true" /></button
             >
           {/if}
-          <button
-            class="icon"
-            onclick={toggleFullscreen}
-            aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
-            >{#if fullscreen}<Minimize
-                size={20}
-                strokeWidth={1.8}
-                aria-hidden="true"
-              />{:else}<Maximize size={20} strokeWidth={1.8} aria-hidden="true" />{/if}</button
-          >
         </div>
 
         <div class="middle">
@@ -816,6 +833,16 @@
                 ></button
               >
             {/if}
+            <button
+              class="icon fullscreen"
+              onclick={toggleFullscreen}
+              aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+              >{#if fullscreen}<Minimize
+                  size={20}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />{:else}<Maximize size={20} strokeWidth={1.8} aria-hidden="true" />{/if}</button
+            >
           </div>
         </div>
       </div>
@@ -869,23 +896,17 @@
 
   .subs {
     position: absolute;
-    left: 6%;
-    right: 6%;
-    bottom: 6%;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 2px;
     pointer-events: none;
     text-align: center;
-    font-size: calc(var(--sub-scale) * clamp(16px, 4.6cqh, 46px));
+    font-size: calc(var(--sub-scale) * var(--sub-size));
     line-height: 1.25;
     font-weight: 600;
     transition: bottom 200ms ease;
     white-space: pre-line;
-  }
-  .subs.raised {
-    bottom: max(6%, 150px);
   }
   .subs :global(.cue) {
     padding: 0 0.2em;
@@ -903,7 +924,7 @@
   }
   /* Subtitles inside the stream (HLS/DASH renditions) use the browser's own renderer. */
   video::cue {
-    font-size: calc(var(--sub-scale) * 100%);
+    font-size: calc(var(--sub-scale) * var(--sub-size));
   }
 
   .chrome {
@@ -981,6 +1002,9 @@
   }
   .spacer {
     flex: 1;
+  }
+  .fullscreen {
+    margin-left: auto;
   }
   .icon {
     width: 44px;
