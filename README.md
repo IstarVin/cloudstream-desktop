@@ -83,6 +83,33 @@ Cloudflare Solve banner, and has the Browser settings and dev-mode Rebuild.
 Open the app and scan the code from Settings → Pair a phone on the desktop, or enter the address and token by hand. The
 module is only part of the build when an Android SDK is found, so server-only checkouts build as before.
 
+### Android releases
+
+The `Android release` workflow builds, tests and lints a signed release APK, then publishes it and `SHA256SUMS`
+to a GitHub Release with generated release notes. Configure these repository Actions secrets first:
+
+| Secret | Value |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | Base64-encoded release keystore (`base64 -w0 release.jks` on Linux) |
+| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
+| `ANDROID_KEY_ALIAS` | Signing key alias |
+| `ANDROID_KEY_PASSWORD` | Signing key password |
+
+Keep the keystore backed up and reuse it for every release so installed apps can receive updates. The workflow
+fails if a signing secret is missing; local builds still use the existing debug-key fallback.
+
+Push an Android version tag to publish:
+
+```bash
+git tag android-v0.1.0
+git push origin android-v0.1.0
+```
+
+Tags such as `android-v0.2.0-beta.1` create GitHub prereleases. The APK version name comes from the tag and its
+version code is the workflow run number; publish versions in increasing order. You can also run the workflow
+manually with an existing Android tag, for example to retry a failed build. Creating a release fails if that tag
+already has a GitHub Release. Android tags are separate from the Docker workflow's `server-v*` tags.
+
 On Android TV, launch Cloudstream from the TV launcher and enter the desktop address and token shown under the
 pairing code. TV mode uses a navigation rail, larger text and posters, focus outlines, and pickers that contain
 remote focus. Use the D-pad to move and Select to activate. During playback, Select/Up/Down reveals hidden controls,

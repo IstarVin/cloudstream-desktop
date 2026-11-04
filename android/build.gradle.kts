@@ -30,8 +30,8 @@ android {
         applicationId = "cloudstream.desktop.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = providers.gradleProperty("androidVersionCode").orElse("1").get().toInt()
+        versionName = providers.gradleProperty("androidVersionName").orElse("0.1").get()
         testInstrumentationRunner = "desktop.app.TvTestRunner"
     }
 
