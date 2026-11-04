@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -107,6 +108,7 @@ private enum class SettingsTab(val label: String, val icon: ImageVector) {
     Browser("Browser", Icons.Outlined.Language),
     Plugins("Plugins", Icons.Outlined.Layers),
     Desktop("Connection", Icons.Outlined.Computer),
+    Updates("App updates", Icons.Outlined.SystemUpdate),
 }
 
 @Composable
@@ -129,6 +131,7 @@ fun SettingsScreen(onUnpair: () -> Unit) {
     val contentScroll = rememberLazyListState()
     val pluginsScroll = rememberLazyListState()
     val browserScroll = rememberLazyListState()
+    val updatesScroll = rememberLazyListState()
     val currentSettings = (settings as? Load.Ok)?.value
     // Keep profile drafts while changing tabs, and while unrelated settings are saved.
     val profileDraft = remember(currentSettings?.sourceProfiles, currentSettings?.sourceProfile) {
@@ -174,6 +177,7 @@ fun SettingsScreen(onUnpair: () -> Unit) {
                             SettingsTab.Desktop -> desktopScroll
                             SettingsTab.Plugins -> pluginsScroll
                             SettingsTab.Browser -> browserScroll
+                            SettingsTab.Updates -> updatesScroll
                         },
                         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 32.dp),
                     ) {
@@ -252,6 +256,10 @@ fun SettingsScreen(onUnpair: () -> Unit) {
                                     }
                                 }
                             }
+                            SettingsTab.Updates -> {
+                                item { SettingsSectionTitle("App updates", "Keep Cloudstream on this device up to date.", showSaveNote = false) }
+                                item { AppUpdateSettings() }
+                            }
                             SettingsTab.Desktop -> {
                                 item { SettingsSectionTitle("Connection", "Manage your paired desktop and shared settings.") }
                                 item { DesktopStatus(api.server?.baseUrl.orEmpty(), status, onRetry = { reload() }) }
@@ -286,6 +294,7 @@ fun SettingsScreen(onUnpair: () -> Unit) {
         }
     }
 
+    AppUpdatePrompts()
     PluginSheet(plugins, api, ::tell)
 
     if (confirmUnpair) {
@@ -309,7 +318,7 @@ private fun SettingsCategories(tab: SettingsTab, vertical: Boolean, onSelect: (S
         LazyColumn(
             state = scroll,
             modifier = Modifier.width(232.dp).fillMaxSize()
-                .background(MaterialTheme.colorScheme.surfaceContainerLow).selectableGroup(),
+                .background(MaterialTheme.colorScheme.surfaceContainerLow).selectableGroup().testTag("settings-categories"),
             contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -320,7 +329,7 @@ private fun SettingsCategories(tab: SettingsTab, vertical: Boolean, onSelect: (S
     } else {
         LazyRow(
             state = scroll,
-            modifier = Modifier.fillMaxWidth().selectableGroup(),
+            modifier = Modifier.fillMaxWidth().selectableGroup().testTag("settings-categories"),
             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -353,11 +362,11 @@ private fun SettingsCategory(destination: SettingsTab, selected: Boolean, modifi
 }
 
 @Composable
-private fun SettingsSectionTitle(title: String, description: String, manualSave: Boolean = false) {
+private fun SettingsSectionTitle(title: String, description: String, manualSave: Boolean = false, showSaveNote: Boolean = true) {
     Column(Modifier.padding(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
         Text(description, style = MaterialTheme.typography.bodyMedium, color = Palette.muted)
-        Text(
+        if (showSaveNote) Text(
             if (manualSave) "Save profile changes with the Save profile button." else "Changes save automatically",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

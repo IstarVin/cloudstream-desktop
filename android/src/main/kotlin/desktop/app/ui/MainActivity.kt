@@ -66,6 +66,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.text.style.TextAlign
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -189,30 +190,37 @@ private fun MainScaffold(onUnpair: () -> Unit) {
         Row(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()
             .then(if (tv) Modifier.padding(horizontal = 24.dp, vertical = 12.dp) else Modifier)) {
             if (wide) Column(
-                Modifier.width(if (tv) 184.dp else 200.dp).fillMaxHeight()
+                Modifier.width(if (tv) 96.dp else 200.dp).fillMaxHeight()
                     .background(Palette.surface).verticalScroll(rememberScrollState())
-                    .selectableGroup().padding(horizontal = 12.dp, vertical = 24.dp),
+                    .selectableGroup().padding(horizontal = if (tv) 8.dp else 12.dp, vertical = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(Modifier.padding(horizontal = 10.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = if (tv) Arrangement.Center else Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Filled.PlayArrow, null, tint = Palette.accent, modifier = Modifier.size(24.dp))
-                    Text("Cloudstream", style = MaterialTheme.typography.titleMedium)
+                    if (!tv) Text("Cloudstream", style = MaterialTheme.typography.titleMedium)
                 }
                 Spacer(Modifier.height(12.dp))
                 tabs.forEach { tab ->
                     val selected = dest?.hasRoute(tab.route::class) == true
-                    Row(
+                    val itemModifier =
                         Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small)
                             .background(if (selected) Palette.accentSoft else ComposeColor.Transparent)
                             .then(if (tab == tabs.first()) Modifier.focusRequester(initialFocus) else Modifier)
                             .tvFocusIndicator(shape = MaterialTheme.shapes.small)
                             .selectable(selected, role = Role.Tab, onClick = { open(tab.route) })
-                            .heightIn(min = 52.dp).padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Icon(tab.icon, null, Modifier.size(22.dp), tint = if (selected) Palette.accent else Palette.muted)
-                        Text(tab.label, style = MaterialTheme.typography.labelLarge, color = if (selected) Palette.accent else Palette.muted)
+                            .heightIn(min = 52.dp).padding(horizontal = if (tv) 6.dp else 14.dp, vertical = 12.dp)
+                    val itemContent: @Composable () -> Unit = {
+                        Icon(tab.icon, null, Modifier.size(if (tv) 24.dp else 22.dp), tint = if (selected) Palette.accent else Palette.muted)
+                        Text(tab.label, style = MaterialTheme.typography.labelLarge, color = if (selected) Palette.accent else Palette.muted,
+                            textAlign = if (tv) TextAlign.Center else TextAlign.Start)
+                    }
+                    if (tv) {
+                        Column(itemModifier, horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)) { itemContent() }
+                    } else {
+                        Row(itemModifier, verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)) { itemContent() }
                     }
                 }
             }

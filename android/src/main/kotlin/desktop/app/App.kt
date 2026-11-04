@@ -28,6 +28,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 class App : Application(), SingletonImageLoader.Factory {
+    internal val updater by lazy { desktop.app.update.AppUpdater(this, scope) }
+
     lateinit var prefs: Prefs
         private set
     lateinit var api: Api

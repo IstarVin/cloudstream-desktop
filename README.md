@@ -153,6 +153,13 @@ only when an SDK is found, so server-only development does not require one.
 Signed release APKs are published through the Android release workflow; see
 [GitHub Releases](https://github.com/istarvin/cloudstream-desktop/releases) for published builds.
 
+In the Android app, open **Settings → App updates → Check for updates**. Available
+stable Android releases download inside the app with progress and a cancel action.
+After verifying the APK checksum, the app prompts you to install it. Android may
+first ask you to allow Cloudstream to install apps; installation still requires
+your confirmation. Updates must have a higher version code and use a compatible
+signing key.
+
 On TV, use the D-pad and Select to navigate. During playback, Select/Up/Down reveals
 controls; Left/Right seeks when controls are hidden. Back closes a picker, hides
 controls, then returns to the title. Media keys support play/pause, seeking, and
