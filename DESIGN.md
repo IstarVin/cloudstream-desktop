@@ -45,6 +45,8 @@ Android layout decisions use available window/pane width, not device model. Keep
 
 ## Component rules
 
+- App identity uses an orange cloud silhouette with a transparent play cutout on the dark background. The canonical artwork is `web/static/favicon.svg`; run `python3 scripts/generate_icons.py` (ImageMagick required; DejaVu Sans for the TV label) to regenerate the web PNGs, Android adaptive/themed foreground and TV banner. Maskable and Apple icons use full-bleed backgrounds; Android keeps the mark within its adaptive-icon safe zone.
+
 - Shelf titles have more space above than below; use 32dp between home collections and 16dp between artwork cards.
 - Poster text sits below artwork, with two lines for titles and muted source/year metadata. Failed images retain initials and the same aspect ratio.
 - Loading shelves share the loaded poster width so content does not change scale when it arrives.
