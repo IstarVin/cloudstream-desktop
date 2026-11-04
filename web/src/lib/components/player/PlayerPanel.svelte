@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type Panel = "tracks" | "speed" | "episodes";
+  export type Panel = "quality" | "tracks" | "speed" | "episodes";
 </script>
 
 <script lang="ts">
@@ -13,7 +13,9 @@
 
   const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
   const title = $derived(
-    { tracks: "Audio & subtitles", speed: "Speed", episodes: "Episodes" }[panel],
+    { quality: "Video quality", tracks: "Audio & subtitles", speed: "Speed", episodes: "Episodes" }[
+      panel
+    ],
   );
   const p = webPlayer;
   const subtitles = $derived(orderSubtitles(sources.subtitles, p.current, true));
@@ -31,18 +33,24 @@
     >
   </header>
   <div class="body">
-    {#if panel === "tracks"}
-      {#if p.levels.length > 1}
-        <h3>Quality</h3>
-        <button class={["row", { on: p.level < 0 }]} onclick={() => p.setLevel(-1)}>
-          <span>Auto</span>{#if p.level < 0}<Check size={18} aria-hidden="true" />{/if}
+    {#if panel === "quality"}
+      <button
+        class={["row", { on: p.level < 0 }]}
+        aria-pressed={p.level < 0}
+        onclick={() => p.setLevel(-1)}
+      >
+        <span>Auto</span>{#if p.level < 0}<Check size={18} aria-hidden="true" />{/if}
+      </button>
+      {#each p.levels as l (l.id)}
+        <button
+          class={["row", { on: p.level === l.id }]}
+          aria-pressed={p.level === l.id}
+          onclick={() => p.setLevel(l.id)}
+        >
+          <span>{l.label}</span>{#if p.level === l.id}<Check size={18} aria-hidden="true" />{/if}
         </button>
-        {#each p.levels as l (l.id)}
-          <button class={["row", { on: p.level === l.id }]} onclick={() => p.setLevel(l.id)}>
-            <span>{l.label}</span>{#if p.level === l.id}<Check size={18} aria-hidden="true" />{/if}
-          </button>
-        {/each}
-      {/if}
+      {/each}
+    {:else if panel === "tracks"}
       {#if p.audioTracks.length > 1}
         <h3>Audio</h3>
         {#each p.audioTracks as a (a.id)}

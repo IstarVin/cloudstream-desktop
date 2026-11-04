@@ -36,6 +36,8 @@ export interface PlayerPrefs {
   muted: boolean;
   /** Keep playing in a picture-in-picture window when the tab is hidden. */
   autoPip: boolean;
+  /** Show total duration instead of time remaining beside the seek bar. */
+  showTotalDuration: boolean;
 }
 
 const defaults: PlayerPrefs = {
@@ -50,6 +52,7 @@ const defaults: PlayerPrefs = {
   volume: 1,
   muted: false,
   autoPip: false,
+  showTotalDuration: false,
 };
 
 const KEY = "player-prefs";

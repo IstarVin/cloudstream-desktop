@@ -8,6 +8,7 @@
     ListVideo,
     Maximize,
     Minimize,
+    Monitor,
     MoveHorizontal,
     Pause,
     PictureInPicture2,
@@ -70,6 +71,8 @@
   // Fit / fill / zoom: scaling the stage keeps libass's canvas lined up with the picture.
   let box = $state({ w: 0, h: 0 });
   let natural = $state({ w: 0, h: 0 });
+  const resolution = $derived(natural.w && natural.h ? `${natural.w}×${natural.h}` : null);
+  const selectedQuality = $derived(p.levels.find((l) => l.id === p.level)?.label ?? "Auto");
   // Text subtitles follow the visible picture, excluding letterboxing. Zoom and stretch fill the box.
   const picture = $derived.by(() => {
     const fit = natural.w && natural.h ? Math.min(box.w / natural.w, box.h / natural.h) : 0;
@@ -104,7 +107,7 @@
 
   const busy = $derived(p.status === "resolving" || p.status === "loading" || p.buffering);
   const subtitleLine = $derived(
-    [p.label, p.current && `${p.current.source} ${p.current.qualityLabel}`]
+    [p.label, p.current && `${p.current.source} ${p.current.qualityLabel}`, resolution]
       .filter(Boolean)
       .join(" · "),
   );
@@ -548,6 +551,7 @@
       <video
         bind:this={video}
         playsinline
+        onemptied={() => (natural = { w: 0, h: 0 })}
         onloadedmetadata={(e) =>
           (natural = {
             w: e.currentTarget.videoWidth,
@@ -771,7 +775,17 @@
         <div class="bottom">
           <div class="times">
             <span>{formatTime(p.position)}</span>
-            <span>−{formatTime(Math.max(0, p.duration - p.position))}</span>
+            <button
+              type="button"
+              class="time-toggle"
+              onclick={() => prefs.update({ showTotalDuration: !pref.showTotalDuration })}
+              aria-label={pref.showTotalDuration ? "Show time remaining" : "Show total duration"}
+              title={pref.showTotalDuration ? "Show time remaining" : "Show total duration"}
+            >
+              {pref.showTotalDuration
+                ? formatTime(p.duration)
+                : `−${formatTime(Math.max(0, p.duration - p.position))}`}
+            </button>
           </div>
           <SeekBar
             position={p.position}
@@ -811,25 +825,31 @@
                 >{p.rate === 1 ? "Speed" : `${p.rate}×`}</span
               ></button
             >
+            <button class="action" onclick={openSources}
+              ><Layers size={19} strokeWidth={1.8} aria-hidden="true" /><span>Sources</span></button
+            >
             <button class="action" onclick={() => (panel = panel === "tracks" ? null : "tracks")}
               ><Captions size={19} strokeWidth={1.8} aria-hidden="true" /><span
                 >Audio &amp; subs</span
               ></button
             >
-            <button class="action" onclick={openSources}
-              ><Layers size={19} strokeWidth={1.8} aria-hidden="true" /><span>Sources</span></button
-            >
+            {#if p.levels.length > 1}
+              <button
+                class="action"
+                onclick={() => (panel = panel === "quality" ? null : "quality")}
+                aria-label={`Video quality: ${selectedQuality}${resolution ? `. Playing at ${resolution}` : ""}`}
+                aria-expanded={panel === "quality"}
+                title={`Video quality: ${selectedQuality}${resolution ? ` · ${resolution}` : ""}`}
+                ><Monitor size={19} strokeWidth={1.8} aria-hidden="true" /><span
+                  >{p.level < 0 ? "Quality" : selectedQuality}</span
+                ></button
+              >
+            {/if}
             {#if (p.item?.episodes.length ?? 0) > 1}
               <button
                 class="action"
                 onclick={() => (panel = panel === "episodes" ? null : "episodes")}
                 ><ListVideo size={19} strokeWidth={1.8} aria-hidden="true" /><span>Episodes</span
-                ></button
-              >
-            {/if}
-            {#if p.hasNext}
-              <button class="action" onclick={() => p.next()}
-                ><SkipForward size={19} strokeWidth={1.8} aria-hidden="true" /><span>Next</span
                 ></button
               >
             {/if}
@@ -993,6 +1013,14 @@
     font-size: 13px;
     font-variant-numeric: tabular-nums;
     color: rgb(255 255 255 / 0.85);
+  }
+  .time-toggle {
+    color: inherit;
+    font: inherit;
+    font-variant-numeric: inherit;
+  }
+  .time-toggle:hover {
+    color: #fff;
   }
   .actions {
     display: flex;

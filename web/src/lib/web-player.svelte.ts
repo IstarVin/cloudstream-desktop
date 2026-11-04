@@ -418,6 +418,7 @@ class WebPlayer {
         },
         onTracks: () => this.syncTracks(),
       });
+      this.syncTracks();
       // dash.js starts playback once its stream is initialized. Calling play here emits the play event before
       // its manifest updater is listening, so a live feed never refreshes and stops after its initial segments.
       if (this.engine.kind !== "dash")
