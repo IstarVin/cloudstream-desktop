@@ -150,7 +150,8 @@ private fun MainScaffold(onUnpair: () -> Unit) {
         nav.navigate(route) {
             popUpTo(nav.graph.findStartDestination().id) { saveState = true }
             launchSingleTop = true
-            restoreState = true
+            // Home always returns to the catalog, even when its saved stack contains a title.
+            restoreState = route != HomeRoute
         }
     }
     val toTitle: (String, String) -> Unit = { provider, url -> nav.navigate(TitleRoute(provider, url)) }
