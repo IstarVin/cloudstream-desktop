@@ -199,7 +199,7 @@ class Api(initial: ServerConfig?) {
         sse("/api/links", mapOf("provider" to provider, "data" to data, "fresh" to if (fresh) 1 else null))
 
     suspend fun stream(link: String, direct: Boolean): StreamDto =
-        // The server decrypts ClearKey streams itself: some devices' ClearKey service can't decrypt.
+        // Decrypt on the server: device ClearKey can fail, and Media3 ignores identity SAMPLE-AES in fMP4 HLS.
         get("/api/stream", mapOf("link" to link, "direct" to if (direct) 1 else null, "decrypt" to 1))
 
     fun subtitleUrl(sub: SubtitleDto): String = url("/api/subtitle", mapOf("id" to sub.id)).toString()

@@ -46,8 +46,8 @@ class ClientStreams(
     class Gone(message: String) : RuntimeException(message)
 
     /**
-     * [decrypt] asks for a ClearKey DASH link to arrive decrypted: the server holds the key, and some devices can't
-     * decrypt with theirs. It falls back to handing the key over when the manifest isn't one the proxy can decrypt.
+     * [decrypt] asks for ClearKey DASH and identity SAMPLE-AES fMP4 HLS to arrive decrypted. Some devices cannot
+     * use ClearKey, and Media3 ignores HLS identity sample keys. Unsupported formats retain their original protection.
      */
     suspend fun stream(linkId: String, direct: Boolean, proxyAll: Boolean, decrypt: Boolean = false): StreamDto {
         val link = links.link(linkId) ?: throw Gone("Those links have expired; load them again")
@@ -55,6 +55,9 @@ class ClientStreams(
         val l = link.link
         val headers = LinkHeaders.of(l)
         val clearKey = link.clearKey?.let { ClearKeyDto((l as? DrmExtractorLink)?.kid?.let(ClearKey::toHex), it) }
+        if (decrypt && l.type == ExtractorLinkType.M3U8) {
+            return StreamDto(proxy.register(l.url, headers.all, link.interceptor, decryptHls = true), l.type.name, proxied = true)
+        }
         if (decrypt && clearKey != null && l.type == ExtractorLinkType.DASH) {
             val key = ClearKey.toHex(clearKey.key)?.chunked(2)?.map { it.toInt(16).toByte() }?.toByteArray()
             val path = key?.let { proxy.registerDecrypted(l.url, headers.all, link.interceptor, it) }

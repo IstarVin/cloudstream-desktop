@@ -36,7 +36,14 @@ import java.util.concurrent.ConcurrentHashMap
  * kept per token so a repeat request never reaches the upstream.
  */
 class StreamProxy {
-    private class Target(val headers: Map<String, String>, val client: OkHttpClient, val created: Long, val key: ByteArray? = null) {
+    private class Target(val headers: Map<String, String>, val client: OkHttpClient, val created: Long, val key: ByteArray? = null, decryptHls: Boolean = false) {
+        val hls = if (decryptHls) HlsDecryptor { url ->
+            if (url.startsWith("data:", true)) dataUri(url) ?: throw IOException("Malformed HLS key")
+            else client.newCall(Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()).execute().use {
+                if (!it.isSuccessful) throw IOException("The media host answered ${it.code}")
+                it.body.bytes()
+            }
+        } else null
         /** The decryptor of each media file fetched here with a [key]; empty for a file that isn't an MP4. */
         val cenc = ConcurrentHashMap<String, java.util.Optional<CencFile>>()
         val playlists = ConcurrentHashMap<String, String>()
@@ -52,11 +59,11 @@ class StreamProxy {
     private val random = SecureRandom()
 
     /** Registers [url]'s request context and returns the proxied URL path (relative to the server root). */
-    fun register(url: String, headers: Map<String, String>, interceptor: Interceptor?, key: ByteArray? = null): String {
+    fun register(url: String, headers: Map<String, String>, interceptor: Interceptor?, key: ByteArray? = null, decryptHls: Boolean = false): String {
         expire()
         val token = ByteArray(12).also(random::nextBytes).let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
         val client = interceptor?.let { app.baseClient.newBuilder().addInterceptor(it).build() } ?: app.baseClient
-        targets[token] = Target(headers, client, System.currentTimeMillis(), key)
+        targets[token] = Target(headers, client, System.currentTimeMillis(), key, decryptHls)
         return path(token, url)
     }
 
@@ -155,6 +162,8 @@ class StreamProxy {
             val bytes = dataUri(url) ?: return call.respondText("Malformed data URI", status = HttpStatusCode.BadRequest)
             return call.respondBytes(bytes, ContentType.Application.OctetStream)
         }
+        val clear = withContext(Dispatchers.IO) { target.hls?.decrypt(url) }
+        if (clear != null) return respondRange(call, clear, ContentType.Video.MP4)
         val request = Request.Builder().url(url).apply {
             target.headers.forEach { (k, v) -> header(k, v) }
             // A manifest is rewritten whole, so it's fetched whole; [respondDocument] answers the range.
@@ -294,10 +303,12 @@ class StreamProxy {
      * without range support it would get the document twice over.
      */
     private suspend fun respondDocument(call: ApplicationCall, text: String) {
-        val bytes = text.toByteArray()
+        respondRange(call, text.toByteArray(), ContentType.parse("application/dash+xml"))
+    }
+
+    private suspend fun respondRange(call: ApplicationCall, bytes: ByteArray, type: ContentType) {
         call.response.header(HttpHeaders.AcceptRanges, "bytes")
         val range = call.request.header(HttpHeaders.Range)?.let { RANGE.matchEntire(it.trim()) }
-        val type = ContentType.parse("application/dash+xml")
         if (range == null) return call.respondBytes(bytes, type)
         val from = range.groupValues[1].toInt()
         val to = range.groupValues[2].toIntOrNull()?.coerceAtMost(bytes.size - 1) ?: (bytes.size - 1)
@@ -376,7 +387,7 @@ class StreamProxy {
 
     /** [playlist] rewritten, and kept when it's a master or a complete media playlist (a live one changes on every reload). */
     private fun keep(target: Target, token: String, url: String, playlist: String, finalUrl: String): String {
-        val rewritten = rewrite(playlist, finalUrl, token)
+        val rewritten = rewrite(target.hls?.prepare(playlist, finalUrl) ?: playlist, finalUrl, token)
         if ("#EXT-X-STREAM-INF" in playlist || "#EXT-X-ENDLIST" in playlist) target.playlists[url] = rewritten
         return rewritten
     }
@@ -416,17 +427,17 @@ class StreamProxy {
         key?.takeIf { it.size == 16 }?.joinToString("") { "%02x".format(it) }
     }
 
-    private fun dataUri(url: String): ByteArray? {
-        val (meta, data) = url.removeRange(0, 5).split(',', limit = 2).takeIf { it.size == 2 } ?: return null
-        return if (meta.endsWith(";base64", true)) Base64.getMimeDecoder().decode(data) else URLDecoder.decode(data.replace("+", "%2B"), Charsets.UTF_8).toByteArray()
-    }
-
     private fun expire() {
         val cutoff = System.currentTimeMillis() - 12 * 3600_000L
         targets.entries.removeIf { it.value.created < cutoff }
     }
 
     companion object {
+        private fun dataUri(url: String): ByteArray? {
+            val (meta, data) = url.removeRange(0, 5).split(',', limit = 2).takeIf { it.size == 2 } ?: return null
+            return if (meta.endsWith(";base64", true)) Base64.getMimeDecoder().decode(data) else URLDecoder.decode(data.replace("+", "%2B"), Charsets.UTF_8).toByteArray()
+        }
+
         private const val PLAYLIST_SNIFF = 16
 
         /** What [embeddedSubtitles] answers for a stream that isn't a Matroska file. */

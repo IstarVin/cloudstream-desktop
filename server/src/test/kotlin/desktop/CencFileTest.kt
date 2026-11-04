@@ -3,6 +3,16 @@ package desktop
 import desktop.links.CencFile
 import desktop.links.CencUnsupported
 import desktop.links.Fetched
+import desktop.links.HlsDecryptor
+import desktop.links.StreamProxy
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.readRawBytes
+import io.ktor.http.HttpHeaders
+import io.ktor.server.routing.get
+import io.ktor.server.routing.routing
+import io.ktor.server.testing.testApplication
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import javax.crypto.Cipher
@@ -31,7 +41,24 @@ class CencFileTest {
     /** A sample: its clear bytes, its encrypted form, and how it's split into subsamples (clear, encrypted pairs). */
     private class Sample(val plain: ByteArray, val iv: ByteArray, val subs: List<Pair<Int, Int>>?)
 
-    private fun encrypt(s: Sample): ByteArray {
+    private fun encrypt(s: Sample, cbcs: Boolean = false, pattern: Int = 0x19): ByteArray {
+        if (cbcs) {
+            val out = s.plain.copyOf()
+            var at = 0
+            for ((clear, enc) in s.subs ?: listOf(0 to s.plain.size)) {
+                at += clear
+                val cipher = Cipher.getInstance("AES/CBC/NoPadding").also { it.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(s.iv)) }
+                val end = at + enc / 16 * 16
+                var block = at
+                while (block < end) {
+                    val n = if (pattern == 0) end - block else minOf((pattern ushr 4) * 16, end - block)
+                    cipher.update(out, block, n, out, block)
+                    block += n + (pattern and 15) * 16
+                }
+                at += enc
+            }
+            return out
+        }
         val out = s.plain.copyOf()
         val counter = s.iv.copyOf(8) + ByteArray(8)
         val cipher = Cipher.getInstance("AES/CTR/NoPadding").also { it.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(counter)) }
@@ -46,10 +73,11 @@ class CencFileTest {
 
     private class Built(val file: ByteArray, val expected: ByteArray)
 
-    private fun build(fragments: List<List<Sample>>): Built {
+    private fun build(fragments: List<List<Sample>>, cbcs: Boolean = false, pattern: Int = 0x19, indexed: Boolean = true): Built {
         val frma = box("frma", "avc1".toByteArray())
-        val schm = box("schm", ints(0), "cenc".toByteArray(), ints(0x10000))
-        val tenc = box("tenc", ints(0), byteArrayOf(0, 0, 1, 8), ByteArray(16) { 9 })
+        val schm = box("schm", ints(0), (if (cbcs) "cbcs" else "cenc").toByteArray(), ints(0x10000))
+        val tenc = if (cbcs) box("tenc", ints(0x1000000), byteArrayOf(0, pattern.toByte(), 1, 0), ByteArray(16) { 9 }, byteArrayOf(16), ByteArray(16) { 7 })
+        else box("tenc", ints(0), byteArrayOf(0, 0, 1, 8), ByteArray(16) { 9 })
         val sinf = box("sinf", frma, schm, box("schi", tenc))
         val encv = box("encv", ByteArray(78), sinf)
         val stsd = box("stsd", ints(0, 1), encv)
@@ -64,7 +92,7 @@ class CencFileTest {
         for (samples in fragments) {
             val withSubs = samples.all { it.subs != null }
             val senc = box("senc", ints(if (withSubs) 2 else 0, samples.size), *samples.map { s ->
-                s.iv.copyOf(8) + (s.subs?.let { subs -> shorts(subs.size) + subs.map { (c, e) -> shorts(c) + ints(e) }.fold(ByteArray(0)) { a, b -> a + b } } ?: ByteArray(0))
+                (if (cbcs) ByteArray(0) else s.iv.copyOf(8)) + (s.subs?.let { subs -> shorts(subs.size) + subs.map { (c, e) -> shorts(c) + ints(e) }.fold(ByteArray(0)) { a, b -> a + b } } ?: ByteArray(0))
             }.toTypedArray())
             fun moof(dataOffset: Int) = box("moof", box("mfhd", ints(0, 1)), box("traf",
                 box("tfhd", ints(0x20000, 1)),
@@ -74,11 +102,11 @@ class CencFileTest {
                 senc))
             val size = moof(0).size
             moofs += moof(size + 8)
-            mdatBodies += samples.fold(ByteArray(0)) { a, s -> a + encrypt(s) }
+            mdatBodies += samples.fold(ByteArray(0)) { a, s -> a + encrypt(s, cbcs, pattern) }
             mdats += box("mdat", mdatBodies.last())
         }
         val refs = moofs.indices.map { moofs[it].size + mdats[it].size }
-        val sidx = box("sidx", ints(0, 1, 1000, 0, 0), shorts(0, refs.size), *refs.map { ints(it, 1000, 0) }.toTypedArray())
+        val sidx = if (!indexed) ByteArray(0) else box("sidx", ints(0, 1, 1000, 0, 0), shorts(0, refs.size), *refs.map { ints(it, 1000, 0) }.toTypedArray())
         val file = ByteArrayOutputStream().also { o ->
             o.write(ftyp); o.write(moov); o.write(sidx)
             moofs.indices.forEach { o.write(moofs[it]); o.write(mdats[it]) }
@@ -166,12 +194,93 @@ class CencFileTest {
     }
 
     @Test
+    fun decryptsCbcsPatternsSubsamplesAndPartialRanges() {
+        for (pattern in listOf(0, 0x10, 0x19)) {
+            for (subs in listOf(false, true)) {
+                val samples = samples(listOf(100, 1001, 3217), subs).map { Sample(it.plain, ByteArray(16) { 7 }, it.subs) }
+                val built = build(listOf(samples), cbcs = true, pattern = pattern, indexed = false)
+                val file = assertNotNull(open(built.file))
+                val out = built.file.copyOf()
+                file.apply(out, 0, out.size, 0)
+                assertContentEquals(built.expected, out, "pattern $pattern, subsamples $subs")
+                repeat(20) {
+                    val start = rnd.nextInt(built.file.size - 1)
+                    val end = rnd.nextInt(start + 1, built.file.size + 1)
+                    val range = built.file.copyOfRange(start, end)
+                    file.apply(range, 0, range.size, start.toLong())
+                    assertContentEquals(built.expected.copyOfRange(start, end), range)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun hlsDecryptsInitAndSegmentsAndRetainsUnsupportedPlaylists() {
+        val sample = Sample(rnd.nextBytes(1001), ByteArray(16) { 7 }, listOf(7 to 994))
+        val built = build(listOf(listOf(sample)), cbcs = true, indexed = false)
+        val split = String(built.file, Charsets.ISO_8859_1).indexOf("moof") - 4
+        val data = mapOf("https://cdn/init.mp4" to built.file.copyOfRange(0, split), "https://cdn/seg.mp4" to built.file.copyOfRange(split, built.file.size), "https://cdn/key" to key)
+        val decryptor = HlsDecryptor { data.getValue(it) }
+        val playlist = "#EXTM3U\n#EXT-X-MAP:URI=\"init.mp4\"\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"key\",KEYFORMAT=\"identity\"\n#EXTINF:4,\nseg.mp4\n#EXT-X-ENDLIST"
+        val clear = decryptor.prepare(playlist, "https://cdn/media.m3u8")
+        assertEquals(false, "#EXT-X-KEY" in clear)
+        assertContentEquals(built.expected.copyOfRange(0, split), decryptor.decrypt("https://cdn/init.mp4"))
+        assertContentEquals(built.expected.copyOfRange(split, built.expected.size), decryptor.decrypt("https://cdn/seg.mp4"))
+        // Repeated/ranged player requests must start with the original encrypted bytes.
+        assertContentEquals(built.expected.copyOfRange(split, built.expected.size), decryptor.decrypt("https://cdn/seg.mp4"))
+        for (unsupported in listOf(playlist.replace("SAMPLE-AES", "AES-128"), playlist.replace("identity", "com.apple.streamingkeydelivery"), playlist.replace("#EXTINF:4,", "#EXT-X-BYTERANGE:12@0\n#EXTINF:4,"))) {
+            assertEquals(unsupported, decryptor.prepare(unsupported, "https://other/media.m3u8"))
+        }
+        assertNull(decryptor.decrypt("https://other/seg.mp4"))
+    }
+
+    @Test
+    fun hlsProxyDecryptsWithProviderHeadersAndServesClearRanges() {
+        val sample = Sample(rnd.nextBytes(1001), ByteArray(16) { 7 }, listOf(7 to 994))
+        val built = build(listOf(listOf(sample)), cbcs = true, indexed = false)
+        val split = String(built.file, Charsets.ISO_8859_1).indexOf("moof") - 4
+        val playlist = "#EXTM3U\n#EXT-X-MAP:URI=\"init.mp4\"\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"data:application/octet-stream;base64,${java.util.Base64.getEncoder().encodeToString(key)}\",KEYFORMAT=\"identity\"\n#EXTINF:4,\nseg.mp4\n#EXT-X-ENDLIST"
+        val hits = java.util.concurrent.ConcurrentHashMap<String, Int>()
+        LocalServer { ex ->
+            if (ex.requestHeaders.getFirst("Referer") != "https://provider/") return@LocalServer ex.respond(403, "Missing provider header")
+            hits.merge(ex.requestURI.path, 1, Int::plus)
+            when (ex.requestURI.path) {
+                "/media.m3u8" -> {
+                    if (hits["/media.m3u8"]!! > 1) ex.respond(403, "Playlist was spent")
+                    else ex.respond(200, playlist, "application/x-mpegURL")
+                }
+                "/init.mp4" -> ex.respond(200, built.file.copyOfRange(0, split), "video/mp4")
+                "/seg.mp4" -> ex.respond(200, built.file.copyOfRange(split, built.file.size), "video/mp4")
+                else -> ex.respond(404, "")
+            }
+        }.use { upstream ->
+            val proxy = StreamProxy()
+            val path = proxy.register("${upstream.url}/media.m3u8", mapOf("Referer" to "https://provider/"), null, decryptHls = true)
+            testApplication {
+                routing { get("/proxy/{token}/{encoded}/{name?}") { proxy.serve(call, call.parameters["token"]!!, call.parameters["encoded"]!!) } }
+                val clear = client.get(path).bodyAsText()
+                assertEquals(clear, client.get(path).bodyAsText())
+                assertEquals(false, "#EXT-X-KEY" in clear)
+                val init = Regex("""URI="([^"]+)"""").find(clear)!!.groupValues[1]
+                val segment = clear.lines().first { it.isNotBlank() && !it.startsWith('#') }
+                assertContentEquals(built.expected.copyOfRange(0, split), client.get(init).readRawBytes())
+                assertContentEquals(built.expected.copyOfRange(split, built.expected.size), client.get(segment).readRawBytes())
+                val ranged = client.get(segment) { header(HttpHeaders.Range, "bytes=200-400") }
+                assertEquals(206, ranged.status.value)
+                assertContentEquals(built.expected.copyOfRange(split + 200, split + 401), ranged.readRawBytes())
+            }
+            assertEquals(1, hits["/media.m3u8"])
+            assertEquals(1, hits["/init.mp4"])
+        }
+    }
+
+    @Test
     fun leavesWhatIsNotAnMp4AndRefusesOtherSchemes() {
         assertNull(open("WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n".toByteArray()))
         val built = build(fragments())
-        val cbcs = built.file.copyOf()
-        val at = String(cbcs, Charsets.ISO_8859_1).indexOf("cenc")
-        "cbcs".toByteArray().copyInto(cbcs, at)
-        assertFailsWith<CencUnsupported> { open(cbcs) }
+        val unsupported = built.file.copyOf()
+        val at = String(unsupported, Charsets.ISO_8859_1).indexOf("cenc")
+        "cens".toByteArray().copyInto(unsupported, at)
+        assertFailsWith<CencUnsupported> { open(unsupported) }
     }
 }

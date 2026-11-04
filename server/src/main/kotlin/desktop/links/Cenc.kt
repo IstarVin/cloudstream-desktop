@@ -11,7 +11,7 @@ class Fetched(val start: Long, val bytes: ByteArray, val total: Long)
 class CencUnsupported(message: String) : RuntimeException(message)
 
 /**
- * A fragmented MP4 with `cenc` (AES-CTR) protection, served in the clear, byte for byte the same length.
+ * A fragmented MP4 with `cenc` (AES-CTR) or `cbcs` (pattern AES-CBC) protection, served in the clear at the same length.
  *
  * Players take a ClearKey through the device's DRM, and some devices can't decrypt with it (the Android emulator's
  * ClearKey service is denied the app's decrypt buffer). The server has the key, so it decrypts instead. Every edit
@@ -28,11 +28,11 @@ class CencFile private constructor(
     private val fetch: (Long, Long) -> Fetched,
 ) {
     private class Patch(val offset: Long, val bytes: ByteArray)
-    private class TrackCrypto(val ivSize: Int, val constantIv: ByteArray?)
+    private class TrackCrypto(val ivSize: Int, val constantIv: ByteArray?, val cbcs: Boolean, val cryptBlocks: Int, val skipBlocks: Int, val description: Int)
     private class Fragment(val offset: Long, val size: Long)
 
     /** [subs] holds a (clear, encrypted) byte count pair per subsample, or is null when the whole sample is encrypted. */
-    private class Sample(val offset: Long, val size: Int, val iv: ByteArray, val subs: IntArray?)
+    private class Sample(val offset: Long, val size: Int, val iv: ByteArray, val subs: IntArray?, val crypto: TrackCrypto)
 
     /** [renames] are the offsets of the box names (in the fragment's own header) to turn into `free`. */
     private class Plan(val samples: List<Sample>, val renames: List<Long>)
@@ -104,15 +104,42 @@ class CencFile private constructor(
             val x = maxOf(encStart, from)
             val y = minOf(encEnd, to)
             if (x < y) {
-                val cipher = counterAt(sample.iv, encrypted + (x - encStart))
-                val start = off + (x - pos).toInt()
-                cipher.update(buf, start, (y - x).toInt(), buf, start)
+                if (sample.crypto.cbcs) {
+                    decryptCbcs(sample, encStart, encEnd, buf, off, pos, x, y)
+                } else {
+                    val cipher = counterAt(sample.iv, encrypted + (x - encStart))
+                    val start = off + (x - pos).toInt()
+                    cipher.update(buf, start, (y - x).toInt(), buf, start)
+                }
             }
             encrypted += encEnd - encStart
             at = encEnd
             part += 2
             if (subs == null) break
         }
+    }
+
+    /** CBCS restarts its IV and block pattern at each subsample; skipped blocks and partial blocks stay clear. */
+    private fun decryptCbcs(sample: Sample, start: Long, end: Long, buf: ByteArray, off: Int, pos: Long, from: Long, to: Long) {
+        val length = ((end - start) / 16 * 16).toInt()
+        if (length == 0) return
+        val bytes = if (start >= pos && start + length <= pos + buf.size - off) {
+            buf.copyOfRange(off + (start - pos).toInt(), off + (start - pos).toInt() + length)
+        } else fetch(start, start + length - 1).bytes
+        val cipher = Cipher.getInstance("AES/CBC/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(sample.iv))
+        val crypt = sample.crypto.cryptBlocks
+        val skip = sample.crypto.skipBlocks
+        var at = 0
+        while (at < length) {
+            val count = if (crypt == 0 && skip == 0) length - at else minOf(crypt * 16, length - at)
+            if (count == 0) throw CencUnsupported("Invalid CBCS encryption pattern")
+            cipher.update(bytes, at, count, bytes, at)
+            at += count + skip * 16
+        }
+        val x = maxOf(from, start)
+        val y = minOf(to, start + length)
+        if (x < y) bytes.copyInto(buf, off + (x - pos).toInt(), (x - start).toInt(), (y - start).toInt())
     }
 
     private fun counterAt(iv: ByteArray, encryptedBefore: Long): Cipher {
@@ -155,7 +182,7 @@ class CencFile private constructor(
             at += 8
             var base = if (flags and 0x20000 != 0) fragment.offset else nextBase
             if (flags and 0x1 != 0) { base = u64(moof, at); at += 8 }
-            if (flags and 0x2 != 0) at += 4
+            val description = if (flags and 0x2 != 0) u32(moof, at).toInt().also { at += 4 } else 1
             if (flags and 0x8 != 0) at += 4
             val defaultSize = if (flags and 0x10 != 0) u32(moof, at).toInt() else 0
 
@@ -182,13 +209,20 @@ class CencFile private constructor(
             }
             nextBase = cursor
 
-            val crypto = tracks[trackId] ?: continue
+            val crypto = tracks[trackId]?.takeIf { it.description == description } ?: continue
             kids.filter { it.type == "senc" || it.type == "saiz" || it.type == "saio" }.forEach { renames += fragment.offset + it.start + 4 }
-            val senc = kids.firstOrNull { it.type == "senc" } ?: throw CencUnsupported("A fragment has no sample encryption box")
+            val senc = kids.firstOrNull { it.type == "senc" }
+            if (senc == null) {
+                val iv = crypto.constantIv ?: throw CencUnsupported("A fragment has no sample encryption box")
+                offsets.indices.forEach { samples += Sample(offsets[it], sizes[it], iv, null, crypto) }
+                continue
+            }
             var p = senc.start + senc.header
             val sencFlags = u32(moof, p).toInt() and 0xffffff
             val count = u32(moof, p + 4).toInt()
             p += 8
+            // A clear lead-in can still have a protected sample entry and an empty senc box.
+            if (count == 0) continue
             if (count != offsets.size) throw CencUnsupported("senc lists $count samples, trun ${offsets.size}")
             for (i in 0 until count) {
                 val iv = ByteArray(16)
@@ -205,7 +239,7 @@ class CencFile private constructor(
                         p += 6
                     }
                 }
-                samples += Sample(offsets[i], sizes[i], iv, subs)
+                samples += Sample(offsets[i], sizes[i], iv, subs, crypto)
             }
         }
         samples.sortBy { it.offset }
@@ -294,7 +328,7 @@ class CencFile private constructor(
             val at = tkhd.start + tkhd.header
             val trackId = u32(b, at + 4 + if (b[at].toInt() == 1) 16 else 8).toInt()
             val stsd = child(b, child(b, child(b, child(b, trak, "mdia"), "minf"), "stbl"), "stsd") ?: return
-            for (entry in boxes(b, stsd.start + stsd.header + 8, stsd.end)) {
+            for ((index, entry) in boxes(b, stsd.start + stsd.header + 8, stsd.end).withIndex()) {
                 val kidsAt = when (entry.type) {
                     "encv" -> entry.start + entry.header + 78
                     "enca" -> entry.start + entry.header + 28 + when (((b[entry.start + entry.header + 8].toInt() and 0xff) shl 8) or (b[entry.start + entry.header + 9].toInt() and 0xff)) {
@@ -308,13 +342,14 @@ class CencFile private constructor(
                 val frma = child(b, sinf, "frma") ?: continue
                 val schm = child(b, sinf, "schm")
                 val scheme = schm?.let { type(b, it.start + it.header + 4) }
-                if (scheme != "cenc") throw CencUnsupported("Encryption scheme ${scheme ?: "unknown"}; only cenc can be decrypted here")
+                if (scheme != "cenc" && scheme != "cbcs") throw CencUnsupported("Encryption scheme ${scheme ?: "unknown"}; only cenc and cbcs can be decrypted here")
                 val tenc = child(b, child(b, sinf, "schi"), "tenc") ?: throw CencUnsupported("No tenc box")
                 val t = tenc.start + tenc.header
                 val isProtected = b[t + 6].toInt() == 1
                 val ivSize = b[t + 7].toInt() and 0xff
                 val constant = if (isProtected && ivSize == 0) b.copyOfRange(t + 25, t + 25 + (b[t + 24].toInt() and 0xff)) else null
-                if (isProtected) tracks[trackId] = TrackCrypto(ivSize, constant)
+                val pattern = if (b[t].toInt() == 1) b[t + 5].toInt() and 0xff else 0
+                if (isProtected) tracks[trackId] = TrackCrypto(ivSize, constant, scheme == "cbcs", pattern ushr 4, pattern and 15, index + 1)
                 patches += Patch(abs + entry.start + 4, b.copyOfRange(frma.start + frma.header, frma.start + frma.header + 4))
                 patches += Patch(abs + sinf.start + 4, FREE)
             }
