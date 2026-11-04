@@ -60,13 +60,13 @@ kotlin {
 
 // The web UI: `vp build` writes the static SPA into src/main/resources/web, which Ktor serves at `/`.
 val webDir = rootProject.file("web")
-val webInstall by tasks.registering(Exec::class) {
+val webInstall = tasks.register<Exec>("webInstall") {
     workingDir = webDir
     commandLine("vp", "install")
     inputs.files(webDir.resolve("package.json"), webDir.resolve("pnpm-lock.yaml"))
     outputs.dir(webDir.resolve("node_modules"))
 }
-val webBuild by tasks.registering(Exec::class) {
+val webBuild = tasks.register<Exec>("webBuild") {
     dependsOn(webInstall)
     workingDir = webDir
     commandLine("vp", "build")

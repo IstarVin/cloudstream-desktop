@@ -24,6 +24,7 @@ val jvmVersion = libs.versions.jvm.get().toInt()
 android {
     namespace = "desktop.app"
     compileSdk = 37
+    ndkVersion = "30.0.16248370"
 
     defaultConfig {
         applicationId = "cloudstream.desktop.app"
