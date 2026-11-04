@@ -115,8 +115,9 @@
     return () => p.unbind();
   });
 
-  /** Controls hide after a moment while playing; any interaction shows them again. */
+  /** Controls hide after a moment while playing; interactions outside gestures show them again. */
   function poke() {
+    if (holding || p.scrubbing) return;
     controls = true;
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
@@ -124,13 +125,12 @@
     }, 1000);
   }
   $effect(() => {
-    if (holding) {
+    // Speed holds and swipe-seeks keep the picture clear, even while the video is paused.
+    if (holding || p.scrubbing) {
       controls = false;
       clearTimeout(hideTimer);
       return;
     }
-    // Holding the video still for a swipe-seek isn't a pause worth showing the controls for.
-    if (p.scrubbing) return;
     if (p.paused || panel || p.status !== "playing") {
       controls = true;
       clearTimeout(hideTimer);
