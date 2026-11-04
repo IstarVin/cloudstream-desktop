@@ -98,6 +98,8 @@ fun Poster(
     width: Dp? = LocalCatalogLayout.current.posterWidth,
     /** Width over height: posters are 2:3, landscape rows 16:9. */
     aspect: Float = 2f / 3f,
+    /** Reserve two title lines to keep shelf metadata aligned, without extra bottom space. */
+    reserveTextSpace: Boolean = false,
     onClick: () -> Unit,
 ) {
     Column(
@@ -108,7 +110,7 @@ fun Poster(
             .semantics(mergeDescendants = true) {
                 progress?.takeIf { it.isFinite() }?.let { stateDescription = "${(it.coerceIn(0f, 1f) * 100).toInt()}% watched" }
             }
-            .padding(if (LocalTv.current) 8.dp else 0.dp),
+            .padding(8.dp),
     ) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(aspect).clip(MaterialTheme.shapes.medium).background(Palette.surface2)
@@ -139,15 +141,18 @@ fun Poster(
                 }
             }
         }
-        Text(
-            title,
-            style = MaterialTheme.typography.titleSmall,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-        if (!subtitle.isNullOrBlank()) {
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.padding(top = 8.dp)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                minLines = if (reserveTextSpace) 2 else 1,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Palette.muted,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }
@@ -236,7 +241,7 @@ fun PosterPlaceholders() {
     val posterWidth = LocalCatalogLayout.current.posterWidth
     LazyRow(
         Modifier.fillMaxWidth().padding(top = 12.dp).clearAndSetSemantics { contentDescription = "Loading titles" },
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         userScrollEnabled = false,
     ) {
         items(8) {
@@ -263,7 +268,7 @@ val LocalCatalogLayout = staticCompositionLocalOf { CatalogLayout() }
 
 @Composable
 fun CatalogLoading() {
-    Column(Modifier.padding(Gutter).clearAndSetSemantics { contentDescription = "Loading titles" }, verticalArrangement = Arrangement.spacedBy(28.dp)) {
+    Column(Modifier.padding(Gutter).clearAndSetSemantics { contentDescription = "Loading titles" }, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         repeat(2) {
             Column {
                 Box(Modifier.width(140.dp).height(20.dp).clip(RoundedCornerShape(4.dp)).background(Palette.surface2))

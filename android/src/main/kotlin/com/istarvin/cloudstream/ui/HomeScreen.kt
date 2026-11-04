@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -38,6 +39,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -57,7 +61,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import desktop.api.ContinueEntry
-import desktop.api.HomePage
 import desktop.api.HomeSection
 import desktop.api.ProviderDto
 import desktop.api.StatusDto
@@ -79,7 +82,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private var sectionJob: Job? = null
     private val pageJobs = mutableListOf<Job>()
     val sections = MutableStateFlow<Load<List<HomeSection>>>(Load.Loading)
-    val pages = mutableStateMapOf<Int, Load<HomePage>>()
+    internal val pages = mutableStateMapOf<Int, HomeSectionPager>()
     val continueWatching = MutableStateFlow<List<ContinueEntry>>(emptyList())
     val status = MutableStateFlow<StatusDto?>(null)
     val refreshing = MutableStateFlow(false)
@@ -143,19 +146,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { prefs.setHomeCategories(categories.value) }
     }
 
-    fun loadSection(index: Int) {
+    fun loadSection(index: Int, more: Boolean = false) {
         val p = provider.value ?: return
-        if (pages[index] is Load.Ok || pages[index] == Load.Loading) return
-        pages[index] = Load.Loading
-        pageJobs += viewModelScope.launch {
-            pages[index] = try {
-                Load.Ok(api.home(p, index))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Load.Failed(e.userMessage())
-            }
-        }
+        val pager = pages.getOrPut(index) { HomeSectionPager() }
+        if (!more && pager.pages.isNotEmpty()) return
+        pageJobs += viewModelScope.launch { pager.more { page -> api.home(p, index, page) } }
     }
 }
 
@@ -236,11 +231,11 @@ fun HomeScreen(onTitle: (String, String) -> Unit, onSection: (String, Int, Strin
                     Text(
                         "Continue watching",
                         style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.padding(start = Gutter, end = Gutter, top = 20.dp, bottom = 12.dp).semantics { heading() },
+                        modifier = Modifier.padding(start = Gutter, end = Gutter, top = 16.dp, bottom = 8.dp).semantics { heading() },
                     )
                 }
                 item {
-                    LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(cont, key = { it.provider + it.url }) { c ->
                             ContinueWatchingCard(c, onClick = { onTitle(c.provider, c.url) })
                         }
@@ -311,47 +306,70 @@ private fun ContinueWatchingCard(entry: ContinueEntry, onClick: () -> Unit) {
         title = entry.title, poster = entry.poster,
         width = LocalCatalogLayout.current.landscapeWidth, aspect = 16f / 9f,
         subtitle = listOfNotNull(entry.provider, entry.episodeLabel, remaining).joinToString(" · "),
+        reserveTextSpace = true,
         progress = progress, onClick = onClick,
     )
 }
 
 @Composable
 private fun HomeSectionRows(vm: HomeViewModel, section: HomeSection, onTitle: (String, String) -> Unit, onMore: (String) -> Unit) {
-    LaunchedEffect(section.index, vm.provider.collectAsState().value) { vm.loadSection(section.index) }
-    when (val page = vm.pages[section.index]) {
-        null, Load.Loading -> Column(Modifier.padding(Gutter)) {
+    val provider by vm.provider.collectAsState()
+    LaunchedEffect(section.index, provider) { vm.loadSection(section.index) }
+    val pager = vm.pages[section.index]
+    when {
+        pager == null || (pager.pages.isEmpty() && pager.error == null) -> Column(Modifier.padding(Gutter)) {
             SectionTitle(section.name)
             PosterPlaceholders()
         }
-        is Load.Failed -> Column(Modifier.padding(Gutter)) {
+        pager.pages.isEmpty() && pager.error != null -> Column(Modifier.padding(Gutter)) {
             SectionTitle(section.name)
-            Text(page.message, color = Palette.muted, style = MaterialTheme.typography.bodySmall)
+            Text(pager.error.orEmpty(), color = Palette.muted, style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { vm.loadSection(section.index) }, modifier = Modifier.tvFocusIndicator()) { Text("Retry") }
         }
-        is Load.Ok -> page.value.rows.filter { it.items.isNotEmpty() }.forEach { row ->
-            Column(Modifier.padding(top = 32.dp)) {
-                Row(
-                    Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = Gutter, end = Gutter, bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(row.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
-                    Spacer(Modifier.width(8.dp))
-                    TextButton(colors = ButtonDefaults.textButtonColors(contentColor = Palette.muted), onClick = { onMore(row.name) }, modifier = (Modifier.heightIn(min = 48.dp).semantics { contentDescription = "See all ${row.name}" }).tvFocusIndicator()) {
-                        Text("See all")
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(18.dp))
-                    }
+        else -> pager.rows.filter { it.items.isNotEmpty() }.forEach { row ->
+            key(provider, section.index, row.name) {
+                val list = rememberLazyListState()
+                val nearEnd by remember { derivedStateOf {
+                    val last = list.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                    last != null && last >= list.layoutInfo.totalItemsCount - 4
+                } }
+                LaunchedEffect(nearEnd, pager.pages.size) {
+                    if (nearEnd && pager.error == null) vm.loadSection(section.index, more = true)
                 }
-                LazyRow(contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    items(row.items, key = { it.provider + it.url }) { item ->
-                        Poster(
-                            item.name, item.poster,
-                            headers = item.posterHeaders,
-                            width = if (row.horizontal) LocalCatalogLayout.current.landscapeWidth else LocalCatalogLayout.current.posterWidth,
-                            aspect = if (row.horizontal) 16f / 9f else 2f / 3f,
-                            subtitle = item.year?.toString(),
-                            badge = item.quality,
-                            onClick = { onTitle(item.provider, item.url) },
-                        )
+                Column(Modifier.padding(top = 16.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = Gutter, end = Gutter, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(row.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).semantics { heading() })
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(colors = ButtonDefaults.textButtonColors(contentColor = Palette.muted), onClick = { onMore(row.name) }, modifier = (Modifier.heightIn(min = 48.dp).semantics { contentDescription = "See all ${row.name}" }).tvFocusIndicator()) {
+                            Text("See all")
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    LazyRow(state = list, contentPadding = PaddingValues(horizontal = Gutter), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(row.items, key = { it.provider + it.url }) { item ->
+                            Poster(
+                                item.name, item.poster,
+                                headers = item.posterHeaders,
+                                width = if (row.horizontal) LocalCatalogLayout.current.landscapeWidth else LocalCatalogLayout.current.posterWidth,
+                                aspect = if (row.horizontal) 16f / 9f else 2f / 3f,
+                                subtitle = item.year?.toString(),
+                                reserveTextSpace = true,
+                                badge = item.quality,
+                                onClick = { onTitle(item.provider, item.url) },
+                            )
+                        }
+                        if (pager.loading) item(key = "loading") { Loading(Modifier.width(96.dp)) }
+                        pager.error?.let { message ->
+                            item(key = "retry") {
+                                Column(Modifier.width(200.dp)) {
+                                    Text(message, color = Palette.muted, style = MaterialTheme.typography.bodySmall)
+                                    TextButton(onClick = { vm.loadSection(section.index, more = true) }, modifier = Modifier.tvFocusIndicator()) { Text("Retry") }
+                                }
+                            }
+                        }
                     }
                 }
             }

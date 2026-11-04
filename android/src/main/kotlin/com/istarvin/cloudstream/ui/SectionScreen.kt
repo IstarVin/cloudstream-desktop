@@ -23,11 +23,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import desktop.api.HomePage
 import desktop.api.HomeRow
 import com.istarvin.cloudstream.app
@@ -59,34 +61,54 @@ object HomePages {
     }
 }
 
-@Composable
-fun SectionScreen(provider: String, section: Int, row: String, name: String, onTitle: (String, String) -> Unit, onBack: () -> Unit) {
-    val api = LocalContext.current.app.api
-    val scope = rememberCoroutineScope()
-    val pages = remember { mutableStateListOf<HomePage>() }
-    var loading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    val grid = rememberLazyGridState()
+/** Shared pagination state; callers launch requests in their owning ViewModel's scope. */
+internal class HomeSectionPager {
+    val pages = mutableStateListOf<HomePage>()
+    var loading by mutableStateOf(false)
+        private set
+    var error by mutableStateOf<String?>(null)
+        private set
+    val rows get() = HomePages.merge(pages)
+    val hasMore get() = HomePages.hasMore(pages)
 
-    fun more() {
-        if (loading || !HomePages.hasMore(pages)) return
+    suspend fun more(fetch: suspend (Int) -> HomePage) {
+        if (loading || !hasMore) return
         loading = true
-        scope.launch {
-            try {
-                pages.add(api.home(provider, section, pages.size + 1))
-                error = null
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = e.userMessage()
-            } finally {
-                loading = false
-            }
+        error = null
+        try {
+            pages.add(fetch(pages.size + 1))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            error = e.userMessage()
+        } finally {
+            loading = false
         }
     }
+}
 
-    LaunchedEffect(Unit) { if (pages.isEmpty()) more() }
-    val rows = remember(pages.toList()) { HomePages.merge(pages) }
+class SectionViewModel(application: Application) : AndroidViewModel(application) {
+    internal val pager = HomeSectionPager()
+
+    fun more(provider: String, section: Int) {
+        viewModelScope.launch { pager.more { page -> getApplication<Application>().app.api.home(provider, section, page) } }
+    }
+}
+
+@Composable
+fun SectionScreen(provider: String, section: Int, row: String, name: String, onTitle: (String, String) -> Unit, onBack: () -> Unit) {
+    // Navigation scopes this ViewModel to the section's back-stack entry, so opening a
+    // title retains its pages. The saveable grid state can then restore the same position.
+    val vm: SectionViewModel = viewModel()
+    val pager = vm.pager
+    val pages = pager.pages
+    val loading = pager.loading
+    val error = pager.error
+    val grid = rememberLazyGridState()
+    fun more() = vm.more(provider, section)
+
+    LaunchedEffect(Unit) { if (pages.isEmpty() && error == null) more() }
+    val rows = remember(pages.toList()) { pager.rows }
     val items = HomePages.rowItems(rows, row)
     val nearEnd by remember { derivedStateOf { (grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >= grid.layoutInfo.totalItemsCount - 6 } }
     LaunchedEffect(nearEnd, pages.size) { if (nearEnd && error == null) more() }
@@ -113,7 +135,7 @@ fun SectionScreen(provider: String, section: Int, row: String, name: String, onT
                     badge = item.quality, onClick = { onTitle(item.provider, item.url) })
             }
             if (loading) item(span = { GridItemSpan(maxLineSpan) }) { Loading() }
-            error?.let { item(span = { GridItemSpan(maxLineSpan) }) { ErrorBox(it, onRetry = { error = null; more() }) } }
+            error?.let { item(span = { GridItemSpan(maxLineSpan) }) { ErrorBox(it, onRetry = { more() }) } }
             if (!loading && error == null && pages.isNotEmpty() && items.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
                 EmptyState(Icons.Filled.VideoLibrary, "No titles available", "This collection is empty right now. Go back to browse another collection.", actionLabel = "Back to browsing", onAction = onBack)
             }

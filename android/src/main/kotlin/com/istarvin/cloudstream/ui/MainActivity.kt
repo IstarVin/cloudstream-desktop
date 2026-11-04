@@ -188,8 +188,7 @@ private fun MainScaffold(onUnpair: () -> Unit) {
             }
         },
     ) { padding ->
-        Row(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()
-            .then(if (tv) Modifier.padding(horizontal = 24.dp, vertical = 12.dp) else Modifier)) {
+        Row(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
             if (wide) Column(
                 Modifier.width(if (tv) 96.dp else 200.dp).fillMaxHeight()
                     .background(Palette.surface).verticalScroll(rememberScrollState())
@@ -229,7 +228,11 @@ private fun MainScaffold(onUnpair: () -> Unit) {
             // Peer tabs crossfade; details move along a shared axis, reversed for Back. A back gesture previews the
             // pop with Android's predictive-back motion (the detail shrinks away) and the same motion commits it.
             val pushes = { d: NavDestination? -> d?.hasRoute<TitleRoute>() == true || d?.hasRoute<SectionRoute>() == true }
-            BoxWithConstraints(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.TopCenter) {
+            BoxWithConstraints(
+                Modifier.weight(1f).fillMaxHeight()
+                    .then(if (tv) Modifier.padding(horizontal = 24.dp, vertical = 12.dp) else Modifier),
+                contentAlignment = Alignment.TopCenter,
+            ) {
                 CompositionLocalProvider(LocalCatalogLayout provides CatalogLayout(expanded = maxWidth >= 720.dp, television = tv)) {
                     Column(Modifier.widthIn(max = 1400.dp).fillMaxSize().padding(horizontal = if (maxWidth >= 900.dp) 20.dp else 0.dp)) {
                         BrowserChecks()

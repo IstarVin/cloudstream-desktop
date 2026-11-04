@@ -47,8 +47,8 @@ Android layout decisions use available window/pane width, not device model. Titl
 
 - App identity uses an orange cloud silhouette with a transparent play cutout on the dark background. The canonical artwork is `web/static/favicon.svg`; run `python3 scripts/generate_icons.py` (ImageMagick required; DejaVu Sans for the TV label) to regenerate the web PNGs, Android adaptive/themed foreground and TV banner. Maskable and Apple icons use full-bleed backgrounds; Android keeps the mark within its adaptive-icon safe zone.
 
-- Shelf titles have more space above than below; use 32dp between home collections and 16dp between artwork cards.
-- Poster text sits below artwork, with two lines for titles and muted source/year metadata. Failed images retain initials and the same aspect ratio.
+- Shelf titles have more space above than below; Android home shelves use 16dp above section headings and 8dp between card targets. Web shelves retain their existing spacing.
+- Poster text sits below artwork, with at most two lines and ellipsis for titles and muted source/year metadata. Android shelves reserve two title lines to align metadata, without reserving unused metadata lines below it. Failed images retain initials and the same aspect ratio.
 - Loading shelves share the loaded poster width so content does not change scale when it arrives.
 - Primary actions use filled orange with 8dp corners; outlined actions share the same corners. Secondary actions, unselected tabs and supporting text stay quiet.
 - Text fields use a filled surface, subtle border and 8dp corners; focus changes the border to orange. Retain native keyboard actions and remote text entry.
