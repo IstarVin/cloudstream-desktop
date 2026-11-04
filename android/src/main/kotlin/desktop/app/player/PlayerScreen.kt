@@ -14,6 +14,7 @@ import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusable
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
@@ -233,6 +234,7 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
                 holdFrom = player.playbackParameters.speed
                 player.playbackParameters = PlaybackParameters(prefs.holdSpeed)
                 holding = true
+                controls = false
                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             }
 
@@ -407,7 +409,7 @@ fun PlayerScreen(vm: PlayerViewModel, prefs: PlayerPrefs, inPip: Boolean, onResi
         if (!inPip) {
             Feedback(holding, prefs.holdSpeed, scrubTarget, scrubFrom, duration, tapSeek, level)
 
-            AnimatedVisibility(controls && !locked, enter = fadeIn(), exit = fadeOut()) {
+            AnimatedVisibility(controls && !locked, enter = fadeIn(), exit = if (holding) ExitTransition.None else fadeOut()) {
                 Controls(
                     vm, s,
                     busy = busy && scrubTarget == null,

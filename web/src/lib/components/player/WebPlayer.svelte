@@ -178,6 +178,8 @@
     holdStart() {
       if (!video || video.paused) return;
       holding = true;
+      controls = false;
+      clearTimeout(hideTimer);
       rateBeforeHold = video.playbackRate;
       video.playbackRate = pref.holdSpeed;
     },
@@ -506,7 +508,7 @@
     bind:this={root}
     role="region"
     aria-label="Video player"
-    onpointermove={(e) => e.pointerType === "mouse" && poke()}
+    onpointermove={(e) => e.pointerType === "mouse" && !holding && poke()}
     bind:clientWidth={box.w}
     bind:clientHeight={box.h}
     style:--sub-scale={pref.subtitleScale}
@@ -670,7 +672,7 @@
         </div>
       {/if}
 
-      <div class="chrome" class:shown={controls} inert={!controls}>
+      <div class={["chrome", { shown: controls, holding }]} inert={!controls}>
         <div class="top">
           <button class="icon" onclick={minimize} aria-label="Minimize player" title="Minimize"
             ><ChevronDown size={26} strokeWidth={1.8} aria-hidden="true" /></button
@@ -923,6 +925,9 @@
   }
   .chrome.shown {
     opacity: 1;
+  }
+  .chrome.holding {
+    transition: none;
   }
   .chrome.shown > * {
     pointer-events: auto;
