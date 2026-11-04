@@ -12,12 +12,17 @@ and tags and verify the publishing workflows. Both components have independent v
 The dependency-free helper can also be used directly from the repository:
 
 ```bash
-python3 scripts/release.py plan both --android patch --server minor
-python3 scripts/release.py prepare both --android 0.1.0 --server 0.2.0
-# Replace the generated TODO with reviewed changes, run checks, and commit the notes.
+python3 scripts/release.py plan auto --android patch --server minor
+python3 scripts/release.py prepare auto --android 0.1.0 --server 0.2.0
+# Replace the generated TODO with reviewed changes, run checks, and commit each component's notes separately.
 # Publish from clean main after the preparation is merged:
-python3 scripts/release.py publish both --android 0.1.0 --server 0.2.0
+python3 scripts/release.py publish auto --android 0.1.0 --server 0.2.0
 ```
+
+`auto` picks the components that changed since their own last tag (path filters in `COMPONENT_PATHS`; docs,
+notes and agent files never count); `android`, `server` and `both` force a target. Each tag points at that
+component's latest change (including its own notes commit), not at `HEAD`, so the two tags can differ. Commit
+the notes of each component separately to keep them apart.
 
 `plan` prints previous tags, selected versions, and notes paths without changing files. `prepare` creates missing
 notes without overwriting existing ones. The default bump is patch; without tags the baseline is `0.0.0`, so use
@@ -25,7 +30,7 @@ an exact version if the first release should be `0.1.0`. Fetch origin tags befor
 Prerelease suffixes are supported; use exact versions to promote or advance prereleases.
 
 `publish` requires exact versions and finished, committed notes. It creates annotated tags and atomically pushes
-main and the selected tags. It rejects existing versions and never overwrites tags. It does not run tests itself;
+main and the selected tags (each at its own commit). It rejects existing versions and never overwrites tags. It does not run tests itself;
 the skill runs checks before publishing. A failed push can leave local tags; inspect local and remote state before
 retrying the same push.
 

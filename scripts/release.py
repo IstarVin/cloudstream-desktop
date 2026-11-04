@@ -12,6 +12,17 @@ import sys
 VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?")
 
 
+# Paths whose changes ship in each component. They are aids for choosing what to release, not proof: a commit
+# can still matter outside them (the skill reviews diffs), and docs/notes/agent files never count.
+BUILD_FILES = ["build.gradle.kts", "settings.gradle.kts", "gradle.properties", "gradle/", "gradlew"]
+COMPONENT_PATHS = {
+    "android": ["android/", "shared/", "testdata/", ".github/workflows/android-release.yml", *BUILD_FILES],
+    "server": ["server/", "web/", "compat/", "mpv/", "docker/", "shared/", "testdata/", "packaging/", "Dockerfile",
+               "docker-compose.yml", ".github/workflows/docker.yml", *BUILD_FILES],
+}
+IGNORED = [":(exclude,glob)**/*.md"]
+
+
 def git(*args):
     return subprocess.check_output(["git", *args], text=True).strip()
 
@@ -59,7 +70,7 @@ def compare(a, b):
     return (len(ap.split(".")) > len(bp.split("."))) - (len(ap.split(".")) < len(bp.split(".")))
 
 
-def plan(target, requested):
+def previous_version(target):
     versions = []
     for tag in git("tag", "--list", f"{target}-v*").splitlines():
         version = tag.removeprefix(f"{target}-v")
@@ -68,7 +79,33 @@ def plan(target, requested):
         except ValueError:
             continue
         versions.append(version)
-    previous = max(versions, key=cmp_to_key(compare)) if versions else None
+    return max(versions, key=cmp_to_key(compare)) if versions else None
+
+
+def source_commits(target, previous):
+    """Commits since the component's last tag (all history for a first release) that touch its paths, newest first."""
+    rev = f"{target}-v{previous}..HEAD" if previous else "HEAD"
+    out = git("log", "--format=%H %s", rev, "--", *COMPONENT_PATHS[target], *IGNORED)
+    return [line for line in out.splitlines() if line]
+
+
+def release_commit(target, previous, notes):
+    """The commit to tag: the latest one touching the component, counting its own release notes so the tagged tree
+    contains them (the release workflows read the notes from the tag). None when nothing changed."""
+    if not source_commits(target, previous):
+        return None
+    candidates = [git("log", "-1", "--format=%H", "HEAD", "--", *COMPONENT_PATHS[target], *IGNORED),
+                  git("log", "-1", "--format=%H", "HEAD", "--", notes)]
+    candidates = [c for c in candidates if c]
+    best = candidates[0]
+    for other in candidates[1:]:
+        if subprocess.run(["git", "merge-base", "--is-ancestor", best, other]).returncode == 0:
+            best = other
+    return best
+
+
+def plan(target, requested):
+    previous = previous_version(target)
     if requested in ("patch", "minor", "major"):
         numbers = list(parse(previous or "0.0.0")[0])
         index = {"major": 0, "minor": 1, "patch": 2}[requested]
@@ -81,8 +118,21 @@ def plan(target, requested):
     if previous and compare(version, previous) <= 0:
         raise ValueError(f"{target}: {version} must be newer than {previous}")
     tag = f"{target}-v{version}"
+    notes = f"release-notes/{tag}.md"
+    commit = release_commit(target, previous, notes)
     return {"target": target, "previous_tag": f"{target}-v{previous}" if previous else None,
-            "version": version, "tag": tag, "notes": f"release-notes/{tag}.md"}
+            "version": version, "tag": tag, "notes": notes, "commit": commit,
+            "commit_subject": git("log", "-1", "--format=%s", commit) if commit else None,
+            "changes": source_commits(target, previous)}
+
+
+def select_targets(target):
+    """Expand 'auto' to the components with changes since their last tag."""
+    if target == "both":
+        return ["android", "server"]
+    if target != "auto":
+        return [target]
+    return [t for t in ("android", "server") if source_commits(t, previous_version(t))]
 
 
 def prepare(items):
@@ -107,11 +157,14 @@ def publish(items):
     remote_tags = {line.split()[1] for line in git("ls-remote", "--tags", "origin").splitlines()}
     local_tags = set(git("tag", "--list").splitlines())
     for item in items:
-        path = Path(item["notes"])
-        body = path.read_text() if path.is_file() else ""
+        if not item["commit"]:
+            raise ValueError(f"No {item['target']} changes since {item['previous_tag']}; nothing to release.")
+        # Workflows read the notes from the tagged commit, so check them there rather than in the working tree.
+        shown = subprocess.run(["git", "show", f"{item['commit']}:{item['notes']}"], text=True, capture_output=True)
+        body = shown.stdout if shown.returncode == 0 else ""
         if not body.strip() or re.search(r"\b(TODO|TBD)\b", body, re.I):
-            raise ValueError(f"Write finished release notes in {path} before publishing.")
-        git("ls-files", "--error-unmatch", str(path))
+            raise ValueError(f"Commit finished release notes in {item['notes']} at {item['commit'][:9]} "
+                             f"(the latest {item['target']} change) before publishing.")
         if f"refs/tags/{item['tag']}" in remote_tags:
             raise ValueError(f"Remote tag already exists: {item['tag']}")
         if item["tag"] in local_tags:
@@ -119,7 +172,7 @@ def publish(items):
     created = []
     try:
         for item in items:
-            subprocess.run(["git", "tag", "-a", item["tag"], "-m", f"Release {item['tag']}"], check=True)
+            subprocess.run(["git", "tag", "-a", item["tag"], item["commit"], "-m", f"Release {item['tag']}"], check=True)
             created.append(item["tag"])
         subprocess.run(["git", "push", "--atomic", "origin", "HEAD:refs/heads/main",
                         *[f"refs/tags/{tag}" for tag in created]], check=True)
@@ -138,19 +191,22 @@ def publish(items):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("plan", "prepare", "publish"))
-    parser.add_argument("target", choices=("android", "server", "both"))
+    parser.add_argument("target", choices=("auto", "android", "server", "both"),
+                        help="auto (default choice): release only components changed since their last tag")
     parser.add_argument("bump", nargs="?", default="patch", help="patch (default), minor, major, or exact version")
     parser.add_argument("--android", help="Override Android bump or exact version")
     parser.add_argument("--server", help="Override server bump or exact version")
     args = parser.parse_args()
     root = Path(git("rev-parse", "--show-toplevel"))
     os.chdir(root)
-    targets = ("android", "server") if args.target == "both" else (args.target,)
+    fetch_tags()
+    targets = select_targets(args.target)
     requests = {target: getattr(args, target) or args.bump for target in targets}
     if args.command == "publish" and any(value in ("patch", "minor", "major") for value in requests.values()):
-        parser.error("publish requires exact prepared versions, e.g. publish both --android 0.1.0 --server 0.2.0")
-    fetch_tags()
+        parser.error("publish requires exact prepared versions, e.g. publish auto --android 0.1.0 --server 0.2.0")
     items = [plan(target, requests[target]) for target in targets]
+    if args.command != "plan" and not items:
+        raise ValueError("Nothing to release: no component has changes since its last tag.")
     if args.command == "prepare":
         prepare(items)
     elif args.command == "publish":
