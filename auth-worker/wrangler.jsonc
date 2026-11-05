@@ -7,5 +7,4 @@
     "bindings": [{ "name": "AUTH", "class_name": "OwnerAuth" }],
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["OwnerAuth"] }],
-  "limits": { "cpu_ms": 30000 },
 }
