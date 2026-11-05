@@ -3,6 +3,8 @@
   "name": "cloudstream-auth",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-01",
+  // The Svelte portal is built by `vp build`; the Worker serves it so its security headers apply.
+  "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": true },
   "durable_objects": {
     "bindings": [{ "name": "AUTH", "class_name": "OwnerAuth" }],
   },

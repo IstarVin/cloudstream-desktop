@@ -1,8 +1,8 @@
 import { scryptAsync } from "@noble/hashes/scrypt.js";
-import { page, script, style } from "./portal";
 
 interface Env {
   AUTH: DurableObjectNamespace;
+  ASSETS: Fetcher;
   OWNER_USERNAME?: string;
   OWNER_PASSWORD?: string;
   SERVER_SECRET: string;
@@ -91,18 +91,10 @@ export default {
       const url = new URL(request.url);
       if (url.protocol !== "https:" && !["localhost", "127.0.0.1"].includes(url.hostname))
         throw new Failure(400, "HTTPS required");
-      if (request.method === "GET" && ["/", "/activate", "/account"].includes(url.pathname))
-        return secure(
-          new Response(page, { headers: { "content-type": "text/html;charset=utf-8" } }),
-        );
-      if (request.method === "GET" && url.pathname === "/app.js")
-        return secure(
-          new Response(script, { headers: { "content-type": "text/javascript;charset=utf-8" } }),
-        );
-      if (request.method === "GET" && url.pathname === "/style.css")
-        return secure(
-          new Response(style, { headers: { "content-type": "text/css;charset=utf-8" } }),
-        );
+      if (request.method === "GET" && !url.pathname.startsWith("/api/")) {
+        const portal = ["/", "/activate", "/account"].includes(url.pathname);
+        return secure(await env.ASSETS.fetch(portal ? new URL("/", url) : request));
+      }
       return secure(await env.AUTH.get(env.AUTH.idFromName("owner")).fetch(request));
     } catch (e) {
       return secure(

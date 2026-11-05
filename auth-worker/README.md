@@ -2,18 +2,22 @@
 
 One central Worker handles the owner account, device approvals, and account-wide sign-out. A SQLite-backed Durable Object stores the salted password hash, hashed portal sessions, rate limits, and temporary device grants. There is no registration.
 
+## Layout
+
+The Worker is `src/index.ts`. The portal is a Svelte 5 app in `web/`, built by Vite+ (`vp build`) into `dist/` and served by the Worker through its static-assets binding, so the same security headers and CSP apply.
+
 ## Deploy
 
-Use Node 22 or newer and a Cloudflare account with Workers Paid enabled. The password hashing work needs more CPU than the Free plan's per-request budget. The checked-in Wrangler configuration allows up to 30 seconds of CPU; normal requests should take far less.
+Use Node 22 or newer, pnpm, and a Cloudflare account with Workers Paid enabled. The password hashing work needs more CPU than the Free plan's per-request budget. The checked-in Wrangler configuration allows up to 30 seconds of CPU; normal requests should take far less.
 
 ```sh
 cd auth-worker
-npm ci
+pnpm install
 npx wrangler login
 npx wrangler secret put OWNER_USERNAME
 npx wrangler secret put OWNER_PASSWORD
 npx wrangler secret put SERVER_SECRET
-npm run deploy
+pnpm run deploy
 ```
 
 Enter an owner username and a unique password of at least 12 characters. Generate the service secret with `openssl rand -hex 32`; enter it as `SERVER_SECRET` and configure the same value on your server. Do not use the owner password as the service secret.
@@ -43,12 +47,12 @@ Sessions last 30 days. Web uses a host-only HttpOnly cookie; Android uses a bear
 ## Local checks
 
 ```sh
-npm run check
-npm test
-npx wrangler deploy --dry-run
+pnpm run check
+pnpm test    # builds the portal, then runs the Worker tests
+pnpm exec wrangler deploy --dry-run
 ```
 
-The tests run in Cloudflare's local Workers runtime and exercise approval, replay prevention, expiry, server binding, rejection, credential changes, and rate limits. To manually run the portal locally, copy `.dev.vars.example` to `.dev.vars`, replace its example values, and run `npm run dev`. The portal cookie is Secure; use HTTPS for a browser session. Production server configuration deliberately requires an HTTPS Worker origin.
+The tests run in Cloudflare's local Workers runtime and exercise approval, replay prevention, expiry, server binding, rejection, credential changes, and rate limits. To manually run the portal locally, copy `.dev.vars.example` to `.dev.vars`, replace its example values, and run `pnpm run build && pnpm run dev:worker`. For portal hot reload, run `pnpm run dev` (Vite+, proxies `/api` to the Worker on port 8787). The portal cookie is Secure; use HTTPS for a browser session. Production server configuration deliberately requires an HTTPS Worker origin.
 
 ## Operations
 
