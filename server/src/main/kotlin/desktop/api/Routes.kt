@@ -1,6 +1,7 @@
 package desktop.api
 
 import desktop.auth.Auth
+import desktop.auth.authRoutes
 import desktop.cast.DeviceHub
 import desktop.cdp.Chromium
 import desktop.cdp.Clearances
@@ -19,7 +20,6 @@ import desktop.plugins.PluginHost
 import desktop.plugins.RepoSource
 import io.ktor.http.CacheControl
 import io.ktor.http.ContentType
-import io.ktor.http.Cookie
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.defaultForFilePath
 import io.ktor.server.application.ApplicationCall
@@ -27,7 +27,6 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.cacheControl
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
-import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.response.respondTextWriter
 import io.ktor.server.routing.Route
@@ -108,33 +107,13 @@ private suspend fun ApplicationCall.sse(block: suspend (emit: suspend (event: St
 }
 
 fun Route.apiRoutes(s: Services) {
-    get("/pair") {
-        val token = call.request.queryParameters["token"]
-        if (!s.auth.matches(token)) return@get call.respondText("This pairing link is no longer valid. Scan the code on the desktop again.", status = HttpStatusCode.Forbidden)
-        call.response.cookies.append(Cookie(Auth.COOKIE, token!!, maxAge = 400 * 86400, httpOnly = true, path = "/", extensions = mapOf("SameSite" to "Lax")))
-        call.respondRedirect("/")
-    }
+    authRoutes(s.auth)
 
     get("/proxy/{token}/{encoded}/{name?}") {
         s.proxy.serve(call, call.parameters["token"]!!, call.parameters["encoded"]!!)
     }
 
     route("/api") {
-        get("/auth/status") {
-            call.respond(AuthStatus(s.auth.isAuthorized(call), s.auth.isLoopback(call)))
-        }
-        get("/auth/pairing") {
-            if (!s.auth.isLoopback(call)) return@get call.respond(HttpStatusCode.Forbidden, mapOf("error" to "Only from the desktop"))
-            val lan = s.auth.lanAddresses().map { "http://$it:${s.port}" }
-            val base = lan.firstOrNull() ?: "http://127.0.0.1:${s.port}"
-            call.respond(PairingInfo("$base/pair?token=${s.auth.token}", s.auth.token, lan))
-        }
-        post("/auth/rotate") {
-            if (!s.auth.isLoopback(call)) return@post call.respond(HttpStatusCode.Forbidden, mapOf("error" to "Only from the desktop"))
-            s.auth.rotate()
-            call.respond(mapOf("ok" to true))
-        }
-
         get("/status") {
             val plugins = s.host.plugins
             call.respond(StatusDto(

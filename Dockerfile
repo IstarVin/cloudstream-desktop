@@ -48,7 +48,7 @@ USER app
 ENV XDG_CONFIG_HOME=/config XDG_DATA_HOME=/data
 VOLUME ["/config", "/data"]
 EXPOSE 6969
-# /api/auth/status is reachable without a pairing token.
+# /api/auth/status is public; all app data requires sign-in, including on localhost.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD curl -fsS http://127.0.0.1:6969/api/auth/status >/dev/null || exit 1
 ENTRYPOINT ["/app/entrypoint.sh"]

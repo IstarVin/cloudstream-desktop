@@ -1,286 +1,171 @@
 package com.istarvin.cloudstream.ui
 
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ExperimentalGetImage
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.QrCodeScanner
-import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.TextButton
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.common.InputImage
 import com.istarvin.cloudstream.app
+import com.istarvin.cloudstream.data.ApiException
 import com.istarvin.cloudstream.data.ServerConfig
+import desktop.api.DeviceAuthorization
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.util.concurrent.Executors
 
-/** Pairing: scan the code on the desktop's Settings page, or type its address and token. */
+/** A server address followed by device-code sign-in (the TV default) or owner credentials. */
 @Composable
 fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
     val context = LocalContext.current
     val tv = LocalTv.current
-    val addressFocus = remember { FocusRequester() }
-    InitialTvFocus(addressFocus)
+    val api = context.app.api
     val scope = rememberCoroutineScope()
-    var scanning by remember { mutableStateOf(false) }
-    var manual by rememberSaveable { mutableStateOf(false) }
-    var address by rememberSaveable { mutableStateOf("") }
-    var token by rememberSaveable { mutableStateOf("") }
-    var checking by remember { mutableStateOf(false) }
+    val addressFocus = remember { FocusRequester() }
+    val actionFocus = remember { FocusRequester() }
+    InitialTvFocus(addressFocus)
+    var address by rememberSaveable { mutableStateOf(api.server?.baseUrl.orEmpty()) }
+    var base by remember { mutableStateOf<String?>(null) }
+    var serverName by remember { mutableStateOf("") }
+    var username by rememberSaveable { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var passwordMode by remember { mutableStateOf(false) }
+    var grant by remember { mutableStateOf<DeviceAuthorization?>(null) }
+    var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf(message) }
+    var remaining by remember { mutableIntStateOf(0) }
+    val deviceName = remember(tv) { if (tv) "Android TV (${android.os.Build.MODEL})".take(100) else "Android (${android.os.Build.MODEL})".take(100) }
+    val passwordAllowed = base?.let { url -> ServerConfig.parse(url)?.url?.let { it.isHttps || it.host in setOf("localhost", "127.0.0.1", "::1") } } ?: false
 
-    BackHandler(enabled = scanning && !checking) { scanning = false }
+    LaunchedEffect(base, passwordMode) {
+        if (tv && base != null) { withFrameNanos { }; actionFocus.requestFocus() }
+    }
 
-    fun tryPair(config: ServerConfig?) {
-        if (checking) return
-        if (config == null) {
-            error = "That isn't a Cloudstream Desktop pairing code."
-            return
-        }
-        checking = true
-        error = null
+    fun start() {
+        val url = base ?: return
+        grant = null; error = null; busy = true
         scope.launch {
-            try {
-                val status = context.app.api.authStatus(config)
-                if (status.authed) onPaired(config) else error = "The desktop refused this token. Check the code in desktop Settings."
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = "Couldn't reach ${config.baseUrl}. ${e.userMessage()}"
-            } finally {
-                checking = false
-                scanning = false
-            }
+            try { grant = api.startSignIn(url, deviceName) }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { error = e.userMessage() }
+            finally { busy = false }
         }
     }
-    val canConnect = !checking && address.isNotBlank() && (token.isNotBlank() || "token=" in address)
-    fun connect() { if (canConnect) tryPair(ServerConfig.parse(address, token)) }
-
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) scanning = true else {
-            manual = true
-            error = "Camera permission is needed to scan. You can type the address instead."
+    fun connect() {
+        val config = ServerConfig.parse(address)
+        if (config == null) { error = "Enter a server address, such as 192.168.1.10:6969."; return }
+        busy = true; error = null
+        scope.launch {
+            try {
+                val status = api.authStatus(config)
+                if (!status.configured) { error = "Authentication needs to be configured on this server."; return@launch }
+                serverName = status.serverName; base = config.baseUrl
+                grant = api.startSignIn(config.baseUrl, deviceName)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { error = "Couldn't connect. ${e.userMessage()}" }
+            finally { busy = false }
         }
+    }
+    fun login() {
+        val url = base ?: return
+        val secret = password; password = ""; error = null; busy = true
+        scope.launch {
+            try {
+                val result = api.login(url, username, secret, deviceName)
+                onPaired(ServerConfig(url, result.token ?: error("Missing session")))
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { error = e.userMessage() }
+            finally { busy = false }
+        }
+    }
+    LaunchedEffect(grant, base) {
+        val active = grant ?: return@LaunchedEffect
+        val url = base ?: return@LaunchedEffect
+        val expires = android.os.SystemClock.elapsedRealtime() + active.expiresIn * 1000L
+        var nextPoll = android.os.SystemClock.elapsedRealtime() + active.interval * 1000L
+        while (android.os.SystemClock.elapsedRealtime() < expires) {
+            remaining = ((expires - android.os.SystemClock.elapsedRealtime()) / 1000).toInt().coerceAtLeast(0)
+            delay(1000)
+            if (android.os.SystemClock.elapsedRealtime() < nextPoll) continue
+            try {
+                val result = api.pollSignIn(url, active.deviceCode)
+                if (result.status == "approved") {
+                    onPaired(ServerConfig(url, result.token ?: error("Missing session")))
+                    return@LaunchedEffect
+                }
+                error = null
+            } catch (e: CancellationException) { throw e }
+            catch (e: ApiException) {
+                if (e.code == 410) { grant = null; error = e.message; return@LaunchedEffect }
+                error = e.userMessage()
+            } catch (e: Exception) { error = "Connection interrupted. Retrying… ${e.userMessage()}" }
+            nextPoll = android.os.SystemClock.elapsedRealtime() + active.interval * 1000L
+        }
+        grant = null; error = "This code expired. Get a new code to continue."
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
         val wide = maxWidth >= 720.dp
         val intro: @Composable () -> Unit = {
-            Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                Box(
-                    Modifier.size(56.dp).clip(MaterialTheme.shapes.large).background(Palette.accent),
-                    contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Rounded.PlayArrow, null, tint = Palette.accentInk, modifier = Modifier.size(32.dp)) }
-                Text("Cloudstream", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
-                Text(
-                    "Watch on your ${if (tv) "TV" else "phone"}, with the sources and library from your desktop. Both need to be on the same network.",
-                    color = Palette.muted,
-                )
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PairStep(1, "On the desktop, open Settings and find Pair a phone.")
-                    PairStep(2, if (tv) "Enter the desktop address and token shown under the code." else "Scan the code it shows with this phone.")
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("Cloudstream", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.semantics { heading() })
+                Text(if (base == null) "Enter your server address to open your sources and library on this ${if (tv) "TV" else "device"}." else serverName, color = Palette.muted)
+                if (base != null) Text(base.orEmpty(), color = Palette.muted, style = MaterialTheme.typography.bodyMedium)
             }
         }
         val form: @Composable () -> Unit = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (scanning) {
-                    QrScanner(
-                        Modifier.fillMaxWidth().aspectRatio(1f).clip(MaterialTheme.shapes.extraLarge),
-                        onError = {
-                            scanning = false
-                            manual = true
-                            error = "Couldn't open the camera. Enter the desktop address and token instead."
-                        },
-                        onCode = { text -> if (!checking) tryPair(ServerConfig.parse(text)) },
-                    )
-                    Text("Point the camera at the code on your desktop.", color = Palette.muted, style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(shape = MaterialTheme.shapes.small, onClick = { scanning = false }, enabled = !checking, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator()) { Text("Cancel") }
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (base == null) {
+                    RemoteTextField(address, { address = it }, label = { Text("Server address") }, placeholder = { Text("192.168.1.10:6969") },
+                        enabled = !busy, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Go),
+                        keyboardActions = KeyboardActions(onGo = { if (!busy) connect() }), modifier = Modifier.fillMaxWidth().focusRequester(addressFocus))
+                    Button(shape = MaterialTheme.shapes.small, onClick = ::connect, enabled = !busy && address.isNotBlank(), modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator()) { Text(if (busy) "Connecting…" else "Continue") }
+                } else if (passwordMode) {
+                    Text("Sign in", style = MaterialTheme.typography.headlineSmall)
+                    RemoteTextField(username, { username = it }, label = { Text("Username") }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth().focusRequester(actionFocus))
+                    RemoteTextField(password, { password = it }, label = { Text("Password") }, enabled = !busy, singleLine = true, visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { if (!busy && username.isNotBlank() && password.isNotEmpty()) login() }), modifier = Modifier.fillMaxWidth())
+                    Button(shape = MaterialTheme.shapes.small, onClick = ::login, enabled = !busy && username.isNotBlank() && password.isNotEmpty(), modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator()) { Text(if (busy) "Signing in…" else "Sign in") }
                 } else {
-                    if (!tv) Button(shape = MaterialTheme.shapes.small,
-                        onClick = {
-                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) scanning = true
-                            else permission.launch(Manifest.permission.CAMERA)
-                        },
-                        enabled = !checking,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator(),
-                    ) {
-                        Icon(Icons.Rounded.QrCodeScanner, null)
-                        Text("Scan pairing code", Modifier.padding(start = 8.dp))
+                    val active = grant
+                    if (active != null) {
+                        Text("Sign in on another device", style = MaterialTheme.typography.headlineSmall)
+                        Text("Open this address, sign in, and enter the code:", color = Palette.muted)
+                        Text(active.verificationUri, style = MaterialTheme.typography.bodyLarge, color = Palette.accent)
+                        Text(active.userCode.chunked(3).joinToString(" "), style = MaterialTheme.typography.displayMedium, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                        Text("Waiting for approval · ${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}", color = Palette.muted)
+                        if (!tv) OutlinedButton(shape = MaterialTheme.shapes.small, onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(active.verificationUri))) }.onFailure { error = "Open the address above in a browser." } }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Open sign-in page") }
                     }
-                    if (!tv) TextButton(onClick = { manual = !manual }, enabled = !checking, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp).tvFocusIndicator()) {
-                        Text(if (manual) "Hide manual entry" else "Enter the address instead")
-                    }
-                    if (manual || tv) {
-                        RemoteTextField(
-                            address, { address = it },
-                            label = { Text("Desktop address") },
-                            placeholder = { Text("192.168.1.10:6969") },
-                            enabled = !checking,
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Next),
-                            modifier = Modifier.fillMaxWidth().focusRequester(addressFocus),
-                        )
-                        RemoteTextField(
-                            token, { token = it },
-                            label = { Text("Token") },
-                            supportingText = { Text("Shown under the code in the desktop's settings.") },
-                            enabled = !checking,
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = { connect() }),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Button(shape = MaterialTheme.shapes.small, onClick = ::connect, enabled = canConnect, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator()) {
-                            Text(if (checking) "Connecting…" else "Connect")
-                        }
-                    }
+                    OutlinedButton(shape = MaterialTheme.shapes.small, onClick = ::start, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).focusRequester(actionFocus).tvFocusIndicator()) { Text(if (busy) "Getting a code…" else "Get a new code") }
                 }
-                if (checking) LinearProgressIndicator(Modifier.fillMaxWidth())
-                error?.let {
-                    Row(Modifier.semantics { liveRegion = LiveRegionMode.Assertive }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Rounded.ErrorOutline, null, tint = Palette.danger, modifier = Modifier.size(20.dp))
-                        Text(it, color = Palette.danger, style = MaterialTheme.typography.bodyMedium)
-                    }
+                if (base != null) {
+                    if (passwordAllowed) TextButton(shape = MaterialTheme.shapes.small, onClick = { grant = null; error = null; passwordMode = !passwordMode; password = ""; if (!passwordMode) start() }, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).tvFocusIndicator()) { Text(if (passwordMode) "Sign in on another device" else "Use username and password") }
+                    TextButton(shape = MaterialTheme.shapes.small, onClick = { grant = null; base = null; error = null; password = ""; passwordMode = false }, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).tvFocusIndicator()) { Text("Change server") }
                 }
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                error?.let { Text(it, color = Palette.danger, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive }) }
             }
         }
-        if (wide) {
-            Row(Modifier.fillMaxSize().padding(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f).verticalScroll(rememberScrollState())) { intro() }
-                Box(Modifier.weight(1f).verticalScroll(rememberScrollState())) { form() }
-            }
-        } else {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Gutter + 8.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
-                intro()
-                form()
-            }
-        }
-    }
-}
-
-@Composable
-private fun PairStep(number: Int, text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(Modifier.size(28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
-            Text("$number", style = MaterialTheme.typography.labelLarge)
-        }
-        Text(text)
-    }
-}
-
-@androidx.annotation.OptIn(ExperimentalGetImage::class)
-@Composable
-private fun QrScanner(modifier: Modifier, onError: () -> Unit, onCode: (String) -> Unit) {
-    val context = LocalContext.current
-    val lifecycle = LocalLifecycleOwner.current
-    val preview = remember { PreviewView(context) }
-    val currentCode by rememberUpdatedState(onCode)
-    val currentError by rememberUpdatedState(onError)
-
-    DisposableEffect(lifecycle) {
-        val executor = Executors.newSingleThreadExecutor()
-        val scanner = BarcodeScanning.getClient()
-        val future = ProcessCameraProvider.getInstance(context)
-        var disposed = false
-        var boundProvider: ProcessCameraProvider? = null
-        val p = Preview.Builder().build().also { it.surfaceProvider = preview.surfaceProvider }
-        val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
-        future.addListener({
-            if (!disposed) {
-                try {
-                    val provider = future.get()
-                    boundProvider = provider
-                    analysis.setAnalyzer(executor) { proxy ->
-                        val media = proxy.image
-                        if (media == null) {
-                            proxy.close()
-                            return@setAnalyzer
-                        }
-                        scanner.process(InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees))
-                            .addOnSuccessListener { codes ->
-                                if (!disposed) codes.firstOrNull {
-                                    it.valueType == Barcode.TYPE_URL || it.rawValue?.contains("token=") == true
-                                }?.rawValue?.let(currentCode)
-                            }
-                            .addOnCompleteListener { proxy.close() }
-                    }
-                    provider.bindToLifecycle(lifecycle, CameraSelector.DEFAULT_BACK_CAMERA, p, analysis)
-                } catch (_: Exception) {
-                    currentError()
-                }
-            }
-        }, ContextCompat.getMainExecutor(context))
-        onDispose {
-            disposed = true
-            analysis.clearAnalyzer()
-            // Never block the UI waiting for camera initialization, or unbind another screen's use cases.
-            boundProvider?.unbind(p, analysis)
-            executor.shutdown()
-            scanner.close()
-        }
-    }
-    Box(modifier, contentAlignment = Alignment.Center) {
-        AndroidView({ preview }, Modifier.fillMaxSize())
+        if (wide) Row(Modifier.fillMaxSize().padding(48.dp), horizontalArrangement = Arrangement.spacedBy(64.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f).verticalScroll(rememberScrollState())) { intro() }
+            Box(Modifier.weight(1f).verticalScroll(rememberScrollState())) { form() }
+        } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(32.dp)) { intro(); form() }
     }
 }

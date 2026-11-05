@@ -18,3 +18,8 @@ android
 postman
 testdata
 server/src/main/resources/web
+
+# Authentication secrets and the independent Worker do not belong in server image layers.
+.env
+.env.*
+auth-worker

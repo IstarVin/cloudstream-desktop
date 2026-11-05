@@ -6,6 +6,10 @@ import { defineConfig, lazyPlugins } from "vite-plus";
 const server = "http://127.0.0.1:6969";
 
 export default defineConfig({
+  build: {
+    // The HLS and DASH playback engines are large, dynamically loaded dependencies.
+    chunkSizeWarningLimit: 900,
+  },
   fmt: {
     svelte: true,
   },
@@ -18,7 +22,6 @@ export default defineConfig({
     proxy: {
       "/api": { target: server, ws: true },
       "/proxy": server,
-      "/pair": server,
     },
   },
   plugins: lazyPlugins(() => [

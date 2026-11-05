@@ -270,7 +270,7 @@ fun SettingsScreen(onUnpair: () -> Unit) {
                                             onClick = { confirmUnpair = true },
                                             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
                                             modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
-                                        ) { Text("Unpair this device") }
+                                        ) { Text("Sign out this device") }
                                     }
                                 }
                             }
@@ -300,9 +300,9 @@ fun SettingsScreen(onUnpair: () -> Unit) {
     if (confirmUnpair) {
         AlertDialog(
             onDismissRequest = { confirmUnpair = false },
-            title = { Text("Unpair this device?") },
-            text = { Text("You'll need to scan the pairing code on the desktop again to reconnect. Your history and library stay on the desktop.") },
-            confirmButton = { TextButton(onClick = { confirmUnpair = false; onUnpair() }, modifier = Modifier.tvFocusIndicator()) { Text("Unpair") } },
+            title = { Text("Sign out this device?") },
+            text = { Text("You can sign in again with a device code or your username and password. Your history and library stay on the server.") },
+            confirmButton = { TextButton(onClick = { confirmUnpair = false; onUnpair() }, modifier = Modifier.tvFocusIndicator()) { Text("Sign out") } },
             dismissButton = { TextButton(onClick = { confirmUnpair = false }, modifier = Modifier.tvFocusIndicator()) { Text("Cancel") } },
         )
     }

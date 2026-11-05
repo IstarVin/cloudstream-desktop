@@ -109,7 +109,8 @@ private fun Root() {
 
     LaunchedEffect(Unit) {
         api.unauthorized.collect {
-            pairMessage = "The desktop no longer accepts this device's pairing. Pair it again from desktop Settings."
+            pairMessage = "Your session expired or was revoked. Sign in again."
+            context.app.cast.stop()
             paired = false
         }
     }
@@ -124,6 +125,10 @@ private fun Root() {
         }
     } else {
         MainScaffold(onUnpair = {
+            val previous = api.server
+            scope.launch {
+                if (previous != null) runCatching { com.istarvin.cloudstream.data.Api(previous).logout() }
+            }
             api.server = null
             scope.launch { context.app.prefs.setServer(null) }
             context.app.cast.stop()

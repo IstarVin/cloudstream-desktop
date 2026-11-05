@@ -278,7 +278,13 @@ data class PrefEntry(
 )
 
 @Serializable
-data class PairingInfo(val url: String, val token: String, val lanUrls: List<String>)
+data class DeviceAuthorization(val userCode: String, val deviceCode: String, val verificationUri: String, val expiresIn: Int, val interval: Int)
+
+@Serializable
+data class AuthSession(val id: String, val name: String, val createdAt: Long, val expiresAt: Long, val current: Boolean)
+
+@Serializable
+data class AuthResult(val status: String, val token: String? = null, val expiresAt: Long? = null)
 
 @Serializable
 data class SearchResults(val provider: String, val items: List<SearchItem>)
@@ -297,7 +303,13 @@ data class StatusDto(
 )
 
 @Serializable
-data class AuthStatus(val authed: Boolean, val loopback: Boolean)
+data class AuthStatus(
+    val authed: Boolean,
+    val loopback: Boolean,
+    val configured: Boolean = true,
+    val workerUrl: String = "",
+    val serverName: String = "Cloudstream server",
+)
 
 /**
  * Marks an episode watched or not, or (with [position]) saves how far a client's own player got. Saving a position

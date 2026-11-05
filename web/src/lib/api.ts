@@ -41,7 +41,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   });
   const text = await res.text();
   const json = text ? JSON.parse(text) : null;
-  if (!res.ok) throw new ApiError(json?.error ?? res.statusText, res.status);
+  if (!res.ok) {
+    if (res.status === 401 && !path.startsWith("/api/auth/"))
+      window.dispatchEvent(new Event("auth-expired"));
+    throw new ApiError(json?.error ?? res.statusText, res.status);
+  }
   return json as T;
 }
 
@@ -50,10 +54,40 @@ const post = <T>(path: string, body?: unknown) => request<T>("POST", path, body 
 const put = <T>(path: string, body: unknown) => request<T>("PUT", path, body);
 const q = (params: Record<string, string>) => new URLSearchParams(params).toString();
 
+export interface DeviceAuthorization {
+  userCode: string;
+  deviceCode: string;
+  verificationUri: string;
+  expiresIn: number;
+  interval: number;
+}
+export interface AuthSession {
+  id: string;
+  name: string;
+  createdAt: number;
+  expiresAt: number;
+  current: boolean;
+}
+
 export const api = {
-  authStatus: () => get<{ authed: boolean; loopback: boolean }>("/api/auth/status"),
-  pairing: () => get<{ url: string; token: string; lanUrls: string[] }>("/api/auth/pairing"),
-  rotateToken: () => post("/api/auth/rotate"),
+  authStatus: () =>
+    get<{
+      authed: boolean;
+      loopback: boolean;
+      configured: boolean;
+      workerUrl: string;
+      serverName: string;
+    }>("/api/auth/status"),
+  startSignIn: (deviceName: string) =>
+    post<DeviceAuthorization>("/api/auth/device", { deviceName }),
+  pollSignIn: (deviceCode: string) =>
+    post<{ status: string }>("/api/auth/device/poll", { deviceCode }),
+  login: (username: string, password: string, deviceName: string) =>
+    post("/api/auth/login", { username, password, deviceName }),
+  logout: () => post("/api/auth/logout"),
+  sessions: () => get<AuthSession[]>("/api/auth/sessions"),
+  revokeSession: (id: string) => request("DELETE", `/api/auth/sessions/${encodeURIComponent(id)}`),
+  revokeAll: () => post("/api/auth/revoke-all"),
   status: () => get<Status>("/api/status"),
 
   providers: () => get<Provider[]>("/api/providers"),

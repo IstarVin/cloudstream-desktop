@@ -170,13 +170,13 @@ class TvUiTest {
         compose.runOnIdle { assertEquals("Example source", picked) }
     }
 
-    @Test fun pairingStartsWithManualEntryAndRemoteFocus() {
+    @Test fun signInStartsWithServerAddressAndRemoteFocus() {
         compose.setContent { TestTheme { PairScreen(null) {} } }
-        compose.onNodeWithText("Desktop address").assertIsFocused()
-        compose.onNodeWithText("Token").assertExists()
+        compose.onNodeWithText("Server address").assertIsFocused()
+        compose.onNodeWithText("Token").assertDoesNotExist()
         compose.onNodeWithText("Scan pairing code").assertDoesNotExist()
-        compose.onNodeWithText("Connect").assertIsNotEnabled()
-        captureTvScreen("tv-pairing")
+        compose.onNodeWithText("Continue").assertIsNotEnabled()
+        captureTvScreen("tv-sign-in")
     }
 
     @Test fun postersNavigateAndActivateWithDpad() {

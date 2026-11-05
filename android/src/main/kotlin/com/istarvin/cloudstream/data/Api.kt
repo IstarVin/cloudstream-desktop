@@ -1,5 +1,7 @@
 package com.istarvin.cloudstream.data
 
+import desktop.api.AuthResult
+import desktop.api.DeviceAuthorization
 import desktop.api.AuthStatus
 import desktop.api.Bookmark
 import desktop.api.BrowserStatusDto
@@ -62,17 +64,18 @@ import kotlin.coroutines.resumeWithException
 
 val json = Json { ignoreUnknownKeys = true; explicitNulls = false; coerceInputValues = true; encodeDefaults = true }
 
-/** The paired desktop: where it is and the token its pairing QR carried. */
+/** The chosen server and this device's session token. */
 @Serializable
 data class ServerConfig(val baseUrl: String, val token: String) {
     val url: HttpUrl get() = baseUrl.toHttpUrl()
 
     companion object {
-        /** From the pairing QR (`http://host:6969/pair?token=…`) or a pasted URL plus token. */
+        /** Normalize a server address; credentials never come from URLs. */
         fun parse(text: String, token: String? = null): ServerConfig? {
             val raw = text.trim().let { if ("://" in it) it else "http://$it" }
             val url = runCatching { raw.toHttpUrl() }.getOrNull() ?: return null
-            val t = token?.trim()?.takeIf { it.isNotEmpty() } ?: url.queryParameter("token") ?: return null
+            if (url.username.isNotEmpty() || url.password.isNotEmpty() || url.encodedPath !in listOf("", "/") || url.query != null || url.fragment != null) return null
+            val t = token?.trim().orEmpty()
             val base = url.newBuilder().encodedPath("/").query(null).fragment(null).build().toString().trimEnd('/')
             return ServerConfig(base, t)
         }
@@ -86,13 +89,13 @@ data class SseEvent(val event: String, val data: String)
 
 /**
  * The desktop server's `/api`, over the same OkHttp client that loads posters, subtitles and video, so every request
- * to the server carries the pairing token.
+ * to the server carries this device's session token.
  */
 class Api(initial: ServerConfig?) {
     @Volatile var server: ServerConfig? = initial
 
     private val _unauthorized = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    /** Fires when the server refuses the token (rotated on the desktop, or a different server). */
+    /** Fires when the session expires or is revoked. */
     val unauthorized: SharedFlow<Unit> = _unauthorized
 
     val http: OkHttpClient = OkHttpClient.Builder()
@@ -102,7 +105,7 @@ class Api(initial: ServerConfig?) {
             val req = chain.request()
             val s = server
             // Only the paired server gets the token; direct stream hosts and image CDNs don't.
-            val authed = if (s != null && req.url.host == s.url.host && req.url.port == s.url.port) {
+            val authed = if (s != null && req.url.scheme == s.url.scheme && req.url.host == s.url.host && req.url.port == s.url.port) {
                 req.newBuilder().header("Authorization", "Bearer ${s.token}").build()
             } else req
             val res = chain.proceed(authed)
@@ -123,8 +126,11 @@ class Api(initial: ServerConfig?) {
             query.forEach { (k, v) -> if (v != null) addQueryParameter(k, v.toString()) }
         }.build()
 
-    private suspend fun call(request: Request): String = suspendCancellableCoroutine { cont ->
-        val call = http.newCall(request)
+    private val authHttp = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
+        .connectTimeout(10, TimeUnit.SECONDS).callTimeout(25, TimeUnit.SECONDS).build()
+
+    private suspend fun call(request: Request, client: OkHttpClient = http): String = suspendCancellableCoroutine { cont ->
+        val call = client.newCall(request)
         cont.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) = cont.resumeWithException(e)
@@ -177,11 +183,24 @@ class Api(initial: ServerConfig?) {
 
     // ---- endpoints ----------------------------------------------------------------------------------------------
 
+    private suspend inline fun <reified T> authRequest(baseUrl: String, path: String, values: Map<String, String>? = null): T {
+        val request = Request.Builder().url(baseUrl + "/api/auth/" + path)
+        if (values != null) request.post(body(json.encodeToString(values)))
+        return json.decodeFromString(call(request.build(), authHttp))
+    }
+
     suspend fun authStatus(config: ServerConfig): AuthStatus {
         val req = Request.Builder().url(config.baseUrl + "/api/auth/status")
             .header("Authorization", "Bearer ${config.token}").build()
-        return json.decodeFromString(call(req))
+        return json.decodeFromString(call(req, authHttp))
     }
+    suspend fun startSignIn(baseUrl: String, deviceName: String): DeviceAuthorization =
+        authRequest(baseUrl, "device", mapOf("deviceName" to deviceName))
+    suspend fun pollSignIn(baseUrl: String, deviceCode: String): AuthResult =
+        authRequest(baseUrl, "device/poll?client=android", mapOf("deviceCode" to deviceCode))
+    suspend fun login(baseUrl: String, username: String, password: String, deviceName: String): AuthResult =
+        authRequest(baseUrl, "login?client=android", mapOf("username" to username, "password" to password, "deviceName" to deviceName))
+    suspend fun logout() { send("POST", "/api/auth/logout", emptyMap<String, String>()) }
 
     suspend fun status(): StatusDto = get("/api/status")
     suspend fun providers(): List<ProviderDto> = get("/api/providers")

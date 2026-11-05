@@ -193,9 +193,6 @@ importers:
       jassub:
         specifier: ^2.5.23
         version: 2.5.23(patch_hash=37a2b81362176404e9da79807594b62b0b08f9bb4f9c37b05eacd2581c1c18cc)
-      jsqr:
-        specifier: ^1.4.0
-        version: 1.4.0
     devDependencies:
       '@sveltejs/adapter-static':
         specifier: ^4.0.1
@@ -1108,9 +1105,6 @@ packages:
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
-
-  jsqr@1.4.0:
-    resolution: {integrity: sha512-dxLob7q65Xg2DvstYkRpkYtmKm2sPJ9oFhrhmudT1dZvNFFTlroai3AWSpLey/w5vMcLBXRgOJsbXpdN9HzU/A==}
 
   lfa-ponyfill@1.1.1:
     resolution: {integrity: sha512-Had4tsGEHtIj58MRtf6SlubNDltxinxMSdxIn1GdwrWbye8TD+pZ+D6qKETnJ9+vQOfG9q/Ds4WUPskhyAMp5Q==}
@@ -2116,8 +2110,6 @@ snapshots:
       throughput: 1.0.2
 
   js-tokens@4.0.0: {}
-
-  jsqr@1.4.0: {}
 
   lfa-ponyfill@1.1.1: {}
 

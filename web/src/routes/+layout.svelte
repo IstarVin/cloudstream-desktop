@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { api } from "#lib/api";
   import { cast } from "#lib/cast.svelte";
   import CastButton from "#lib/components/CastButton.svelte";
@@ -47,6 +48,14 @@
       }
     })
     .catch(() => (authed = false));
+
+  onMount(() => {
+    const expired = () => {
+      location.reload();
+    };
+    window.addEventListener("auth-expired", expired);
+    return () => window.removeEventListener("auth-expired", expired);
+  });
 
   const nav = [
     { href: "/", label: "Home", icon: House },

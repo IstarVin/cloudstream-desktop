@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cloudstream-auth",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "durable_objects": {
+    "bindings": [{ "name": "AUTH", "class_name": "OwnerAuth" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["OwnerAuth"] }],
+  "limits": { "cpu_ms": 30000 },
+}

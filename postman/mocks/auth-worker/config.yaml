@@ -1,0 +1,4 @@
+version: 1
+name: auth-worker
+mockSrc: default.js
+interceptRequests: true

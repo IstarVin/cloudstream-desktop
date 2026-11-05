@@ -23,8 +23,7 @@
     "@lucide/svelte": "^1.65.0",
     "dashjs": "^5.2.1",
     "hls.js": "^1.7.4",
-    "jassub": "^2.5.23",
-    "jsqr": "^1.4.0"
+    "jassub": "^2.5.23"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^4.0.1",

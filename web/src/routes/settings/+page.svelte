@@ -31,7 +31,6 @@
     Square,
   } from "@lucide/svelte";
   import { createQuery, useQueryClient } from "@tanstack/svelte-query";
-  import QRCode from "qrcode";
   import { onDestroy } from "svelte";
 
   const client = useQueryClient();
@@ -68,11 +67,9 @@
     { id: "content", label: "Content", icon: Shield },
     { id: "browser", label: "Browser", icon: Globe },
     { id: "plugins", label: "Plugins", icon: Layers },
-    { id: "devices", label: "Pair a phone", icon: Smartphone },
+    { id: "devices", label: "Account & devices", icon: Smartphone },
   ];
-  const availableCategories = $derived(
-    categories.filter((category) => category.id !== "devices" || status.data?.loopback),
-  );
+  const availableCategories = categories;
   const activeCategory = $derived(
     availableCategories.find((category) => `#settings-${category.id}` === page.url.hash)?.id ??
       "playback",
@@ -252,27 +249,33 @@
 
   let repoUrl = $derived(settings.data?.plugin_repo_url ?? "");
 
-  // Pairing (desktop only): QR code of the pairing link.
-  let qr = $state<string | null>(null);
-  let pairUrl = $state<string | null>(null);
-  async function showPairing() {
+  const sessions = createQuery(() => ({ queryKey: ["auth-sessions"], queryFn: api.sessions }));
+  const authInfo = createQuery(() => ({ queryKey: ["auth-info"], queryFn: api.authStatus }));
+  async function signOut() {
     try {
-      const p = await api.pairing();
-      pairUrl = p.url;
-      qr = await QRCode.toDataURL(p.url, {
-        margin: 1,
-        width: 240,
-        color: { dark: "#0e0f13", light: "#ffffff" },
-      });
+      await api.logout();
+      location.reload();
     } catch (e) {
       toasts.error(e);
     }
   }
-  async function rotate() {
-    if (!confirm("Sign out every paired device? They'll need to scan a new code.")) return;
-    await api.rotateToken().catch(toasts.error);
-    await showPairing();
-    toasts.show("All devices signed out");
+  async function revoke(id: string, current: boolean) {
+    try {
+      await api.revokeSession(id);
+      if (current) location.reload();
+      else await sessions.refetch();
+    } catch (e) {
+      toasts.error(e);
+    }
+  }
+  async function revokeAll() {
+    if (!confirm("Sign out all devices connected to this server, including this browser?")) return;
+    try {
+      await api.revokeAll();
+      location.reload();
+    } catch (e) {
+      toasts.error(e);
+    }
   }
 
   const hasUpdate = (p: PluginInfo) =>
@@ -348,25 +351,43 @@
         </div>
       {/if}
 
-      {#if status.data?.loopback}
-        <section hidden={activeCategory !== "devices"} aria-labelledby="devices-heading">
-          <h2 id="devices-heading">Pair a phone</h2>
-          <p class="muted">Scan with your phone's camera to use it as a remote on this network.</p>
-          {#if qr}
-            <div class="pair">
-              <img src={qr} alt="Pairing QR code" width="200" height="200" />
-              <div class="pair-text">
-                <code>{pairUrl}</code>
-                <button class="btn" onclick={rotate}>Sign out all devices</button>
-              </div>
-            </div>
-          {:else}
-            <button class="btn start" onclick={showPairing}
-              ><Smartphone size={18} strokeWidth={1.8} aria-hidden="true" /> Show pairing code</button
+      <section hidden={activeCategory !== "devices"} aria-labelledby="devices-heading">
+        <h2 id="devices-heading">Account & devices</h2>
+        <p class="muted">
+          Sign in on a new device using its own sign-in code. Sessions last 30 days.
+        </p>
+        {#if authInfo.data?.workerUrl}
+          <p>
+            <a class="btn" href={authInfo.data.workerUrl} target="_blank" rel="noopener noreferrer"
+              >Manage account</a
             >
-          {/if}
-        </section>
-      {/if}
+          </p>
+        {/if}
+        <h3>Signed-in devices</h3>
+        {#if sessions.isPending}<p role="status">Loading devices…</p>
+        {:else if sessions.isError}<p role="alert">Could not load devices.</p>
+          <button class="btn" onclick={() => sessions.refetch()}>Try again</button>
+        {:else}
+          {#each sessions.data ?? [] as session (session.id)}
+            <div class="setting-row">
+              <span class="setting-copy"
+                ><b>{session.name}{session.current ? " (this device)" : ""}</b><small class="muted"
+                  >Expires {new Date(session.expiresAt).toLocaleDateString()}</small
+                ></span
+              >
+              <button class="btn" onclick={() => revoke(session.id, session.current)}
+                >Sign out</button
+              >
+            </div>
+          {/each}
+        {/if}
+        <div class="setting-row">
+          <button class="btn" onclick={signOut}>Sign out this browser</button><button
+            class="btn"
+            onclick={revokeAll}>Sign out all devices</button
+          >
+        </div>
+      </section>
 
       {#if settings.data}
         {@const s = settings.data}
@@ -1182,23 +1203,6 @@
   input[type="checkbox"]:checked::after {
     transform: translateX(18px);
   }
-  .pair {
-    display: flex;
-    gap: 16px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .pair img {
-    border-radius: 12px;
-    background: #fff;
-  }
-  .pair-text {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    min-width: 0;
-    flex: 1;
-  }
   code {
     font-size: 12.5px;
     word-break: break-all;
@@ -1555,12 +1559,6 @@
     }
     h2 {
       font-size: 21px;
-    }
-    .pair {
-      align-items: flex-start;
-    }
-    .pair-text {
-      flex-basis: 100%;
     }
     .plugin-tools {
       margin-top: 4px;

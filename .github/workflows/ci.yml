@@ -85,3 +85,19 @@ jobs:
           name: android-debug-apk
           path: android/build/outputs/apk/debug/android-debug.apk
           if-no-files-found: error
+
+  auth-worker:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: auth-worker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: auth-worker/package-lock.json
+      - run: npm ci
+      - name: Check authentication Worker
+        run: npm run check && npm test && npx wrangler deploy --dry-run

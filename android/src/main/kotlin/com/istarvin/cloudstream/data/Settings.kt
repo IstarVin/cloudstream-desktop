@@ -97,10 +97,12 @@ class Prefs(private val context: Context) {
     suspend fun setPlayTarget(target: String?) = context.store.edit { if (target == null) it.remove(K.playTarget) else it[K.playTarget] = target }
 
     suspend fun server(): ServerConfig? =
-        context.store.data.first()[K.server]?.let { runCatching { json.decodeFromString<ServerConfig>(it) }.getOrNull() }
+        context.store.data.first()[K.server]?.let {
+            runCatching { json.decodeFromString<ServerConfig>(it).let { config -> config.copy(token = SessionVault.open(config.token)) } }.getOrNull()
+        }
 
     suspend fun setServer(config: ServerConfig?) {
-        context.store.edit { if (config == null) it.remove(K.server) else it[K.server] = json.encodeToString(config) }
+        context.store.edit { if (config == null) it.remove(K.server) else it[K.server] = json.encodeToString(config.copy(token = SessionVault.seal(config.token))) }
     }
 
     val homeProvider: Flow<String?> = context.store.data.map { it[K.homeProvider] }

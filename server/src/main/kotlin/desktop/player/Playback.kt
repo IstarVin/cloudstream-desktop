@@ -250,7 +250,9 @@ class Playback(
         val title = listOfNotNull(s.item.details.name, s.item.label).joinToString(" · ")
         val opts = buildMap {
             put("force-media-title", title)
-            if (!needsProxy) {
+            if (needsProxy) {
+                put("http-header-fields", "${desktop.auth.Auth.INTERNAL_HEADER}: ${desktop.auth.Auth.INTERNAL_TOKEN}")
+            } else {
                 put("user-agent", ua)
                 referer?.let { put("referrer", it) }
                 if (headers.isNotEmpty()) put("http-header-fields", headers.entries.joinToString(",") { "${it.key}: ${it.value}" })
@@ -323,7 +325,7 @@ class Playback(
 
     private suspend fun addSubtitle(ipc: MpvIpc, sub: ResolvedSubtitle, select: Boolean) {
         // Share the client's cached fetch and provider interceptor: GoPlay subtitle URLs work only once.
-        val url = "http://127.0.0.1:$port/api/subtitle?id=${sub.id}"
+        val url = "http://127.0.0.1:$port/api/subtitle?id=${sub.id}&internal=${desktop.auth.Auth.INTERNAL_TOKEN}"
         runCatching { ipc.command("sub-add", url, if (select) "select" else "auto", sub.sub.lang, sub.sub.langTag ?: "") }
             .onFailure { log.debug("sub-add {} failed: {}", sub.sub.url, it.message) }
     }

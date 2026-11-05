@@ -81,6 +81,7 @@ fun serve(config: Config, db: Database, settings: Settings, host: PluginHost, sc
         }
         install(Auth.plugin(auth))
         install(StatusPages) {
+            exception<desktop.auth.AuthFailure> { call, e -> call.respond(HttpStatusCode.fromValue(e.status), mapOf("error" to e.message)) }
             exception<NotFound> { call, e -> call.respond(HttpStatusCode.NotFound, mapOf("error" to e.message)) }
             exception<ClientStreams.Gone> { call, e -> call.respond(HttpStatusCode.Gone, mapOf("error" to e.message)) }
             exception<IllegalArgumentException> { call, e -> call.respond(HttpStatusCode.BadRequest, mapOf("error" to e.message)) }

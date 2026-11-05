@@ -81,7 +81,7 @@ To check that the server is reachable:
 curl --fail http://127.0.0.1:6969/api/auth/status
 ```
 
-This returns JSON describing authorization and loopback access without requiring a token.
+This returns JSON describing authorization and setup status without requiring a session. Loopback access also requires sign-in.
 
 The first start writes `~/.config/cloudstream-desktop/config.toml`. Plugin loading
 uses a local extensions checkout when the configured path exists, otherwise the published
@@ -110,11 +110,11 @@ The headless image includes Chromium and serves the web UI and Android clients. 
 has no mpv; play in a browser or on an Android device. Published images are amd64.
 
 ```bash
-docker run -d --init --name cloudstream -p 6969:6969 --shm-size=1g -e TZ=Asia/Manila \
+docker run -d --init --name cloudstream -p 6969:6969 --shm-size=1g --env-file .env \
   -v cs-config:/config -v cs-data:/data ghcr.io/istarvin/cloudstream-desktop:latest
 ```
 
-Set `TZ` to your own timezone (the example uses `Asia/Manila`). Cloudflare compares the
+Set `TZ` in `.env` to your own timezone (for example, `Asia/Manila`). Cloudflare compares the
 browser's timezone with your IP's location, and a container defaults to UTC, which makes
 sites such as OnlyKDrama and GoPlay reject the background Chromium. Compose reads `TZ`
 from your shell (`TZ=Asia/Manila docker compose up -d --build`), or edit `docker-compose.yml`.
@@ -124,26 +124,40 @@ Or build the image locally with `docker compose up -d --build`.
 The `latest` image tracks the default branch. Versioned server releases publish
 `ghcr.io/istarvin/cloudstream-desktop:<version>`; see the release notes for the tag
 and image digest. With Compose, use `docker compose logs -f cloudstream` for logs
-and `docker compose exec cloudstream cat /data/cloudstream-desktop/token` for the token.
+to inspect startup and runtime errors.
 
 Settings live in `/config/cloudstream-desktop/config.toml`, seeded from
 [`docker/config.toml`](docker/config.toml). Restart the container after editing the file.
 The named volumes preserve configuration and data across container replacement.
 
-Container access requires pairing, including from the host browser. Read the token:
+### Authentication and connecting clients
 
-```bash
-docker exec cloudstream cat /data/cloudstream-desktop/token
-```
+Deploy the [central authentication Worker](auth-worker/README.md), then copy
+[.env.example](.env.example) to `.env` and configure `CLOUDSTREAM_AUTH_URL`,
+`CLOUDSTREAM_AUTH_SECRET` (the Worker's `SERVER_SECRET`), and a server name.
+Compose passes these to the container. Native server processes use the same environment
+variables. Set `CLOUDSTREAM_PUBLIC_ORIGIN` when an HTTPS reverse proxy terminates TLS.
 
-Then open `http://<host>:6969/pair?token=<token>`. Keep port 6969 on your trusted network;
-do not expose it directly to the internet.
+There is one owner account, seeded from Worker secrets `OWNER_USERNAME` and
+`OWNER_PASSWORD`. Change either later on the Worker site's **Account settings** page.
+The desktop browser, web clients, Android phones, and TVs all require sign-in.
 
-### Connect a phone, tablet, or TV
+On Android, enter your server address. On web, open the server's normal URL.
+Request a sign-in code, open the displayed Worker address on another device,
+sign in, and enter the six-character code. Confirm the displayed server and device.
+The waiting device signs in automatically. Android TV defaults to this method.
+Username/password entry is also available over HTTPS or localhost connections.
 
-On the desktop, open **Settings → Pair a phone**. Scan the QR code from the Android
-app or enter the server address and token manually. On Android TV, enter the address
-and token shown below the code. A browser on another device can open the pairing link.
+Each device has a separate 30-day session. Web **Settings → Account & devices**
+can sign out individual devices. Changing credentials or signing out all devices
+on the Worker invalidates sessions on every server within one minute. Existing
+pairing tokens and `/pair?token=…` links no longer work after this upgrade.
+
+Use HTTPS for a publicly reachable server; HTTP is suitable only on a trusted LAN.
+Read the [authentication contract](docs/authentication.md) for session storage,
+Worker outage behavior, and API details.
+
+### Build the Android client
 
 Build the Android app locally with an Android SDK configured through `ANDROID_HOME`
 or `local.properties`:
@@ -184,7 +198,7 @@ with a trusted certificate, for example through a reverse proxy; a plain HTTP LA
 address does not qualify.
 
 The PWA still needs a reachable server. Its service worker caches a connection-help
-page with a retry button, rather than library data, pairing tokens, or streams.
+page with a retry button, rather than library data, session tokens, or streams.
 Updates activate after existing app windows and tabs close to avoid interrupting playback.
 
 ## Configuration
@@ -213,7 +227,7 @@ from the server computer.
 | Content | Desktop path | Container path |
 | --- | --- | --- |
 | Configuration | `~/.config/cloudstream-desktop/config.toml` | `/config/cloudstream-desktop/config.toml` |
-| Database, plugins, browser profile, pairing token | `~/.local/share/cloudstream-desktop/` | `/data/cloudstream-desktop/` |
+| Database, plugins, browser profile, hashed sessions | `~/.local/share/cloudstream-desktop/` | `/data/cloudstream-desktop/` |
 
 Desktop paths respect `XDG_CONFIG_HOME` and `XDG_DATA_HOME` when set. The SQLite database
 is `cloudstream.db` in the data directory. Stop the server before copying configuration
@@ -283,8 +297,8 @@ For architecture and design context, see the [project plan](docs/PLAN.md) and
 | --- | --- |
 | Gradle cannot find `vp` | Install web dependencies and add `web/node_modules/.bin` to PATH as shown in Quick start; keep that environment for the installer too |
 | Gradle cannot find the `android` project | Configure a valid SDK with `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or `sdk.dir` in root `local.properties`, then run Gradle again |
-| A phone or TV cannot connect | Use the server's LAN address, check the bind address and firewall for TCP 6969, and pair the device |
-| Docker asks the host browser to pair | Use the container token and pairing URL from the Docker instructions |
+| A phone or TV cannot connect | Use the server's LAN address, check the bind address and firewall for TCP 6969, and sign in on the device |
+| Docker asks the host browser to sign in | Configure the authentication Worker environment variables, then sign in using a device code |
 | A config edit has no effect | Restart for startup settings; for UI settings, change the saved value in Settings because it overrides the file |
 | A provider fails to load or resolve links | Check plugin status and load errors in Settings; confirm Chromium is installed if that provider needs a browser, and use the Solve banner when offered |
 | Cloudflare sites fail in Docker (Solve banner, "Timed out") | Set `TZ` to your timezone on the container; the default UTC is flagged as a bot when it doesn't match your IP |
@@ -299,7 +313,7 @@ a container started with the `docker run` command above logs with
 ## Contributing and support
 
 Report bugs and request features through [GitHub Issues](https://github.com/IstarVin/cloudstream-desktop/issues).
-Include the client, server setup, reproduction steps, and relevant logs. Remove pairing
+Include the client, server setup, reproduction steps, and relevant logs. Remove session
 tokens and other credentials before sharing logs or configuration.
 
 For code changes, follow the source setup above, keep changes focused, and run the

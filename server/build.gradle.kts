@@ -70,6 +70,11 @@ val webBuild = tasks.register<Exec>("webBuild") {
     dependsOn(webInstall)
     workingDir = webDir
     commandLine("vp", "build")
+    if (environment.containsKey("NO_COLOR")) {
+        // Vite+ sets FORCE_COLOR for its child processes; preserve no-color output without conflicting variables.
+        environment.remove("NO_COLOR")
+        environment("FORCE_COLOR", "0")
+    }
     inputs.dir(webDir.resolve("src"))
     inputs.files(webDir.resolve("package.json"), webDir.resolve("vite.config.ts"))
     outputs.dir(layout.projectDirectory.dir("src/main/resources/web"))
@@ -89,6 +94,9 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
     archiveFileName.set("cloudstream-desktop.jar")
     // Ktor, sqlite-jdbc and kotlinx register implementations through META-INF/services.
     mergeServiceFiles()
+    filesMatching(listOf("META-INF/services/**", "META-INF/*.kotlin_module")) {
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    }
 }
 
 tasks.named<JavaExec>("run") {
