@@ -3,6 +3,10 @@ services:
     build: .
     init: true            # reaps Chromium's child processes
     shm_size: 1gb         # Chromium's shared memory
+    environment:
+      # Your own timezone (e.g. Asia/Manila). Cloudflare compares the browser's timezone with your IP's location, and
+      # a container defaults to UTC, which fails the check for most users.
+      TZ: ${TZ:-UTC}
     ports:
       - "6969:6969"
     volumes:

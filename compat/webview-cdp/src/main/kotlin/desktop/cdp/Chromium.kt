@@ -303,6 +303,9 @@ object Chromium {
         args += "about:blank"
 
         log.info("Starting Chromium ($exe, ${mode.id})")
+        if (File("/.dockerenv").exists() && System.getenv("TZ").isNullOrBlank() && java.time.ZoneId.systemDefault().id in UTC_IDS) {
+            log.warning("Chromium runs in the UTC timezone. Cloudflare rejects a browser whose timezone doesn't match its IP's location: set the TZ environment variable on the container (e.g. TZ=Asia/Manila)")
+        }
         val pb = ProcessBuilder(args).redirectErrorStream(true).redirectOutput(File(o.dataDir, "chromium.log"))
         pb.environment().putAll(env)
         if (mode == Mode.XVFB) pb.environment().remove("WAYLAND_DISPLAY")
@@ -349,6 +352,14 @@ object Chromium {
         val lock = File(profile, "SingletonLock").toPath()
         val target = runCatching { Files.readSymbolicLink(lock).toString() }.getOrNull() ?: return
         val pid = target.substringAfterLast('-').toLongOrNull() ?: return
+        // The lock is "<hostname>-<pid>". One from another host is stale: a recreated container (new hostname, same
+        // data volume) would otherwise make Chromium ask whether to take the profile over, with no display to ask on.
+        val host = target.substringBeforeLast('-')
+        if (host != localHostName()) {
+            log.info("Removing a stale Chromium profile lock from host $host")
+            listOf("SingletonLock", "SingletonCookie", "SingletonSocket").forEach { runCatching { Files.deleteIfExists(File(profile, it).toPath()) } }
+            return
+        }
         ProcessHandle.of(pid).filter { h -> h.isAlive && commandLine(h).contains(profile.absolutePath) }
             .ifPresent { h ->
                 log.info("Stopping a leftover Chromium (pid $pid) that holds the profile")
@@ -359,6 +370,10 @@ object Chromium {
                 children.filter { it.isAlive }.forEach { it.destroyForcibly() }
             }
     }
+
+    private fun localHostName(): String =
+        runCatching { File("/proc/sys/kernel/hostname").readText().trim() }.getOrNull()?.takeIf { it.isNotEmpty() }
+            ?: runCatching { InetAddress.getLocalHost().hostName }.getOrDefault("")
 
     /** Chromium rewrites its process title, which leaves Java's `ProcessHandle.info()` without its arguments. */
     private fun commandLine(h: ProcessHandle): String =
@@ -532,6 +547,8 @@ object Chromium {
         Request.Builder().url(url).headers(headers).method(method, body).build()
     }.getOrNull()
 
+    private val UTC_IDS = setOf("UTC", "Etc/UTC", "Z", "GMT", "Etc/GMT")
+
     private val BODY_METHODS = setOf("POST", "PUT", "PATCH", "PROPPATCH", "REPORT")
 
     // ---- Cloudflare ------------------------------------------------------------------------------------------
@@ -640,6 +657,9 @@ object Chromium {
     fun solveManually(id: String) {
         val challenge = _challenges.value.firstOrNull { it.id == id } ?: throw IllegalArgumentException("No such check")
         if (challenge.solving) return
+        if (System.getenv("WAYLAND_DISPLAY").isNullOrBlank() && System.getenv("DISPLAY").isNullOrBlank()) {
+            throw IllegalArgumentException("A manual check needs a display on the server; this server has no DISPLAY or WAYLAND_DISPLAY")
+        }
         _challenges.update { list -> list.map { if (it.id == id) it.copy(solving = true) else it } }
         scope.launch {
             var solved = false

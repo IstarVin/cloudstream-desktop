@@ -32,8 +32,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Chromium refuses to start as root or inside Docker's default seccomp profile with its own sandbox; the container is
-# the sandbox. The Debian wrapper script appends CHROMIUM_FLAGS from /etc/chromium.d to every launch.
-RUN printf '%s\n' 'export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --no-sandbox --disable-dev-shm-usage --disable-gpu"' > /etc/chromium.d/container
+# the sandbox. Software GL (SwiftShader), not --disable-gpu: without WebGL Cloudflare's Turnstile treats the browser as a bot. The Debian wrapper script appends CHROMIUM_FLAGS from /etc/chromium.d to every launch.
+RUN printf '%s\n' 'export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --no-sandbox --disable-dev-shm-usage --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist"' > /etc/chromium.d/container
 
 RUN useradd --uid 1000 --create-home app \
     && mkdir -p /config /data \

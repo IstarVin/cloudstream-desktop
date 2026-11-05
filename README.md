@@ -110,9 +110,14 @@ The headless image includes Chromium and serves the web UI and Android clients. 
 has no mpv; play in a browser or on an Android device. Published images are amd64.
 
 ```bash
-docker run -d --init --name cloudstream -p 6969:6969 --shm-size=1g \
+docker run -d --init --name cloudstream -p 6969:6969 --shm-size=1g -e TZ=Asia/Manila \
   -v cs-config:/config -v cs-data:/data ghcr.io/istarvin/cloudstream-desktop:latest
 ```
+
+Set `TZ` to your own timezone (the example uses `Asia/Manila`). Cloudflare compares the
+browser's timezone with your IP's location, and a container defaults to UTC, which makes
+sites such as OnlyKDrama and GoPlay reject the background Chromium. Compose reads `TZ`
+from your shell (`TZ=Asia/Manila docker compose up -d --build`), or edit `docker-compose.yml`.
 
 Or build the image locally with `docker compose up -d --build`.
 
@@ -282,6 +287,7 @@ For architecture and design context, see the [project plan](docs/PLAN.md) and
 | Docker asks the host browser to pair | Use the container token and pairing URL from the Docker instructions |
 | A config edit has no effect | Restart for startup settings; for UI settings, change the saved value in Settings because it overrides the file |
 | A provider fails to load or resolve links | Check plugin status and load errors in Settings; confirm Chromium is installed if that provider needs a browser, and use the Solve banner when offered |
+| Cloudflare sites fail in Docker (Solve banner, "Timed out") | Set `TZ` to your timezone on the container; the default UTC is flagged as a bot when it doesn't match your IP |
 | Browser playback fails for a source | Try another source or play in mpv or Android; browser codec support varies |
 | The browser offers no PWA install option | Use localhost on the server computer or HTTPS with a trusted certificate on another device |
 
