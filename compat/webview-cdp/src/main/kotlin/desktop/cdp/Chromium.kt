@@ -311,11 +311,12 @@ object Chromium {
         if (mode == Mode.XVFB) pb.environment().remove("WAYLAND_DISPLAY")
         val process = pb.start()
         try {
-            val deadline = System.currentTimeMillis() + 20_000
+            // Cold browser startup can be slow on shared CI hosts, even after DevTools starts listening.
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60)
             var endpoint: String? = null
             while (endpoint == null) {
                 if (!process.isAlive) throw ChromiumUnavailableException("Chromium exited at startup: ${logTail()}")
-                if (System.currentTimeMillis() > deadline) throw ChromiumUnavailableException("Chromium didn't open its debugging port: ${logTail()}")
+                if (System.nanoTime() > deadline) throw ChromiumUnavailableException("Chromium's debugging endpoint wasn't ready within 60 seconds: ${logTail()}")
                 endpoint = debuggerUrl(port) ?: run { delay(100); null }
             }
             val conn = CdpConnection.connect(endpoint)
