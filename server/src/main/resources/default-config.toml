@@ -10,7 +10,7 @@ bind = "0.0.0.0:6969"            # LAN remote is a v1 goal; use 127.0.0.1 to kee
 plugins.repo_urls = ["https://raw.githubusercontent.com/NropVox/cloudstream-extensions-nropvox/builds/repo.json"]   # (UI)
 plugins.dev_path = "/mnt/AJ/Projects/cloudstream-extensions-istarvin"
 plugins.build_on_start = true    # dev mode: run gradlew for enabled modules at startup
-plugins.disabled = ["Fetcharr", "StreamCorner"]   # (UI)
+# Plugins start disabled. Enable the plugins you want from Settings; the selection persists across restarts.
 
 mpv.enabled = true               # false on a headless host (Docker): never start mpv; play on a client (the Android app)
 mpv.path = "mpv"

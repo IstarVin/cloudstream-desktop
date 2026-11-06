@@ -40,6 +40,7 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
 
     val showNsfw get() = bool(SHOW_NSFW)
     val disabledPlugins get() = strings(DISABLED_PLUGINS).toSet()
+    val enabledPlugins get() = strings(ENABLED_PLUGINS).toSet()
 
     fun sourceProfiles(): List<SourceProfile> = stored(SOURCE_PROFILES)?.let {
         Json.decodeFromString<List<SourceProfile>>(it.toString())
@@ -107,6 +108,7 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
         const val AUTOPLAY_NEXT = "autoplay_next"
         const val SHOW_NSFW = "show_nsfw"
         const val DISABLED_PLUGINS = "disabled_plugins"
+        const val ENABLED_PLUGINS = "enabled_plugins"
         const val PROXY_ALL = "proxy_all"
         /** prompt | auto | off: what to do inside an AniSkip opening, ending or recap. */
         const val SKIP_SEGMENTS = "skip_segments"

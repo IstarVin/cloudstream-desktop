@@ -105,7 +105,7 @@
       const s = await api.saveSettings(patch);
       client.setQueryData(["settings"], s);
       // Visibility settings change what every list shows.
-      if ("show_nsfw" in patch || "disabled_plugins" in patch) client.invalidateQueries();
+      if ("show_nsfw" in patch || "enabled_plugins" in patch) client.invalidateQueries();
     } catch (e) {
       saveFailed = true;
       toasts.error(e);

@@ -44,6 +44,7 @@ data class Config(
                 Settings.PROXY_ALL to (bool("playback.proxy_all") ?: false),
                 Settings.SKIP_SEGMENTS to (str("playback.skip_segments")?.takeIf { it in Settings.choices.getValue(Settings.SKIP_SEGMENTS) } ?: "prompt"),
                 Settings.DISABLED_PLUGINS to ((t["plugins.disabled"] as? List<*>)?.map { it.toString() } ?: listOf("Fetcharr", "StreamCorner")),
+                Settings.ENABLED_PLUGINS to emptyList<String>(),
                 // Without a local extensions repo, plugins come from the published one.
                 Settings.PLUGIN_SOURCE to (str("plugins.source")?.takeIf { it in Settings.choices.getValue(Settings.PLUGIN_SOURCE) }
                     ?: if (File(devPath, "settings.gradle.kts").exists()) "dev" else "repo"),

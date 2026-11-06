@@ -336,7 +336,7 @@ fun Route.apiRoutes(s: Services) {
 
         get("/plugins") {
             val nsfw = s.settings.showNsfw
-            val disabled = s.settings.disabledPlugins
+            val enabled = s.settings.enabledPlugins
             val providers = s.host.providers().groupBy { it.plugin.id }
             val repo = s.host.source as? RepoSource
             call.respond(s.host.plugins.filter { nsfw || !it.info.nsfw }.map { r ->
@@ -349,7 +349,7 @@ fun Route.apiRoutes(s: Services) {
                     error = r.error,
                     nsfw = r.info.nsfw,
                     tvTypes = r.info.tvTypes,
-                    enabled = !s.host.isDisabled(r, disabled),
+                    enabled = s.host.isEnabled(r, enabled),
                     providers = providers[r.id].orEmpty().map { it.id },
                     lastUsed = r.lastUsed,
                     settingsFiles = r.loaded?.context?.openedPrefs?.sorted().orEmpty(),
@@ -387,13 +387,8 @@ fun Route.apiRoutes(s: Services) {
             val ref = call.parameters["name"]!!
             val r = s.host.plugin(ref) ?: throw NotFound("No plugin $ref")
             val enabled = call.receive<EnabledRequest>().enabled
-            val disabled = s.settings.disabledPlugins.let { d ->
-                if (!enabled) return@let d + r.id
-                // A bare name disables every repo's copy; enabling one keeps the others disabled by their ids.
-                val others = if (r.name in d) s.host.plugins.filter { it.name == r.name && it.id != r.id }.map { it.id } else emptyList()
-                d - r.id - r.name + others
-            }
-            s.settings.update(JsonObject(mapOf(Settings.DISABLED_PLUGINS to JsonArray(disabled.sorted().map { JsonPrimitive(it) }))))
+            val selected = s.settings.enabledPlugins.let { if (enabled) it + r.id else it - r.id }
+            s.settings.update(JsonObject(mapOf(Settings.ENABLED_PLUGINS to JsonArray(selected.sorted().map { JsonPrimitive(it) }))))
             call.respond(mapOf("ok" to true))
         }
         get("/plugins/{name}/settings") { call.respond(pluginSettings(s, call.parameters["name"]!!)) }

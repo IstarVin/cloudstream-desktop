@@ -131,13 +131,13 @@ class PluginHost(private val config: Config, private val settings: Settings) {
         }
     }
 
-    /** A plugin is disabled by its id, or by its bare name (which covers every repo's copy, and older settings). */
-    fun isDisabled(r: Record, disabled: Set<String> = settings.disabledPlugins) = r.id in disabled || r.name in disabled
+    /** Plugins must be enabled explicitly; repo-qualified ids keep same-named plugins independent. */
+    fun isEnabled(r: Record, enabled: Set<String> = settings.enabledPlugins) = r.id in enabled
 
     /** Ids of the enabled plugins. */
     private fun enabled(): List<String> {
-        val disabled = settings.disabledPlugins
-        return records.values.filter { !isDisabled(it, disabled) }.map { it.id }
+        val enabled = settings.enabledPlugins
+        return records.values.filter { isEnabled(it, enabled) }.map { it.id }
     }
 
     suspend fun start(scope: CoroutineScope) {
@@ -156,7 +156,7 @@ class PluginHost(private val config: Config, private val settings: Settings) {
         scope.launch { watch() }
         settings.onChange { key ->
             when (key) {
-                Settings.DISABLED_PLUGINS -> scope.launch {
+                Settings.ENABLED_PLUGINS -> scope.launch {
                     (source as? RepoSource)?.let { installEnabled(it) }
                     mutex.withLock { syncAll() }
                 }
@@ -247,12 +247,12 @@ class PluginHost(private val config: Config, private val settings: Settings) {
     private fun syncAll() {
         val src = source
         val infos = src.discover().associateBy { it.id }
-        val disabled = settings.disabledPlugins
+        val enabled = settings.enabledPlugins
         val order = records.values.sortedBy { if (it.name == "Extractors") "" else it.name }
         for (r in order) {
             val jar = src.jar(r.id)
             when {
-                isDisabled(r, disabled) -> {
+                !isEnabled(r, enabled) -> {
                     unload(r)
                     infos[r.id]?.let { r.info = it }
                     r.status = Status.DISABLED

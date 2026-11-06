@@ -344,6 +344,7 @@ export interface Settings {
   autoplay_next: boolean;
   show_nsfw: boolean;
   disabled_plugins: string[];
+  enabled_plugins: string[];
   proxy_all: boolean;
   skip_segments: SkipMode;
   chromium_mode: BrowserMode;

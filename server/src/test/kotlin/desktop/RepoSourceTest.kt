@@ -20,6 +20,9 @@ class RepoSourceTest {
     private val jars = (1..4).associateWith { "jar v$it".toByteArray() }
     @Volatile private var published = 1
     @Volatile private var badHash = false
+    @Volatile private var repoName = "Test Repo"
+    @Volatile private var repoIcon = "images/icon.png"
+    @Volatile private var pluginList = "builds/plugins.json"
 
     /** Published as a .cs3 only, like the repo's non-cross-platform plugins. */
     private val kissKh = javaClass.classLoader.getResource("KissKH.cs3")!!.readBytes()
@@ -29,7 +32,8 @@ class RepoSourceTest {
     private val server = LocalServer { ex ->
         val path = ex.requestURI.path
         when {
-            path == "/repo.json" -> ex.respond(200, """{"name":"Test Repo","iconUrl":"images/icon.png","pluginLists":["builds/plugins.json"]}""", "application/json")
+            path == "/repo.json" -> ex.respond(200, """{"name":"$repoName","iconUrl":"$repoIcon","pluginLists":["$pluginList"]}""", "application/json")
+            path == "/new/plugins.json" -> ex.respond(200, """[{"internalName":"NewPlugin","version":1}]""", "application/json")
             path == "/builds/plugins.json" -> {
                 val jar = jars.getValue(published)
                 val hash = if (badHash) sha("other".toByteArray()) else sha(jar)
@@ -69,6 +73,25 @@ class RepoSourceTest {
         assertTrue("neither a jar nor a .cs3" in repo.missingReason("Kayoanime"))
         assertFailsWith<Exception> { repo.install("Kayoanime") }
         Unit
+    }
+
+    @Test
+    fun refreshRefetchesRepositoryMetadataAndPluginLists() = runBlocking {
+        val repo = source()
+        repo.refresh()
+        repoName = "Updated Repo"
+        repoIcon = "images/new.png"
+        pluginList = "new/plugins.json"
+
+        repo.refresh()
+
+        assertEquals("Updated Repo", repo.repos().single().name)
+        assertEquals("${server.url}/images/new.png", repo.repos().single().iconUrl)
+        assertEquals(listOf("NewPlugin"), repo.discover().map { it.name })
+        val restored = source()
+        assertEquals("Updated Repo", restored.repos().single().name)
+        assertEquals("${server.url}/images/new.png", restored.repos().single().iconUrl)
+        assertEquals(listOf("NewPlugin"), restored.discover().map { it.name })
     }
 
     @Test
