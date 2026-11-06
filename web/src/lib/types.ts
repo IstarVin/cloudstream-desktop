@@ -12,6 +12,8 @@ export interface Provider {
 }
 
 export interface PluginInfo {
+  /** Unique among the plugins: the name, qualified by its repo in repo mode. API paths take this. */
+  id: string;
   name: string;
   /** Icon declared by plugins.json or the local module metadata. */
   iconUrl?: string | null;
@@ -35,6 +37,17 @@ export interface PluginInfo {
   previous?: number | null;
   /** Labelled settings the plugin declares; the form shows any other keys below them. */
   settingsSchema?: SettingField[];
+  /** Repo mode: the URL of the repo it comes from. */
+  repo?: string | null;
+}
+
+export interface RepoInfo {
+  url: string;
+  iconUrl?: string | null;
+  /** The `name` from its repo.json, once read. */
+  name?: string | null;
+  /** Why its index couldn't be read on the last check. */
+  error?: string | null;
 }
 
 export interface SettingField {
@@ -58,8 +71,10 @@ export interface PluginSource {
   /** When the repo's index was last read, or 0. */
   checkedAt: number;
   error?: string | null;
-  /** Installed plugins with a newer version in the repo. */
+  /** Ids of installed plugins with a newer version in their repo. */
   updates: string[];
+  /** The repos in priority order, with their names; plugins are grouped by these. */
+  repos?: RepoInfo[];
 }
 
 export interface SearchItem {

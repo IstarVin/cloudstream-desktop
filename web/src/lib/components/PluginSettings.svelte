@@ -6,7 +6,8 @@
   // The plugin's declared settings (its schema) as labelled fields, then a generic key/value form over its
   // preference files for every other key. Keys appear once the plugin has read them, or can be added by hand (the
   // Android settings dialogs aren't available on the desktop).
-  let { name, schema = [] }: { name: string; schema?: SettingField[] } = $props();
+  // `id` addresses the plugin in the API; `name` is what the user sees.
+  let { id, name, schema = [] }: { id: string; name: string; schema?: SettingField[] } = $props();
   let files = $state<Record<string, PrefEntry[]> | null>(null);
   let saving = $state(false);
   let revealed = $state<string[]>([]);
@@ -28,7 +29,7 @@
 
   $effect(() => {
     api
-      .pluginSettings(name)
+      .pluginSettings(id)
       .then((r) => (files = withSchema(r.files)))
       .catch(toasts.error);
   });
@@ -58,7 +59,7 @@
           entries.filter((e) => e.key.trim() && e.value !== null && e.value !== ""),
         ]),
       );
-      files = withSchema((await api.savePluginSettings(name, clean)).files);
+      files = withSchema((await api.savePluginSettings(id, clean)).files);
       toasts.show(`Saved ${name} settings`);
     } catch (e) {
       toasts.error(e);

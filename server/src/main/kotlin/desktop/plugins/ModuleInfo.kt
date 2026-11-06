@@ -12,6 +12,10 @@ data class ModuleInfo(
     val iconUrl: String?,
     /** 0 down, 1 ok, 2 slow, 3 beta. */
     val status: Int,
+    /** Unique among the source's plugins: the name, qualified by the repo in repo mode (see [RepoSource.idOf]). */
+    val id: String = name,
+    /** The repo URL it comes from (repo mode). */
+    val repo: String? = null,
 ) {
     val nsfw get() = "NSFW" in tvTypes
 

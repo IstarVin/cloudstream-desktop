@@ -20,6 +20,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Build
@@ -78,6 +80,9 @@ import desktop.plugins.SettingField
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 enum class PluginFilter(val label: String) { All("All plugins"), Updates("Updates"), Issues("Needs attention") }
 
@@ -96,7 +101,21 @@ fun filterPlugins(all: List<PluginDto>, query: String, filter: PluginFilter): Li
                 PluginFilter.Updates -> p.hasUpdate()
                 PluginFilter.Issues -> p.hasIssue()
             }
-    }.sortedBy { it.name.lowercase() }
+    }.sortedWith(compareBy({ it.name.lowercase() }, { it.id }))
+}
+
+/**
+ * Repo mode: [plugins] under each repo's label (its name, else its host), in the source's priority order; plugins from
+ * no listed repo come last under "Other". Dev mode: one unlabelled group.
+ */
+fun groupByRepo(plugins: List<PluginDto>, source: PluginSourceDto?): List<Pair<String?, List<PluginDto>>> {
+    if (source?.mode != "repo") return listOf(null to plugins)
+    val repos = source.repos.ifEmpty { source.repoUrls.map { desktop.api.RepoDto(it) } }
+    val known = repos.map { it.url }.toSet()
+    val groups = repos.map { r ->
+        (r.name ?: runCatching { java.net.URI(r.url).host }.getOrNull() ?: r.url) to plugins.filter { it.repo == r.url }
+    } + ("Other" to plugins.filter { it.repo == null || it.repo !in known })
+    return groups.filter { it.second.isNotEmpty() }
 }
 
 /** The plugins list's state and the writes it makes, so the lazy list and its detail sheet share one source of truth. */
@@ -106,6 +125,7 @@ class PluginsController(private val api: Api, private val scope: CoroutineScope,
     var query by mutableStateOf("")
     var filter by mutableStateOf(PluginFilter.All)
     var selected by mutableStateOf<String?>(null)
+    var selectedRepo by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)
     /** The desktop is building or loading plugins. */
     var building by mutableStateOf(false)
@@ -151,9 +171,33 @@ class PluginsController(private val api: Api, private val scope: CoroutineScope,
     }
 
     fun setEnabled(p: PluginDto, enabled: Boolean) = run("Couldn't ${if (enabled) "enable" else "disable"} ${p.name}") {
-        api.setPluginEnabled(p.name, enabled)
+        api.setPluginEnabled(p.id, enabled)
         load()
     }
+
+    /** Saves a new repo list; the desktop reloads plugins from it (and drops those of a removed repo), so reload once it's done. */
+    private fun setRepos(urls: List<String>, failure: String, done: String) = run(failure) {
+        api.updateSettings(JsonObject(mapOf("plugin_repo_urls" to JsonArray(urls.map(::JsonPrimitive)))))
+        building = true
+        tell(done)
+        kotlinx.coroutines.delay(500)
+        while (building) {
+            building = runCatching { api.status().building }.getOrDefault(false)
+            if (building) kotlinx.coroutines.delay(1500)
+        }
+        load()
+    }
+
+    fun addRepo(url: String) {
+        val urls = source?.repoUrls.orEmpty()
+        val u = url.trim()
+        if (u.isEmpty() || u in urls) return
+        if (!Regex("https?://\\S+").matches(u)) { tell("Enter an http(s) link to a repo.json or plugins.json"); return }
+        setRepos(urls + u, "Couldn't add the repository", "Adding repository…")
+    }
+
+    fun removeRepo(url: String) =
+        setRepos(source?.repoUrls.orEmpty() - url, "Couldn't remove the repository", "Removing repository and its plugins…")
 
     fun checkUpdates() = run("Couldn't check for updates") {
         source = api.checkPluginUpdates()
@@ -180,16 +224,29 @@ class PluginsController(private val api: Api, private val scope: CoroutineScope,
 }
 
 fun LazyListScope.pluginItems(c: PluginsController, onRetry: () -> Unit) {
-    item { PluginSource(c, onRetry) }
+    if (c.source?.mode == "repo" && c.selectedRepo == null) {
+        item { PluginSource(c, onRetry) }
+        item { RepositoryList(c) }
+        return
+    }
+    if (c.source?.mode == "repo") {
+        item {
+            TextButton(onClick = { c.selectedRepo = null; c.selected = null }, modifier = Modifier.tvFocusIndicator()) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, Modifier.size(18.dp))
+                Text("Repositories", Modifier.padding(start = 8.dp))
+            }
+            Text(c.source?.repos?.firstOrNull { it.url == c.selectedRepo }?.name ?: runCatching { java.net.URI(c.selectedRepo).host }.getOrNull() ?: c.selectedRepo.orEmpty(), style = MaterialTheme.typography.titleMedium)
+        }
+    } else item { PluginSource(c, onRetry) }
     when (val loaded = c.plugins) {
         Load.Loading -> item { Loading() }
         is Load.Failed -> item { ErrorBox(loaded.message, onRetry = onRetry) }
         is Load.Ok -> {
-            val all = loaded.value
+            val all = if (c.source?.mode == "repo") loaded.value.filter { it.repo == c.selectedRepo } else loaded.value
             if (all.isEmpty()) {
                 item {
                     Text(
-                        "No plugins installed. Add a repository in the desktop settings to get started.",
+                        "No plugins found in this source.",
                         style = MaterialTheme.typography.bodyMedium, color = Palette.muted, modifier = Modifier.padding(vertical = 12.dp),
                     )
                 }
@@ -222,7 +279,7 @@ fun LazyListScope.pluginItems(c: PluginsController, onRetry: () -> Unit) {
                     Text("${all.count { it.status.equals("loaded", true) }} loaded", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                 }
                 if (repo != null && updates > 0) {
-                    Button(shape = MaterialTheme.shapes.small, onClick = { c.update(null) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) {
+                    Button(shape = MaterialTheme.shapes.small, onClick = { c.update(all.filter { it.hasUpdate() }.map { it.id }) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) {
                         Text("Update $updates ${if (updates == 1) "plugin" else "plugins"}")
                     }
                 }
@@ -231,7 +288,67 @@ fun LazyListScope.pluginItems(c: PluginsController, onRetry: () -> Unit) {
             if (shown.isEmpty()) item {
                 Text("No plugin matches.", style = MaterialTheme.typography.bodyMedium, color = Palette.muted, modifier = Modifier.padding(vertical = 12.dp))
             }
-            items(shown, key = { "plugin-" + it.name }) { p -> PluginRow(p, onOpen = { c.selected = p.name }, onToggle = { c.setEnabled(p, it) }, enabled = !c.busy) }
+            // Repo mode: a heading per repo, in priority order, so same-named plugins from two repos are told apart.
+            for ((label, group) in groupByRepo(shown, if (c.selectedRepo != null) null else c.source)) {
+                if (label != null) item(key = "repo-$label") {
+                    Row(Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 4.dp).semantics { heading() }, verticalAlignment = Alignment.CenterVertically) {
+                        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${group.size}", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                    }
+                }
+                items(group, key = { "plugin-" + it.id }) { p -> PluginRow(p, onOpen = { c.selected = p.id }, onToggle = { c.setEnabled(p, it) }, enabled = !c.busy) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RepositoryList(c: PluginsController) {
+    var newRepo by remember { mutableStateOf("") }
+    var removing by remember { mutableStateOf<String?>(null) }
+    removing?.let { u ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text("Remove repository?") },
+            text = { Text("Plugins installed from $u are removed too.") },
+            confirmButton = { TextButton(onClick = { removing = null; c.removeRepo(u) }, modifier = Modifier.tvFocusIndicator()) { Text("Remove") } },
+            dismissButton = { TextButton(onClick = { removing = null }, modifier = Modifier.tvFocusIndicator()) { Text("Cancel") } },
+        )
+    }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Repositories", style = MaterialTheme.typography.titleMedium)
+        val source = c.source
+        source?.repoUrls?.forEach { u ->
+            val info = source.repos.firstOrNull { it.url == u }
+            val name = info?.name ?: runCatching { java.net.URI(u).host }.getOrNull() ?: u
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f).tvFocusIndicator().clickable { c.selectedRepo = u; c.query = ""; c.filter = PluginFilter.All }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(Palette.surface2), contentAlignment = Alignment.Center) {
+                        val fallback: @Composable () -> Unit = { Icon(Icons.Rounded.Extension, null, Modifier.size(22.dp), tint = Palette.muted) }
+                        val request = imageRequest(info?.iconUrl)
+                        if (request == null) fallback() else SubcomposeAsyncImage(
+                            model = request, contentDescription = null, modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit, loading = { fallback() }, error = { fallback() },
+                        )
+                    }
+                    Column(Modifier.weight(1f).padding(start = 16.dp)) {
+                        Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(u, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        info?.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.danger) }
+                    }
+                }
+                IconButton(onClick = { removing = u }, enabled = !c.busy && !c.building, modifier = Modifier.tvFocusIndicator()) {
+                    Icon(Icons.Rounded.Delete, "Remove repository $name", Modifier.size(20.dp))
+                }
+            }
+        }
+        if (source?.repoUrls.isNullOrEmpty()) Text("No repositories added yet.", style = MaterialTheme.typography.bodyMedium, color = Palette.muted)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            RemoteTextField(newRepo, { newRepo = it }, Modifier.weight(1f), enabled = !c.busy && !c.building,
+                label = { Text("Add repository") }, placeholder = { Text("https://…/repo.json") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { c.addRepo(newRepo); newRepo = "" }))
+            Button(onClick = { c.addRepo(newRepo); newRepo = "" }, enabled = newRepo.isNotBlank() && !c.busy && !c.building, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) { Text("Add") }
         }
     }
 }
@@ -277,10 +394,12 @@ private fun PluginSource(c: PluginsController, onRefresh: () -> Unit) {
             Icon(if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, Modifier.padding(start = 8.dp).size(18.dp), tint = Palette.muted)
         }
         if (expanded) {
-            source?.let {
-                Text(if (repo) it.repoUrls.joinToString("\n") else it.devPath, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+            if (repo) {
+                Text("Plugins are kept per repository. Removing a repository removes its plugins.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+            } else source?.let {
+                Text(it.devPath, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
             }
-            Text("Plugins run on your desktop. Change the source from desktop settings.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+            Text("Plugins run on your desktop; switching between local and online plugins is done in desktop settings.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
             if (!repo) {
                 TextButton(onClick = { c.toggleBuildLog() }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp), modifier = Modifier.tvFocusIndicator()) {
                     Text(if (c.buildLog == null) "Show build log" else "Hide build log")
@@ -376,8 +495,8 @@ private fun PluginRow(p: PluginDto, onOpen: () -> Unit, onToggle: (Boolean) -> U
 /** The details of one plugin: its switch, update and rollback, and the settings form it declares. */
 @Composable
 fun PluginSheet(c: PluginsController, api: Api, tell: (String) -> Unit) {
-    val name = c.selected ?: return
-    val p = (c.plugins as? Load.Ok)?.value?.firstOrNull { it.name == name }
+    val id = c.selected ?: return
+    val p = (c.plugins as? Load.Ok)?.value?.firstOrNull { it.id == id }
     if (p == null) {
         c.selected = null
         return
@@ -403,8 +522,8 @@ fun PluginSheet(c: PluginsController, api: Api, tell: (String) -> Unit) {
             SwitchRow("Enabled", p.enabled) { c.setEnabled(p, it) }
             if (repo != null && (p.hasUpdate() || p.previous != null)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                    if (p.hasUpdate()) Button(shape = MaterialTheme.shapes.small, onClick = { c.update(listOf(p.name)) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) { Text("Update to v${p.available}") }
-                    if (p.previous != null) OutlinedButton(shape = MaterialTheme.shapes.small, onClick = { c.rollback(p.name) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) { Text("Roll back to v${p.previous}") }
+                    if (p.hasUpdate()) Button(shape = MaterialTheme.shapes.small, onClick = { c.update(listOf(p.id)) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) { Text("Update to v${p.available}") }
+                    if (p.previous != null) OutlinedButton(shape = MaterialTheme.shapes.small, onClick = { c.rollback(p.id) }, enabled = !c.busy, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) { Text("Roll back to v${p.previous}") }
                 }
             }
             if (p.settingsSchema.isNotEmpty()) {
@@ -431,11 +550,11 @@ private fun prefType(f: SettingField) = when (f.type) { "boolean" -> "boolean"; 
 /** The plugin's declared settings as labelled fields, saved back through its preference files (as the web form does). */
 @Composable
 private fun PluginSettingsForm(p: PluginDto, api: Api, tell: (String) -> Unit) {
-    var loaded by remember(p.name) { mutableStateOf<Load<PluginSettingsDto>>(Load.Loading) }
-    val values = remember(p.name) { mutableStateMapOf<String, String>() }
-    val revealed = remember(p.name) { mutableStateMapOf<String, Boolean>() }
-    var saving by remember(p.name) { mutableStateOf(false) }
-    var dirty by remember(p.name) { mutableStateOf(false) }
+    var loaded by remember(p.id) { mutableStateOf<Load<PluginSettingsDto>>(Load.Loading) }
+    val values = remember(p.id) { mutableStateMapOf<String, String>() }
+    val revealed = remember(p.id) { mutableStateMapOf<String, Boolean>() }
+    var saving by remember(p.id) { mutableStateOf(false) }
+    var dirty by remember(p.id) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun fileOf(dto: PluginSettingsDto, f: SettingField) = f.file ?: dto.files.keys.firstOrNull() ?: p.name
@@ -447,13 +566,13 @@ private fun PluginSettingsForm(p: PluginDto, api: Api, tell: (String) -> Unit) {
         }
         dirty = false
     }
-    LaunchedEffect(p.name) {
-        loaded = runCatching { Load.Ok(api.pluginSettings(p.name).also(::adopt)) }.getOrElse { Load.Failed(it.userMessage()) }
+    LaunchedEffect(p.id) {
+        loaded = runCatching { Load.Ok(api.pluginSettings(p.id).also(::adopt)) }.getOrElse { Load.Failed(it.userMessage()) }
     }
 
     when (val l = loaded) {
         Load.Loading -> Loading()
-        is Load.Failed -> ErrorBox(l.message, onRetry = { loaded = Load.Loading; scope.launch { loaded = runCatching { Load.Ok(api.pluginSettings(p.name).also(::adopt)) }.getOrElse { Load.Failed(it.userMessage()) } } })
+        is Load.Failed -> ErrorBox(l.message, onRetry = { loaded = Load.Loading; scope.launch { loaded = runCatching { Load.Ok(api.pluginSettings(p.id).also(::adopt)) }.getOrElse { Load.Failed(it.userMessage()) } } })
         is Load.Ok -> Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             p.settingsSchema.forEach { f ->
                 val id = fieldId(f)
@@ -505,7 +624,7 @@ private fun PluginSettingsForm(p: PluginDto, api: Api, tell: (String) -> Unit) {
                                 values[id]?.takeIf { it.isNotEmpty() }?.let { entries += PrefEntry(f.key, prefType(f), it) }
                                 files[file] = entries
                             }
-                            val saved = api.savePluginSettings(p.name, PluginSettingsDto(files.mapValues { (_, e) -> e.filter { it.key.isNotBlank() && !it.value.isNullOrEmpty() } }))
+                            val saved = api.savePluginSettings(p.id, PluginSettingsDto(files.mapValues { (_, e) -> e.filter { it.key.isNotBlank() && !it.value.isNullOrEmpty() } }))
                             adopt(saved)
                             loaded = Load.Ok(saved)
                             tell("Saved ${p.name} settings")

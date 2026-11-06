@@ -16,6 +16,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -28,25 +29,30 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
- * Repo mode: plugins from published Cloudstream repos. Each of [urls] is a `repo.json` (its `pluginLists`) or a `plugins.json`;
- * when two repos publish the same plugin, the earlier URL wins.
+ * Repo mode: plugins from published Cloudstream repos. Each of [urls] is a `repo.json` (its `pluginLists`) or a `plugins.json`.
+ * Plugins are kept per repo: a plugin's id is its name plus its repo's [repoKey], so two repos may both publish a plugin
+ * with the same name and both can be installed and loaded. A bare plugin name still resolves (see [idFor]) to the copy
+ * from the earliest repo, which is how settings and API calls made before plugins had ids keep working.
  * The gradle plugin lists a `jarUrl`/`jarHash`/`jarFileSize` for every `isCrossPlatform` module; those jars are used as
  * they are. Any other plugin's `.cs3` (`url`/`fileHash`/`fileSize`) is converted to a jar with [Cs3Converter]. Every
  * download is checked against the repo's hash, and the previous two versions are kept in [dir] for rollback. The index
- * and what's installed are saved, so the plugins load offline.
+ * and what's installed are saved, so the plugins load offline. Removing a repo from [urls] deletes what it installed.
  */
 class RepoSource(val urls: List<String>, private val dir: File, private val http: OkHttpClient = defaultClient) : PluginSource {
     constructor(url: String, dir: File, http: OkHttpClient = defaultClient) : this(listOf(url), dir, http)
-
 
     private val log = LoggerFactory.getLogger(RepoSource::class.java)
     private val stateFile = File(dir, "state.json")
     private val jarDir = File(dir, "jars")
     private val mutex = Mutex()
     private val installErrors = ConcurrentHashMap<String, String>()
+    private val fetchErrors = ConcurrentHashMap<String, String>()
 
     @Volatile private var state: State = load()
-    @Volatile private var fetchError: String? = null
+
+    init {
+        dropRemovedRepos()
+    }
 
     /** One plugin as `plugins.json` lists it (only the fields the desktop uses). */
     @Serializable
@@ -68,6 +74,8 @@ class RepoSource(val urls: List<String>, private val dir: File, private val http
         /** The repo URL this entry came from. */
         val repo: String? = null,
     ) {
+        val id get() = idOf(internalName, repo)
+
         fun info() = ModuleInfo(
             name = internalName,
             version = version,
@@ -76,6 +84,8 @@ class RepoSource(val urls: List<String>, private val dir: File, private val http
             tvTypes = tvTypes.orEmpty(),
             iconUrl = iconUrl?.replace("%size%", "64"),
             status = status,
+            id = id,
+            repo = repo,
         )
     }
 
@@ -95,77 +105,119 @@ class RepoSource(val urls: List<String>, private val dir: File, private val http
 
     @Serializable
     private data class State(
-        val repoName: String? = null,
+        /** Each repo's `name` from its `repo.json`, by URL. */
+        val repoNames: Map<String, String> = emptyMap(),
+        /** Repository icon URLs, retained for offline use. */
+        val repoIcons: Map<String, String> = emptyMap(),
         val index: List<Entry> = emptyList(),
         val checkedAt: Long = 0,
+        /** By plugin id. */
         val installed: Map<String, Installed> = emptyMap(),
     )
 
-    val repoName get() = state.repoName
+    /** A configured repo, for the UI. */
+    data class Repo(val url: String, val key: String, val name: String?, val error: String?, val iconUrl: String?)
+
+    fun repos(): List<Repo> = urls.map { Repo(it, repoKey(it), state.repoNames[it], fetchErrors[it], state.repoIcons[it]) }
+
+    /** The repos' names, joined, or null before any was read. */
+    val repoName get() = urls.mapNotNull { state.repoNames[it] }.joinToString(", ").ifEmpty { null }
     val checkedAt get() = state.checkedAt
 
-    fun available(name: String): Entry? = state.index.firstOrNull { it.internalName == name }
-    fun installed(name: String): Installed? = state.installed[name]
-
-    /** [name]'s jar was converted by an older [Cs3Converter] from the version the repo still offers: convert it again. */
-    fun staleConversion(name: String): Boolean {
-        val current = installed(name)?.current ?: return false
-        return current.converted && current.converter < Cs3Converter.VERSION && available(name)?.version == current.entry.version
+    /**
+     * The id [ref] names: an id as it is, or a bare plugin name as the copy from the earliest repo that has it
+     * (installed copies first), or null.
+     */
+    fun idFor(ref: String): String? {
+        val s = state
+        if (ref in s.installed || s.index.any { it.id == ref }) return ref
+        val rank = { e: Entry -> urls.indexOf(e.repo).let { if (it < 0) Int.MAX_VALUE else it } }
+        return (s.installed.values.map { it.current.entry }.filter { it.internalName == ref }.minByOrNull(rank)
+            ?: s.index.filter { it.internalName == ref }.minByOrNull(rank))?.id
     }
 
-    /** The repo has something to install for [name]: a jar, or a `.cs3` to convert. */
-    fun installable(name: String): Boolean = available(name)?.let { it.jarUrl != null || it.url != null } == true
+    fun available(ref: String): Entry? = idFor(ref)?.let { id -> state.index.firstOrNull { it.id == id } }
+    fun installed(ref: String): Installed? = idFor(ref)?.let { state.installed[it] }
 
-    /** Installed plugins whose repo version is newer. */
-    fun updates(): List<String> = state.installed.filter { (name, i) ->
-        installable(name) && available(name)!!.version > i.current.entry.version
+    /** [ref]'s jar was converted by an older [Cs3Converter] from the version the repo still offers: convert it again. */
+    fun staleConversion(ref: String): Boolean {
+        val current = installed(ref)?.current ?: return false
+        return current.converted && current.converter < Cs3Converter.VERSION && available(ref)?.version == current.entry.version
+    }
+
+    /** The repo has something to install for [ref]: a jar, or a `.cs3` to convert. */
+    fun installable(ref: String): Boolean = available(ref)?.let { it.jarUrl != null || it.url != null } == true
+
+    /** Ids of installed plugins whose repo version is newer. */
+    fun updates(): List<String> = state.installed.filter { (id, i) ->
+        installable(id) && available(id)!!.version > i.current.entry.version
     }.keys.sorted()
 
-    override val error get() = fetchError?.let { if (state.checkedAt == 0L) "Couldn't reach the plugin repo: $it" else "Couldn't check for updates: $it" }
+    override val error: String?
+        get() {
+            if (fetchErrors.isEmpty()) return null
+            val detail = urls.mapNotNull { u -> fetchErrors[u]?.let { "$u: $it" } }.joinToString("; ")
+            return if (state.checkedAt == 0L) "Couldn't reach the plugin repo: $detail" else "Couldn't check for updates: $detail"
+        }
 
     override fun discover(): List<ModuleInfo> {
         val s = state
-        val names = s.index.map { it.internalName } + s.installed.keys
-        return names.distinct().map { name -> (s.installed[name]?.current?.entry ?: s.index.first { it.internalName == name }).info() }
+        val ids = s.index.map { it.id } + s.installed.keys
+        return ids.distinct().map { id -> (s.installed[id]?.current?.entry ?: s.index.first { it.id == id }).info() }
     }
 
-    override fun jar(name: String): File? = state.installed[name]?.current?.file?.let(::File)?.takeIf { it.exists() }
+    override fun jar(id: String): File? = installed(id)?.current?.file?.let(::File)?.takeIf { it.exists() }
 
-    override fun missingReason(name: String): String {
-        installErrors[name]?.let { return it }
-        val entry = available(name)
+    override fun missingReason(id: String): String {
+        @Suppress("NAME_SHADOWING") val id = idFor(id) ?: id
+        installErrors[id]?.let { return it }
+        val entry = available(id)
+        val repo = entry?.repo ?: state.installed[id]?.current?.entry?.repo
         return when {
-            entry == null && fetchError != null -> error!!
-            entry == null || !installable(name) -> "The repo publishes neither a jar nor a .cs3 for this plugin"
+            entry == null && repo != null && fetchErrors[repo] != null -> "Couldn't reach its repo: ${fetchErrors[repo]}"
+            entry == null || !installable(id) -> "The repo publishes neither a jar nor a .cs3 for this plugin"
             else -> "Not downloaded yet"
         }
     }
 
     /**
-     * Fetches every repo's index again and merges them. A repo that can't be read keeps its saved entries and is reported
-     * by [error]; throws only when none can be read, leaving the saved index in use.
+     * Deleting a repo clears what it provided: its index entries and installed jars (current and rollback versions) go.
      */
-    suspend fun refresh() = withContext(Dispatchers.IO) {
-        val results = urls.map { u -> u to runCatching { fetchIndex(u) } }
-        val failed = results.filter { it.second.isFailure }
-        if (failed.size == results.size) {
-            val e = failed.first().second.exceptionOrNull()!!
-            fetchError = e.message ?: e.javaClass.simpleName
-            throw e
-        }
-        val old = state.index
-        val merged = LinkedHashMap<String, Entry>()
-        for ((u, r) in results) {
-            (r.getOrNull()?.second ?: old.filter { it.repo == u }).forEach { merged.putIfAbsent(it.internalName, it) }
-        }
-        val names = results.mapNotNull { it.second.getOrNull()?.first }
-        mutex.withLock { save(state.copy(repoName = names.joinToString(", ").ifEmpty { null }, index = merged.values.toList(), checkedAt = System.currentTimeMillis())) }
-        fetchError = failed.takeIf { it.isNotEmpty() }?.joinToString("; ") { (u, r) -> "$u: ${r.exceptionOrNull()?.message}" }
-        failed.forEach { (u, r) -> log.warn("Plugin repo {}: {}", u, r.exceptionOrNull()?.message) }
-        log.info("Plugin repos {}: {} plugins, {} with jars (the rest are converted from their .cs3)", names.ifEmpty { urls }, merged.size, merged.values.count { it.jarUrl != null })
+    private fun dropRemovedRepos() {
+        val s = state
+        fun gone(e: Entry) = e.repo == null || e.repo !in urls
+        val dropped = s.installed.filterValues { gone(it.current.entry) }
+        if (dropped.isEmpty() && s.index.none(::gone) && s.repoNames.keys.all { it in urls } && s.repoIcons.keys.all { it in urls }) return
+        dropped.values.forEach { i -> (listOf(i.current) + i.previous).forEach { File(it.file).delete() } }
+        if (dropped.isNotEmpty()) log.info("Removed plugins of deleted repos: {}", dropped.keys.sorted())
+        save(s.copy(repoNames = s.repoNames.filterKeys { it in urls }, repoIcons = s.repoIcons.filterKeys { it in urls }, index = s.index.filterNot(::gone), installed = s.installed - dropped.keys))
     }
 
-    private fun fetchIndex(url: String): Pair<String?, List<Entry>> {
+    /**
+     * Fetches every repo's index again. A repo that can't be read keeps its saved entries and is reported by [error];
+     * throws only when none can be read, leaving the saved index in use.
+     */
+    suspend fun refresh() = withContext(Dispatchers.IO) {
+        if (urls.isEmpty()) return@withContext
+        val results = urls.map { u -> u to runCatching { fetchIndex(u) } }
+        fetchErrors.clear()
+        for ((u, r) in results) r.exceptionOrNull()?.let { fetchErrors[u] = it.message ?: it.javaClass.simpleName }
+        if (results.all { it.second.isFailure }) throw results.first().second.exceptionOrNull()!!
+        mutex.withLock {
+            val old = state
+            val index = results.flatMap { (u, r) -> r.getOrNull()?.entries ?: old.index.filter { it.repo == u } }.distinctBy { it.id }
+            val names = old.repoNames + results.mapNotNull { (u, r) -> r.getOrNull()?.name?.let { u to it } }
+            val refreshed = results.filter { it.second.isSuccess }.map { it.first }.toSet()
+            val icons = old.repoIcons.filterKeys { it !in refreshed } + results.mapNotNull { (u, r) -> r.getOrNull()?.iconUrl?.let { u to it } }
+            save(old.copy(repoNames = names.filterKeys { it in urls }, repoIcons = icons.filterKeys { it in urls }, index = index, checkedAt = System.currentTimeMillis()))
+            log.info("Plugin repos: {} plugins, {} with jars (the rest are converted from their .cs3)", index.size, index.count { it.jarUrl != null })
+        }
+        results.forEach { (u, r) -> r.exceptionOrNull()?.let { log.warn("Plugin repo {}: {}", u, it.message) } }
+    }
+
+    private data class FetchedIndex(val name: String?, val iconUrl: String?, val entries: List<Entry>)
+
+    private fun fetchIndex(url: String): FetchedIndex {
         val root = Json.parseToJsonElement(fetchText(url))
         val (name, lists) = if (root is JsonObject && "pluginLists" in root) {
             root["name"]?.jsonPrimitive?.content to root.getValue("pluginLists").jsonArray.map { resolve(url, it.jsonPrimitive.content) }
@@ -173,59 +225,63 @@ class RepoSource(val urls: List<String>, private val dir: File, private val http
             null to listOf(url)
         }
         val index = lists.flatMap { list -> entries(if (list == url) root else Json.parseToJsonElement(fetchText(list)), list).map { it.copy(repo = url) } }
-        return name to index
+        val icon = (root as? JsonObject)?.get("iconUrl")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }?.let { resolve(url, it) }
+        return FetchedIndex(name, icon, index)
     }
 
     private fun entries(json: JsonElement, base: String): List<Entry> = (json as? JsonArray ?: throw IOException("$base isn't a plugin list"))
         .map { lenient.decodeFromJsonElement<Entry>(it) }
         .map { e -> e.copy(jarUrl = e.jarUrl?.let { resolve(base, it) }, url = e.url?.let { resolve(base, it) }) }
 
-    /** Downloads the repo's version of each of [names] that isn't installed or is older. Returns the failures. */
-    suspend fun install(names: Collection<String>): Map<String, String> = coroutineScope {
+    /** Downloads the repo's version of each of [refs] that isn't installed or is older. Returns the failures by id. */
+    suspend fun install(refs: Collection<String>): Map<String, String> = coroutineScope {
         val gate = Semaphore(4)
-        names.map { name -> async { gate.withPermit { name to runCatching { install(name) }.exceptionOrNull() } } }.awaitAll()
-            .mapNotNull { (name, e) -> e?.let { name to (it.message ?: it.javaClass.simpleName) } }.toMap()
+        refs.map { ref -> async { gate.withPermit { (idFor(ref) ?: ref) to runCatching { install(ref) }.exceptionOrNull() } } }.awaitAll()
+            .mapNotNull { (id, e) -> e?.let { id to (it.message ?: it.javaClass.simpleName) } }.toMap()
     }
 
-    /** Installs the repo's version of [name]; a no-op when that version is already the current one. */
-    suspend fun install(name: String): Unit = withContext(Dispatchers.IO) {
-        val entry = available(name) ?: throw IOException("$name isn't in the repo")
-        if (!installable(name)) throw IOException(missingReason(name))
-        val current = installed(name)?.current
+    /** Installs the repo's version of [ref]; a no-op when that version is already the current one. */
+    suspend fun install(ref: String): Unit = withContext(Dispatchers.IO) {
+        val entry = available(ref) ?: throw IOException("$ref isn't in the repo")
+        val id = entry.id
+        val name = entry.internalName
+        if (!installable(id)) throw IOException(missingReason(id))
+        val current = state.installed[id]?.current
         val same = current != null && current.entry.version == entry.version &&
             current.entry.jarHash == entry.jarHash && current.entry.fileHash == entry.fileHash
-        if (same && File(current.file).exists() && !staleConversion(name)) return@withContext
+        if (same && File(current.file).exists() && !staleConversion(id)) return@withContext
         try {
             val converted = entry.jarUrl == null
-            val file = if (converted) convert(name, entry) else download(name, entry.jarUrl, entry.jarHash, entry.jarFileSize, "jar")
+            val file = if (converted) convert(entry) else download(entry, entry.jarUrl, entry.jarHash, entry.jarFileSize, "jar")
             mutex.withLock {
-                val old = state.installed[name]
+                val old = state.installed[id]
                 val previous = listOfNotNull(old?.current) + old?.previous.orEmpty()
                 val keep = previous.filter { it.entry.version != entry.version && it.file != file.path }.take(KEEP_PREVIOUS)
                 (previous - keep.toSet()).forEach { if (it.file != file.path) File(it.file).delete() }
                 val jar = Jar(entry, file.path, System.currentTimeMillis(), converted, if (converted) Cs3Converter.VERSION else 0)
-                save(state.copy(installed = state.installed + (name to Installed(jar, keep))))
+                save(state.copy(installed = state.installed + (id to Installed(jar, keep))))
             }
-            installErrors.remove(name)
-            log.info("Installed {} v{} from the repo{}", name, entry.version, if (converted) " (converted from its .cs3)" else "")
+            installErrors.remove(id)
+            log.info("Installed {} v{} from {}{}", name, entry.version, entry.repo, if (converted) " (converted from its .cs3)" else "")
         } catch (e: Exception) {
-            installErrors[name] = "Install failed: ${e.message ?: e.javaClass.simpleName}"
+            installErrors[id] = "Install failed: ${e.message ?: e.javaClass.simpleName}"
             throw e
         }
     }
 
     /** Makes the newest previous version current again. The rolled-back jar is dropped; Update fetches it again. */
-    suspend fun rollback(name: String) = mutex.withLock {
-        val old = state.installed[name] ?: throw IllegalArgumentException("$name isn't installed")
-        val back = old.previous.firstOrNull { File(it.file).exists() } ?: throw IllegalArgumentException("$name has no earlier version to roll back to")
+    suspend fun rollback(ref: String) = mutex.withLock {
+        val id = idFor(ref) ?: throw IllegalArgumentException("$ref isn't installed")
+        val old = state.installed[id] ?: throw IllegalArgumentException("$ref isn't installed")
+        val back = old.previous.firstOrNull { File(it.file).exists() } ?: throw IllegalArgumentException("$ref has no earlier version to roll back to")
         File(old.current.file).delete()
-        save(state.copy(installed = state.installed + (name to Installed(back, old.previous.drop(old.previous.indexOf(back) + 1)))))
-        log.info("Rolled {} back to v{}", name, back.entry.version)
+        save(state.copy(installed = state.installed + (id to Installed(back, old.previous.drop(old.previous.indexOf(back) + 1)))))
+        log.info("Rolled {} back to v{}", id, back.entry.version)
     }
 
     /** Downloads the `.cs3` and converts it; only the jar is kept. */
-    private fun convert(name: String, entry: Entry): File {
-        val cs3 = download(name, entry.url!!, entry.fileHash, entry.fileSize, "cs3")
+    private fun convert(entry: Entry): File {
+        val cs3 = download(entry, entry.url!!, entry.fileHash, entry.fileSize, "cs3")
         try {
             val jar = File(cs3.path.removeSuffix(".cs3") + "-converted.jar")
             Cs3Converter.convert(cs3, jar)
@@ -235,12 +291,14 @@ class RepoSource(val urls: List<String>, private val dir: File, private val http
         }
     }
 
-    /** Downloads [url] into the jar folder, checking its size and `sha256-` [hash]. */
-    private fun download(name: String, url: String, hash: String?, expectedSize: Long?, ext: String): File {
+    /** Downloads [url] into the repo's jar folder, checking its size and `sha256-` [hash]. */
+    private fun download(entry: Entry, url: String, hash: String?, expectedSize: Long?, ext: String): File {
+        val name = entry.internalName
         val expected = hash?.removePrefix("sha256-")?.lowercase() ?: throw IOException("The repo lists no hash for $name's $ext")
-        jarDir.mkdirs()
-        val target = File(jarDir, "$name-v${available(name)?.version}-${expected.take(12)}.$ext")
-        val tmp = File(jarDir, "${target.name}.part")
+        // One folder per repo, so two repos' copies of a plugin never share (and delete) each other's files.
+        val folder = File(jarDir, entry.repo?.let(::repoKey) ?: "local").apply { mkdirs() }
+        val target = File(folder, "$name-v${entry.version}-${expected.take(12)}.$ext")
+        val tmp = File(folder, "${target.name}.part")
         val digest = MessageDigest.getInstance("SHA-256")
         try {
             fetchInto(tmp, digest, name, url, expectedSize, ext)
@@ -279,7 +337,21 @@ class RepoSource(val urls: List<String>, private val dir: File, private val http
         res.body.string()
     }
 
-    private fun load(): State = runCatching { lenient.decodeFromString<State>(stateFile.readText()) }.getOrElse { State() }
+    /**
+     * Reads the saved state. Entries saved before plugins were kept per repo (no `repo`, installed keyed by bare name)
+     * came from the only repo there was then, taken to be the first of [urls].
+     */
+    private fun load(): State {
+        val s = runCatching { lenient.decodeFromString<State>(stateFile.readText()) }.getOrElse { return State() }
+        val legacy = urls.firstOrNull()
+        fun Entry.owned() = if (repo == null && legacy != null) copy(repo = legacy) else this
+        fun Jar.owned() = copy(entry = entry.owned())
+        val installed = s.installed.values.associate { i ->
+            val current = i.current.owned()
+            current.entry.id to Installed(current, i.previous.map { it.owned() })
+        }
+        return s.copy(index = s.index.map { it.owned() }, installed = installed)
+    }
 
     private fun save(s: State) {
         state = s
@@ -305,11 +377,18 @@ class RepoSource(val urls: List<String>, private val dir: File, private val http
             return File(base, id)
         }
 
-        /** All repos share one folder (jar names carry name, version and hash), so adding a repo keeps what's installed. */
+        /** A short, stable id for a repo URL; it names the repo's jar folder and qualifies its plugins' ids. */
+        fun repoKey(url: String): String =
+            MessageDigest.getInstance("SHA-1").digest(url.toByteArray()).joinToString("") { "%02x".format(it) }.take(8)
+
+        /** A plugin's id: its name, qualified by its repo when it has one. */
+        fun idOf(name: String, repo: String?): String = if (repo == null) name else "$name@${repoKey(repo)}"
+
+        /** All repos share one state file (plugins are keyed by id), so adding a repo keeps what's installed. */
         fun dirFor(base: File, urls: List<String>): File {
             val shared = File(base, "repos")
-            val legacy = legacyDirFor(base, urls.first())
-            if (!shared.exists() && legacy.exists()) legacy.renameTo(shared)
+            val legacy = urls.firstOrNull()?.let { legacyDirFor(base, it) }
+            if (!shared.exists() && legacy?.exists() == true) legacy.renameTo(shared)
             return shared
         }
 

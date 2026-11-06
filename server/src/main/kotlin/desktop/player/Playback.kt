@@ -127,7 +127,7 @@ class Playback(
     suspend fun play(req: PlayRequest) {
         mpv.checkAvailable()
         val (p, r) = catalog.loadRaw(req.provider, req.url)
-        val details = Mapper.details(p.api.name, r, p.nsfw, true)
+        val details = Mapper.details(p.id, r, p.nsfw, true)
         val item = if (details.movieData == req.data || details.episodes.isEmpty()) {
             Item(details, emptyList(), -1, req.data)
         } else {
@@ -143,7 +143,7 @@ class Playback(
         val s = mutex.withLock {
             saveProgress()
             session?.watchers?.cancel()
-            val set = links.resolve(provider.api, item.data)
+            val set = links.resolve(provider, item.data)
             val resume = startAt ?: store.resumePosition(item.provider, item.data)
             Session(item, set, ++generation, resume).also {
                 it.chosenSubs = subtitleIds
@@ -470,7 +470,7 @@ class Playback(
     private fun prefetchNext(s: Session) {
         val provider = host.provider(s.item.provider) ?: return
         val next = s.item.at(s.item.index + 1)
-        val set = links.resolve(provider.api, next.data)
+        val set = links.resolve(provider, next.data)
         s.nextSet = set
         scope.launch {
             while (s.generation == generation && s.nextSet === set) {

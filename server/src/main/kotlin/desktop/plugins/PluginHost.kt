@@ -60,10 +60,16 @@ class PluginHost(private val config: Config, private val settings: Settings) {
         /** The first linkage error a call into the plugin actually hit. */
         @Volatile var runtimeLinkage: String? = null
         val name get() = info.name
+        /** Unique among the source's plugins (see [ModuleInfo.id]); the records are keyed by it. */
+        val id get() = info.id
     }
 
-    /** A registered provider and the plugin it came from. */
-    class Provider(val api: MainAPI, val plugin: Record) {
+    /**
+     * A registered provider and the plugin it came from. [id] is what the API, history and bookmarks call it: the
+     * provider's name, or, when plugins from several repos register a provider of the same name, the name plus the
+     * repo's name for every copy but the one from the earliest repo.
+     */
+    class Provider(val api: MainAPI, val plugin: Record, val id: String = api.name) {
         val nsfw get() = plugin.info.nsfw || TvType.NSFW in api.supportedTypes
     }
 
@@ -78,14 +84,28 @@ class PluginHost(private val config: Config, private val settings: Settings) {
     @Volatile var lastBuildOutput: String = ""
         private set
 
-    val plugins: List<Record> get() = records.values.sortedBy { it.name.lowercase() }
+    val plugins: List<Record> get() = records.values.sortedWith(compareBy({ it.name.lowercase() }, { it.id }))
 
     fun providers(): List<Provider> {
         val byFile = records.values.mapNotNull { r -> r.loaded?.let { it.filename to r } }.toMap()
-        return APIHolder.allProviders.toList().mapNotNull { api -> byFile[api.sourcePlugin]?.let { Provider(api, it) } }
+        val found = APIHolder.allProviders.toList().mapNotNull { api -> byFile[api.sourcePlugin]?.let { api to it } }
+        val repo = source as? RepoSource
+        val repos = repo?.repos().orEmpty().associateBy { it.url }
+        fun rank(r: Record) = repo?.urls?.indexOf(r.info.repo)?.takeIf { it >= 0 } ?: Int.MAX_VALUE
+        // Ranked so the earliest repo's copy keeps the bare name; the others are told apart by their repo.
+        val ranked = found.sortedWith(compareBy({ rank(it.second) }, { it.second.id }))
+        val ids = providerIds(ranked.map { (api, r) ->
+            api.name to (r.info.repo?.let { u -> repos[u]?.name ?: runCatching { java.net.URI(u).host }.getOrNull() } ?: r.id)
+        })
+        return ranked.mapIndexed { i, (api, r) -> Provider(api, r, ids[i]) }
     }
 
-    fun provider(name: String): Provider? = providers().firstOrNull { it.api.name == name }?.also {
+    /** The plugin with id [ref], or with that bare name (the earliest repo's copy). */
+    fun plugin(ref: String): Record? = records[ref]
+        ?: (source as? RepoSource)?.idFor(ref)?.let { records[it] }
+        ?: plugins.firstOrNull { it.name == ref }
+
+    fun provider(id: String): Provider? = providers().firstOrNull { it.id == id }?.also {
         it.plugin.lastUsed = System.currentTimeMillis()
     }
 
@@ -99,7 +119,7 @@ class PluginHost(private val config: Config, private val settings: Settings) {
 
     /** Adds a record for every plugin the source offers. */
     fun discover() {
-        for (info in source.discover()) records.computeIfAbsent(info.name) { Record(info) }
+        for (info in source.discover()) records.computeIfAbsent(info.id) { Record(info) }
     }
 
     private suspend fun <T> busy(block: suspend () -> T): T {
@@ -111,9 +131,13 @@ class PluginHost(private val config: Config, private val settings: Settings) {
         }
     }
 
+    /** A plugin is disabled by its id, or by its bare name (which covers every repo's copy, and older settings). */
+    fun isDisabled(r: Record, disabled: Set<String> = settings.disabledPlugins) = r.id in disabled || r.name in disabled
+
+    /** Ids of the enabled plugins. */
     private fun enabled(): List<String> {
         val disabled = settings.disabledPlugins
-        return records.keys.filter { it !in disabled }
+        return records.values.filter { !isDisabled(it, disabled) }.map { it.id }
     }
 
     suspend fun start(scope: CoroutineScope) {
@@ -222,29 +246,29 @@ class PluginHost(private val config: Config, private val settings: Settings) {
      */
     private fun syncAll() {
         val src = source
-        val infos = src.discover().associateBy { it.name }
+        val infos = src.discover().associateBy { it.id }
         val disabled = settings.disabledPlugins
         val order = records.values.sortedBy { if (it.name == "Extractors") "" else it.name }
         for (r in order) {
-            val jar = src.jar(r.name)
+            val jar = src.jar(r.id)
             when {
-                r.name in disabled -> {
+                isDisabled(r, disabled) -> {
                     unload(r)
-                    infos[r.name]?.let { r.info = it }
+                    infos[r.id]?.let { r.info = it }
                     r.status = Status.DISABLED
                     r.error = null
                 }
                 jar == null -> {
                     unload(r)
-                    infos[r.name]?.let { r.info = it }
+                    infos[r.id]?.let { r.info = it }
                     // A failed dev build keeps its error; a repo's reason (no jar published, download failed) is fresh.
                     if (r.status != Status.ERROR || src is RepoSource) {
                         r.status = Status.MISSING
-                        r.error = src.missingReason(r.name)
+                        r.error = src.missingReason(r.id)
                     }
                 }
                 r.loaded?.jarKey != keyOf(jar) -> {
-                    infos[r.name]?.let { r.info = it }
+                    infos[r.id]?.let { r.info = it }
                     load(r, jar)
                 }
             }
@@ -258,9 +282,9 @@ class PluginHost(private val config: Config, private val settings: Settings) {
         val key = keyOf(jar)
         val mtime = jar.lastModified()
         // Load a private copy: gradle may rewrite the jar while the old class loader still has it open.
-        val copy = File(cacheDir, "${r.name}-$mtime.jar")
+        val copy = File(cacheDir, "${r.id.replace('@', '-')}-$mtime.jar")
         jar.copyTo(copy, overwrite = true)
-        val loader = URLClassLoader("plugin-${r.name}", arrayOf(copy.toURI().toURL()), stubLoader)
+        val loader = URLClassLoader("plugin-${r.id}", arrayOf(copy.toURI().toURL()), stubLoader)
         try {
             val entry = findEntryClass(copy) ?: error("No @CloudstreamPlugin class in ${jar.name}")
             val instance = loader.loadClass(entry).getDeclaredConstructor().newInstance() as BasePlugin
@@ -363,6 +387,22 @@ class PluginHost(private val config: Config, private val settings: Settings) {
     }
 
     companion object {
+        /**
+         * Provider ids for (provider name, repo label) pairs, ranked earliest repo first: the first of each name keeps
+         * it, later ones become `Name (Repo label)` (numbered if that's taken too).
+         */
+        fun providerIds(ranked: List<Pair<String, String>>): List<String> {
+            val taken = HashSet<String>()
+            return ranked.map { (name, label) ->
+                if (taken.add(name)) return@map name
+                val base = "$name ($label)"
+                var id = base
+                var n = 2
+                while (!taken.add(id)) id = "$base ${n++}"
+                id
+            }
+        }
+
         private const val REPO_CHECK_MS = 6 * 3600_000L
         private const val REPO_RETRY_MS = 10 * 60_000L
         private val ANNOTATION = "Lcom/lagradost/cloudstream3/plugins/CloudstreamPlugin;".toByteArray()

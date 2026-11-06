@@ -1,5 +1,7 @@
 package com.istarvin.cloudstream.ui
 
+import androidx.activity.compose.BackHandler
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Arrangement
@@ -139,6 +141,7 @@ fun SettingsScreen(onUnpair: () -> Unit) {
     }
     fun tell(message: String) { scope.launch { snackbar.showSnackbar(message) } }
     val plugins = remember { PluginsController(api, scope, ::tell) }
+    BackHandler(enabled = tab == SettingsTab.Plugins && plugins.selectedRepo != null && plugins.selected == null) { plugins.selectedRepo = null }
 
     fun reload() = scope.launch {
         if (settings is Load.Failed) settings = Load.Loading

@@ -8,7 +8,9 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class ProviderDto(
+    /** The provider's id: its name, plus its repo's name when an earlier repo has a provider of the same name. */
     val name: String,
+    /** The id of the plugin that registered it ([PluginDto.id]). */
     val plugin: String,
     val mainUrl: String,
     val lang: String,
@@ -20,6 +22,8 @@ data class ProviderDto(
 
 @Serializable
 data class PluginDto(
+    /** Unique among the plugins: the name, qualified by the repo in repo mode. API paths take this. */
+    val id: String,
     val name: String,
     val version: Int?,
     val description: String?,
@@ -44,6 +48,20 @@ data class PluginDto(
     val settingsSchema: List<SettingField> = emptyList(),
     /** Icon declared by the plugin source; available even when the plugin is disabled. */
     val iconUrl: String? = null,
+    /** Repo mode: the URL of the repo it comes from. */
+    val repo: String? = null,
+)
+
+/** A configured plugin repo. */
+@Serializable
+data class RepoDto(
+    val url: String,
+    /** The `name` from its `repo.json`, once read. */
+    val name: String? = null,
+    /** Why its index couldn't be read on the last check. */
+    val error: String? = null,
+    /** The icon declared by the repository, if available. */
+    val iconUrl: String? = null,
 )
 
 @Serializable
@@ -58,8 +76,10 @@ data class PluginSourceDto(
     /** When the repo's index was last read, or 0. */
     val checkedAt: Long = 0,
     val error: String? = null,
-    /** Installed plugins with a newer version in the repo. */
+    /** Ids of installed plugins with a newer version in their repo. */
     val updates: List<String> = emptyList(),
+    /** The repos in [repoUrls] order, with their names; plugins are grouped by these. */
+    val repos: List<RepoDto> = emptyList(),
 )
 
 @Serializable

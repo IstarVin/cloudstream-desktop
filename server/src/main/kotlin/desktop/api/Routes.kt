@@ -152,7 +152,7 @@ fun Route.apiRoutes(s: Services) {
         get("/links") {
             val provider = s.catalog.provider(call.param("provider"))
             val data = call.param("data")
-            val set = s.links.resolve(provider.api, data, fresh = call.request.queryParameters["fresh"] == "1")
+            val set = s.links.resolve(provider, data, fresh = call.request.queryParameters["fresh"] == "1")
             call.sse { emit ->
                 var sentLinks = 0
                 var sentSubs = 0
@@ -328,7 +328,7 @@ fun Route.apiRoutes(s: Services) {
         put("/settings") {
             val values = call.receive<JsonObject>()
             if (values.keys.any { it in Settings.desktopOnly } && !s.auth.isLoopback(call)) {
-                return@put call.respond(HttpStatusCode.Forbidden, mapOf("error" to "The plugin source can only be changed on the desktop"))
+                return@put call.respond(HttpStatusCode.Forbidden, mapOf("error" to "The plugin source mode can only be changed on the desktop"))
             }
             s.settings.update(values)
             call.respond(s.settings.all())
@@ -337,10 +337,11 @@ fun Route.apiRoutes(s: Services) {
         get("/plugins") {
             val nsfw = s.settings.showNsfw
             val disabled = s.settings.disabledPlugins
-            val providers = s.host.providers().groupBy { it.plugin.name }
+            val providers = s.host.providers().groupBy { it.plugin.id }
             val repo = s.host.source as? RepoSource
             call.respond(s.host.plugins.filter { nsfw || !it.info.nsfw }.map { r ->
                 PluginDto(
+                    id = r.id,
                     name = r.name,
                     version = r.info.version,
                     description = r.info.description,
@@ -348,16 +349,17 @@ fun Route.apiRoutes(s: Services) {
                     error = r.error,
                     nsfw = r.info.nsfw,
                     tvTypes = r.info.tvTypes,
-                    enabled = r.name !in disabled,
-                    providers = providers[r.name].orEmpty().map { it.api.name },
+                    enabled = !s.host.isDisabled(r, disabled),
+                    providers = providers[r.id].orEmpty().map { it.id },
                     lastUsed = r.lastUsed,
                     settingsFiles = r.loaded?.context?.openedPrefs?.sorted().orEmpty(),
                     linkage = r.linkage,
                     runtimeLinkage = r.runtimeLinkage,
-                    available = repo?.available(r.name)?.takeIf { repo.installable(r.name) }?.version,
-                    previous = repo?.installed(r.name)?.previous?.firstOrNull()?.entry?.version,
+                    available = repo?.available(r.id)?.takeIf { repo.installable(r.id) }?.version,
+                    previous = repo?.installed(r.id)?.previous?.firstOrNull()?.entry?.version,
                     settingsSchema = r.loaded?.settingsSchema.orEmpty(),
                     iconUrl = r.info.iconUrl,
+                    repo = r.info.repo,
                 )
             })
         }
@@ -382,9 +384,15 @@ fun Route.apiRoutes(s: Services) {
         }
         get("/plugins/build-log") { call.respondText(s.host.lastBuildOutput) }
         put("/plugins/{name}/enabled") {
-            val name = call.parameters["name"]!!
+            val ref = call.parameters["name"]!!
+            val r = s.host.plugin(ref) ?: throw NotFound("No plugin $ref")
             val enabled = call.receive<EnabledRequest>().enabled
-            val disabled = s.settings.disabledPlugins.let { if (enabled) it - name else it + name }
+            val disabled = s.settings.disabledPlugins.let { d ->
+                if (!enabled) return@let d + r.id
+                // A bare name disables every repo's copy; enabling one keeps the others disabled by their ids.
+                val others = if (r.name in d) s.host.plugins.filter { it.name == r.name && it.id != r.id }.map { it.id } else emptyList()
+                d - r.id - r.name + others
+            }
             s.settings.update(JsonObject(mapOf(Settings.DISABLED_PLUGINS to JsonArray(disabled.sorted().map { JsonPrimitive(it) }))))
             call.respond(mapOf("ok" to true))
         }
@@ -432,12 +440,13 @@ private fun pluginSource(s: Services): PluginSourceDto {
         checkedAt = repo?.checkedAt ?: 0,
         error = src.error,
         updates = repo?.updates().orEmpty(),
+        repos = repo?.repos().orEmpty().map { RepoDto(it.url, it.name, it.error, it.iconUrl) },
     )
 }
 
 /** The preference files the plugin opened, plus any its settings schema names. */
 private fun prefFiles(s: Services, name: String): Set<String> {
-    val r = s.host.plugins.firstOrNull { it.name == name } ?: throw NotFound("No plugin $name")
+    val r = s.host.plugin(name) ?: throw NotFound("No plugin $name")
     val opened = r.loaded?.context?.openedPrefs?.toSet().orEmpty()
     val declared = r.loaded?.settingsSchema.orEmpty().mapNotNull { it.file }
     return (opened + declared).ifEmpty { setOf(name) }

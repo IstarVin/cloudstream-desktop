@@ -35,7 +35,7 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
     /** The plugin repo URLs, in priority order. Falls back to a single URL saved before the setting became a list. */
     fun repoUrls(): List<String> {
         val urls = if (stored(PLUGIN_REPO_URLS) == null) (stored(PLUGIN_REPO_URL) as? JsonPrimitive)?.takeIf { it.isString }?.let { listOf(it.content) } else null
-        return (urls ?: strings(PLUGIN_REPO_URLS)).distinct().ifEmpty { listOf(defaults[PLUGIN_REPO_URLS].let { (it as List<*>).first().toString() }) }
+        return (urls ?: strings(PLUGIN_REPO_URLS)).distinct()
     }
 
     val showNsfw get() = bool(SHOW_NSFW)
@@ -88,7 +88,7 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
                 is Boolean -> (v as? JsonPrimitive)?.booleanOrNull != null
                 is Number -> (v as? JsonPrimitive)?.longOrNull != null
                 is List<*> -> v is JsonArray && v.all { it is JsonPrimitive && it.isString } &&
-                    (key != PLUGIN_REPO_URLS || (v.isNotEmpty() && v.all { (it as JsonPrimitive).content.matches(Regex("""https?://\S+""")) }))
+                    (key != PLUGIN_REPO_URLS || (v.all { (it as JsonPrimitive).content.matches(Regex("""https?://\S+""")) }))
                 else -> v is JsonPrimitive && v.isString && choices[key].let { it == null || v.content in it }
             }
             require(ok) { "Setting $key has the wrong type or value" }
@@ -123,7 +123,7 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
             SKIP_SEGMENTS to setOf("prompt", "auto", "off"),
         )
 
-        /** Settings only the desktop (loopback) may change: they decide what code the server downloads and runs. */
-        val desktopOnly = setOf(PLUGIN_SOURCE, PLUGIN_REPO_URLS, PLUGIN_REPO_URL)
+        /** Settings only the desktop (loopback) may change: they decide what code the server runs. (Paired devices manage the repo list.) */
+        val desktopOnly = setOf(PLUGIN_SOURCE, PLUGIN_REPO_URL)
     }
 }

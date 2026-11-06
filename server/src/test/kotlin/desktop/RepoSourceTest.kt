@@ -29,7 +29,7 @@ class RepoSourceTest {
     private val server = LocalServer { ex ->
         val path = ex.requestURI.path
         when {
-            path == "/repo.json" -> ex.respond(200, """{"name":"Test Repo","pluginLists":["builds/plugins.json"]}""", "application/json")
+            path == "/repo.json" -> ex.respond(200, """{"name":"Test Repo","iconUrl":"images/icon.png","pluginLists":["builds/plugins.json"]}""", "application/json")
             path == "/builds/plugins.json" -> {
                 val jar = jars.getValue(published)
                 val hash = if (badHash) sha("other".toByteArray()) else sha(jar)
@@ -51,6 +51,8 @@ class RepoSourceTest {
     }
     private val dir: File = createTempDirectory().toFile()
     private fun source() = RepoSource("${server.url}/repo.json", dir)
+    private fun jarFiles() = File(dir, "jars").walk().filter { it.isFile }.map { it.name }.sorted().toList()
+    private fun id(name: String, repo: String = "${server.url}/repo.json") = RepoSource.idOf(name, repo)
 
     @AfterTest
     fun close() = server.close()
@@ -60,6 +62,8 @@ class RepoSourceTest {
         val repo = source()
         repo.refresh()
         assertEquals("Test Repo", repo.repoName)
+        assertEquals("${server.url}/images/icon.png", repo.repos().single().iconUrl)
+        assertEquals("${server.url}/images/icon.png", source().repos().single().iconUrl, "icon survives restart")
         assertEquals("${server.url}/builds/Dulo-1.jar", repo.available("Dulo")!!.jarUrl)
         assertEquals(listOf("Dulo", "Kayoanime", "KissKH"), repo.discover().map { it.name })
         assertTrue("neither a jar nor a .cs3" in repo.missingReason("Kayoanime"))
@@ -68,12 +72,74 @@ class RepoSourceTest {
     }
 
     @Test
-    fun mergesSeveralReposAndSurvivesOneFailing() = runBlocking {
-        val repo = RepoSource(listOf("${server.url}/missing.json", "${server.url}/repo.json", "${server.url}/repo.json?again"), dir)
+    fun keepsSameNamedPluginsFromEachRepoAndSurvivesOneFailing() = runBlocking {
+        val a = "${server.url}/repo.json"
+        val b = "${server.url}/repo.json?again"
+        val repo = RepoSource(listOf("${server.url}/missing.json", a, b), dir)
         repo.refresh()
-        assertEquals(listOf("Dulo", "Kayoanime", "KissKH"), repo.discover().map { it.name })
-        assertEquals("${server.url}/repo.json", repo.available("Dulo")!!.repo)
+        val found = repo.discover()
+        assertEquals(listOf("Dulo", "Dulo", "Kayoanime", "Kayoanime", "KissKH", "KissKH"), found.map { it.name }.sorted())
+        assertEquals(6, found.map { it.id }.toSet().size, "every repo's copy has its own id")
+        assertEquals(a, repo.available("Dulo")!!.repo, "a bare name means the earliest repo's copy")
         assertTrue("missing.json" in repo.error!!)
+        assertTrue(repo.repos().first().error != null)
+        assertEquals("Test Repo", repo.repos()[1].name)
+
+        // Both copies install, each into its repo's folder.
+        repo.install(listOf(id("Dulo", a), id("Dulo", b)))
+        val jarA = repo.jar(id("Dulo", a))!!
+        val jarB = repo.jar(id("Dulo", b))!!
+        assertTrue(jarA != jarB && jarA.exists() && jarB.exists())
+        assertEquals(RepoSource.repoKey(a), jarA.parentFile.name)
+        Unit
+    }
+
+    @Test
+    fun sameNamedProvidersAreToldApartByRepo() {
+        assertEquals(
+            listOf("Dulo", "KissKH", "Dulo (Other Repo)", "Dulo (Other Repo) 2"),
+            PluginHost.providerIds(listOf("Dulo" to "Main", "KissKH" to "Main", "Dulo" to "Other Repo", "Dulo" to "Other Repo")),
+        )
+    }
+
+    @Test
+    fun movesPluginsSavedByNameToTheirRepo() = runBlocking {
+        source().apply { refresh(); install("Dulo") }
+        // As saved before plugins were kept per repo: keyed by name, entries without a repo.
+        val state = File(dir, "state.json")
+        state.writeText(state.readText().replace("\"${id("Dulo")}\"", "\"Dulo\"").replace(Regex(",?\"repo\":\"[^\"]*\""), ""))
+        val again = source()
+        assertEquals("jar v1", again.jar(id("Dulo"))!!.readText())
+        assertEquals(setOf(id("Dulo"), id("Kayoanime"), id("KissKH")), again.discover().map { it.id }.toSet())
+        Unit
+    }
+
+    @Test
+    fun removingARepoClearsItsPlugins() = runBlocking {
+        val a = "${server.url}/repo.json"
+        val b = "${server.url}/repo.json?second"
+        val both = RepoSource(listOf(a, b), dir)
+        both.refresh()
+        both.install(listOf("Dulo", "KissKH"))
+        val jar = both.jar("Dulo")!!
+        assertTrue(jar.exists())
+
+        // Deleting the repo that provided them drops its index and jars; reopening the folder sees the same.
+        val none = RepoSource(emptyList(), dir)
+        assertNull(none.installed("Dulo"))
+        assertNull(none.jar("Dulo"))
+        assertTrue(!jar.exists())
+        assertTrue(none.discover().isEmpty())
+        none.refresh()
+
+        // Other repos' plugins stay.
+        val again = RepoSource(listOf(a), dir)
+        again.refresh()
+        again.install("Dulo")
+        val kept = RepoSource(listOf(a, b), dir)
+        assertNotNull(kept.jar("Dulo"))
+        val other = RepoSource(listOf(b), dir)
+        assertNull(other.jar("Dulo"))
         Unit
     }
 
@@ -88,7 +154,7 @@ class RepoSourceTest {
 
         published = 2
         repo.refresh()
-        assertEquals(listOf("Dulo"), repo.updates())
+        assertEquals(listOf(id("Dulo")), repo.updates())
         assertEquals(1, repo.discover().first { it.name == "Dulo" }.version, "metadata follows what's installed")
         repo.install("Dulo")
         assertEquals("jar v2", repo.jar("Dulo")!!.readText())
@@ -96,7 +162,7 @@ class RepoSourceTest {
 
         repo.rollback("Dulo")
         assertEquals("jar v1", repo.jar("Dulo")!!.readText())
-        assertEquals(listOf("Dulo"), repo.updates(), "the rolled-back version is on offer again")
+        assertEquals(listOf(id("Dulo")), repo.updates(), "the rolled-back version is on offer again")
         assertFailsWith<IllegalArgumentException> { repo.rollback("Dulo") }
         Unit
     }
@@ -110,7 +176,7 @@ class RepoSourceTest {
             repo.install("Dulo")
         }
         assertEquals(listOf(3, 2), repo.installed("Dulo")!!.previous.map { it.entry.version })
-        val files = File(dir, "jars").list()!!.sorted()
+        val files = jarFiles()
         assertEquals(3, files.size, "older jars are deleted: $files")
     }
 
@@ -123,7 +189,7 @@ class RepoSourceTest {
         assertTrue("hash" in e.message!!, e.message)
         assertNull(repo.jar("Dulo"))
         assertTrue("Install failed" in repo.missingReason("Dulo"))
-        assertEquals(emptyList(), File(dir, "jars").list()!!.toList(), "no partial file is left behind")
+        assertEquals(emptyList(), jarFiles(), "no partial file is left behind")
     }
 
     @Test
@@ -148,7 +214,7 @@ class RepoSourceTest {
         assertTrue(jar.name.endsWith("-converted.jar"), jar.name)
         assertNotNull(PluginHost.findEntryClass(jar))
         assertTrue(repo.installed("KissKH")!!.current.converted)
-        assertEquals(emptyList(), File(dir, "jars").list()!!.filter { it.endsWith(".cs3") }, "only the jar is kept")
+        assertEquals(emptyList(), jarFiles().filter { it.endsWith(".cs3") }, "only the jar is kept")
 
         // As if an older converter had made it.
         val state = File(dir, "state.json")

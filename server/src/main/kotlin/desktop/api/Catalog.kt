@@ -37,8 +37,8 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
 
     fun providerDtos() = visibleProviders().map { p ->
         ProviderDto(
-            name = p.api.name,
-            plugin = p.plugin.name,
+            name = p.id,
+            plugin = p.plugin.id,
             mainUrl = p.api.mainUrl,
             lang = p.api.lang,
             types = p.api.supportedTypes.map { it.name },
@@ -66,7 +66,7 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
             }
         } ?: return HomePage(emptyList(), false)
         val nsfw = settings.showNsfw
-        return HomePage(res.items.map { Mapper.homeRow(api.name, it, nsfw) }, res.hasNext)
+        return HomePage(res.items.map { Mapper.homeRow(p.id, it, nsfw) }, res.hasNext)
     }
 
     /** Searches every visible provider (or [only]) in parallel, calling [emit] as each one finishes. */
@@ -76,7 +76,7 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
         emit: suspend (provider: String, items: List<SearchItem>?, error: String?) -> Unit,
     ) = coroutineScope {
         val nsfw = settings.showNsfw
-        visibleProviders().filter { only == null || it.api.name in only }.map { p ->
+        visibleProviders().filter { only == null || it.id in only }.map { p ->
             async {
                 val api = p.api
                 val result = runCatching {
@@ -85,11 +85,11 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
                     }
                 }
                 result.fold(
-                    onSuccess = { list -> emit(api.name, list.filter { nsfw || !Mapper.isNsfw(it) }.map { Mapper.searchItem(api.name, it) }, null) },
+                    onSuccess = { list -> emit(p.id, list.filter { nsfw || !Mapper.isNsfw(it) }.map { Mapper.searchItem(p.id, it) }, null) },
                     onFailure = { e ->
                         if (e is VirtualMachineError) throw e
                         host.noteFailure(p, e)
-                        emit(api.name, null, describe(e))
+                        emit(p.id, null, describe(e))
                     },
                 )
             }
@@ -113,7 +113,7 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
         try {
             block()
         } catch (e: TimeoutCancellationException) {
-            throw PluginFailure("${p.api.name} took too long", e)
+            throw PluginFailure("${p.id} took too long", e)
         } catch (e: CancellationException) {
             throw e
         } catch (e: VirtualMachineError) {
@@ -125,12 +125,12 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
 
     suspend fun details(name: String, url: String): Details {
         val (p, r) = loadRaw(name, url)
-        val d = Mapper.details(p.api.name, r, p.nsfw, settings.showNsfw)
-        val progress = store.progressFor(p.api.name)
+        val d = Mapper.details(p.id, r, p.nsfw, settings.showNsfw)
+        val progress = store.progressFor(p.id)
         return d.copy(
             episodes = d.episodes.map { e -> progress[e.data]?.let { e.copy(progress = it) } ?: e },
             movieProgress = d.movieData?.let { progress[it] },
-            bookmarked = store.bookmarkList(p.api.name, url),
+            bookmarked = store.bookmarkList(p.id, url),
         )
     }
 }

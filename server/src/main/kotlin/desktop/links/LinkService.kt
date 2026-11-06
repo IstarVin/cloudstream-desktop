@@ -134,25 +134,26 @@ class LinkService(private val scope: CoroutineScope, private val store: Store, p
     fun existing(provider: String, data: String) = sets[provider to data]
 
     /** Returns the cached set for (provider, data), or starts `loadLinks` for it. */
-    fun resolve(api: MainAPI, data: String, fresh: Boolean = false): LinkSet {
+    fun resolve(provider: PluginHost.Provider, data: String, fresh: Boolean = false): LinkSet {
         expire()
-        val key = api.name to data
+        val api = provider.api
+        val key = provider.id to data
         sets[key]?.let { s ->
             val useless = s.done && s.links.none { it.playable }
             if (!fresh && !s.stale && !useless) return s
         }
-        val set = LinkSet(api.name, data)
+        val set = LinkSet(provider.id, data)
         sets[key] = set
         set.job = scope.launch {
             try {
                 withTimeout(api.loadLinksTimeoutMs ?: 60_000) {
-                    api.loadLinks(data, false, { sub -> addSubtitle(set, sub) }) { link -> addLink(api, set, link) }
+                    api.loadLinks(data, false, { sub -> addSubtitle(set, sub) }) { link -> addLink(provider, set, link) }
                 }
             } catch (e: Throwable) {
                 if (e is VirtualMachineError) throw e
-                host.noteFailure(api, e)
+                host.noteFailure(provider, e)
                 if (set.links.isEmpty()) set.error = describe(e)
-                log.info("loadLinks for {} ended: {}", api.name, e.toString())
+                log.info("loadLinks for {} ended: {}", provider.id, e.toString())
             } finally {
                 set.done = true
                 set.bump()
@@ -161,9 +162,9 @@ class LinkService(private val scope: CoroutineScope, private val store: Store, p
         return set
     }
 
-    private fun addLink(api: MainAPI, set: LinkSet, link: ExtractorLink) {
-        val interceptor = runCatching { api.getVideoInterceptor(link) }.getOrNull()
-        val r = ResolvedLink(newId("l"), api.name, link, interceptor, set.links.size)
+    private fun addLink(provider: PluginHost.Provider, set: LinkSet, link: ExtractorLink) {
+        val interceptor = runCatching { provider.api.getVideoInterceptor(link) }.getOrNull()
+        val r = ResolvedLink(newId("l"), provider.id, link, interceptor, set.links.size)
         links[r.id] = r
         set.links.add(r)
         set.bump()

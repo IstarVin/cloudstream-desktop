@@ -7,11 +7,11 @@ sealed interface PluginSource {
     /** Every plugin this source offers, with the metadata of the version it would load. */
     fun discover(): List<ModuleInfo>
 
-    /** The jar to load for [name], or null when there's none yet. */
-    fun jar(name: String): File?
+    /** The jar to load for the plugin with id [id] ([ModuleInfo.id]), or null when there's none yet. */
+    fun jar(id: String): File?
 
     /** Why [jar] is null, for the plugins page. */
-    fun missingReason(name: String): String
+    fun missingReason(id: String): String
 
     /** A problem with the source as a whole (no extensions repo, repo unreachable), or null. */
     val error: String?
@@ -25,9 +25,9 @@ class DevSource(val repo: File) : PluginSource {
     /** Where gradle writes the jar, whether or not it exists yet. */
     fun jarPath(name: String) = File(repo, "$name/build/$name.jar")
 
-    override fun jar(name: String) = jarPath(name).takeIf { it.exists() }
+    override fun jar(id: String) = jarPath(id).takeIf { it.exists() }
 
-    override fun missingReason(name: String) = "No jar yet: rebuild plugins"
+    override fun missingReason(id: String) = "No jar yet: rebuild plugins"
 
     override val error get() = if (File(repo, "settings.gradle.kts").exists()) null else "No extensions repo at $repo"
 }

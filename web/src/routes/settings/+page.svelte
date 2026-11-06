@@ -19,6 +19,8 @@
     Check,
     CircleAlert,
     ChevronDown,
+    ArrowLeft,
+    Trash2,
     Globe,
     Layers,
     ListOrdered,
@@ -79,12 +81,14 @@
   let saveFailed = false;
 
   let openPlugin = $state<string | null>(null);
+  let selectedRepo = $state<string | null>(null);
   let pluginSearch = $state("");
   let pluginFilter = $state<"all" | "enabled" | "disabled" | "attention">("all");
   // Keep the requested state until the runtime has actually loaded or unloaded the plugin.
   let pluginChanges = $state<Record<string, boolean>>({});
   let pluginErrors = $state<Record<string, string>>({});
   let failedIcons = $state<Record<string, string>>({});
+  let failedRepoIcons = $state<Record<string, string>>({});
   const changingPlugins = $derived(Object.keys(pluginChanges).length > 0);
   let disposed = false;
   onDestroy(() => {
@@ -144,20 +148,21 @@
       ? `${p.linkage.length} call${p.linkage.length > 1 ? "s" : ""} into the runtime won't link, e.g. ${p.linkage[0]}`
       : null);
 
-  async function setEnabled(name: string, enabled: boolean) {
-    if (pluginChanges[name] !== undefined) return;
-    pluginChanges[name] = enabled;
-    delete pluginErrors[name];
+  async function setEnabled(target: PluginInfo, enabled: boolean) {
+    const { id, name } = target;
+    if (pluginChanges[id] !== undefined) return;
+    pluginChanges[id] = enabled;
+    delete pluginErrors[id];
     try {
       // This saves the preference; the host loads/unloads asynchronously after it returns.
-      await api.setPluginEnabled(name, enabled);
+      await api.setPluginEnabled(id, enabled);
       const deadline = Date.now() + 120_000;
       while (!disposed && Date.now() < deadline) {
         const [list, host] = await Promise.all([api.plugins(), api.status()]);
         if (disposed) return;
         client.setQueryData(["plugins"], list);
         client.setQueryData(["status"], host);
-        const plugin = list.find((p) => p.name === name);
+        const plugin = list.find((p) => p.id === id);
         if (!plugin)
           throw new Error(`${name} is no longer in this source. Refresh the plugin list.`);
         const settled =
@@ -184,12 +189,12 @@
         );
     } catch (e) {
       if (!disposed) {
-        pluginErrors[name] = e instanceof Error ? e.message : String(e);
+        pluginErrors[id] = e instanceof Error ? e.message : String(e);
         toasts.error(e);
       }
     } finally {
       if (!disposed) {
-        delete pluginChanges[name];
+        delete pluginChanges[id];
         // Provider lists and settings must reflect the completed operation too.
         client.invalidateQueries();
       }
@@ -255,8 +260,12 @@
     await setSource({ plugin_repo_urls: [...repoUrls, u] });
     newRepoUrl = "";
   }
-  const removeRepo = (u: string) =>
-    setSource({ plugin_repo_urls: repoUrls.filter((x) => x !== u) });
+  async function removeRepo(u: string) {
+    if (!confirm(`Remove this repository? Plugins installed from it are removed too.\n\n${u}`))
+      return;
+    await setSource({ plugin_repo_urls: repoUrls.filter((x) => x !== u) });
+    if (selectedRepo === u) selectedRepo = null;
+  }
 
   const sessions = createQuery(() => ({ queryKey: ["auth-sessions"], queryFn: api.sessions }));
   const authInfo = createQuery(() => ({ queryKey: ["auth-info"], queryFn: api.authStatus }));
@@ -292,17 +301,23 @@
 
   const needsAttention = (p: PluginInfo) =>
     p.status === "error" || p.status === "missing" || (p.status === "loaded" && !!linkWarning(p));
+  const scopedPlugins = $derived(
+    repo && selectedRepo
+      ? (plugins.data ?? []).filter((p) => p.repo === selectedRepo)
+      : (plugins.data ?? []),
+  );
   const visiblePlugins = $derived(
-    (plugins.data ?? []).filter((p) => {
+    scopedPlugins.filter((p) => {
       const query = pluginSearch.trim().toLocaleLowerCase();
       const matchesSearch =
         !query ||
         [p.name, p.description ?? "", ...p.providers].some((value) =>
           value.toLocaleLowerCase().includes(query),
         );
+
       return (
         matchesSearch &&
-        (pluginChanges[p.name] !== undefined ||
+        (pluginChanges[p.id] !== undefined ||
           pluginFilter === "all" ||
           (pluginFilter === "enabled" && p.enabled) ||
           (pluginFilter === "disabled" && !p.enabled) ||
@@ -310,6 +325,29 @@
       );
     }),
   );
+
+  /** Repo mode: the visible plugins under a heading per repo, in priority order. Dev mode: one unlabelled list. */
+  const pluginGroups = $derived.by(() => {
+    if (src?.mode !== "repo") return [{ key: "all", label: "", plugins: visiblePlugins }];
+    const repos = src.repos ?? src.repoUrls.map((url) => ({ url, name: null }));
+    const groups = repos.map((r) => ({
+      key: r.url,
+      label: r.name || hostOf(r.url),
+      plugins: visiblePlugins.filter((p) => p.repo === r.url),
+    }));
+    const known = new Set(repos.map((r) => r.url));
+    const other = visiblePlugins.filter((p) => !p.repo || !known.has(p.repo));
+    if (other.length) groups.push({ key: "other", label: "Other", plugins: other });
+    return groups.filter((g) => g.plugins.length);
+  });
+
+  function hostOf(url: string) {
+    try {
+      return new URL(url).host;
+    } catch {
+      return url;
+    }
+  }
 </script>
 
 <svelte:head><title>Settings · Cloudstream</title></svelte:head>
@@ -755,45 +793,11 @@
                 /></summary
               >
               {#if repo}
-                {#if status.data?.loopback}
-                  <div class="stack">
-                    <b>Repo URLs</b>
-                    <small class="muted"
-                      >Cloudstream <code>repo.json</code> or <code>plugins.json</code> links. Only plugins
-                      published as cross-platform jars run here. If two repos have the same plugin, the
-                      one listed first is used.</small
-                    >
-                    {#each repoUrls as u (u)}
-                      <div class="repo-row">
-                        <code>{u}</code>
-                        <button
-                          class="link-btn"
-                          disabled={repoUrls.length < 2 ||
-                            changingPlugins ||
-                            working !== null ||
-                            status.data?.building}
-                          onclick={() => removeRepo(u)}>Remove</button
-                        >
-                      </div>
-                    {/each}
-                    <form
-                      class="repo-row"
-                      onsubmit={(e) => {
-                        e.preventDefault();
-                        addRepo();
-                      }}
-                    >
-                      <input
-                        type="url"
-                        placeholder="https://…/repo.json"
-                        aria-label="Add repository URL"
-                        disabled={changingPlugins || working !== null || status.data?.building}
-                        bind:value={newRepoUrl}
-                      />
-                      <button class="btn" type="submit" disabled={!newRepoUrl.trim()}>Add</button>
-                    </form>
-                  </div>
-                {/if}
+                <div class="stack">
+                  <small class="muted"
+                    >Plugins are kept per repository. Removing a repository removes its plugins.</small
+                  >
+                </div>
                 <p class="muted small">
                   {src.repoName ?? "The repo"}{src.checkedAt
                     ? `, checked ${ago(src.checkedAt)}`
@@ -836,172 +840,261 @@
           </div>
         {/if}
 
-        {#if plugins.isPending}
-          <div class="plugin-skeleton" role="status">
-            <span class="sr-only">Loading plugins…</span>
-            {#each [0, 1, 2] as row (row)}<div><span></span><span></span></div>{/each}
-          </div>
-        {:else if plugins.isError}
-          <div class="plugin-empty" role="alert">
-            <p>Could not load plugins. Check your connection and try again.</p>
-            <button class="btn" onclick={() => plugins.refetch()}>Try again</button>
-          </div>
-        {:else if !plugins.data?.length}
-          <p class="muted small">No plugins found. Check the source and its settings above.</p>
-        {:else}
-          <div class="plugin-tools">
-            <label class="plugin-search">
-              <Search size={18} aria-hidden="true" />
-              <input
-                type="search"
-                bind:value={pluginSearch}
-                placeholder="Search plugins or providers"
-                aria-label="Search plugins or providers"
-              />
-            </label>
-            <select bind:value={pluginFilter} aria-label="Filter plugins">
-              <option value="all">All plugins</option>
-              <option value="enabled">Enabled</option>
-              <option value="disabled">Disabled</option>
-              <option value="attention">Needs attention</option>
-            </select>
-          </div>
-          <div class="plugin-list-heading">
-            <p class="plugin-count" aria-live="polite">
-              {pluginSearch.trim() || pluginFilter !== "all"
-                ? `${visiblePlugins.length} of ${plugins.data.length}`
-                : plugins.data.length} plugins
-            </p>
-            <span>{plugins.data.filter((p) => p.status === "loaded").length} loaded</span>
-          </div>
-          {#if !visiblePlugins.length}
-            <div class="plugin-empty">
-              <p>No plugins match your search and filter.</p>
-              <button
-                class="link-btn"
-                onclick={() => {
-                  pluginSearch = "";
-                  pluginFilter = "all";
-                }}>Clear search and filter</button
-              >
-            </div>
-          {/if}
-          <ul class="plugins">
-            {#each visiblePlugins as p (p.name)}
-              {@const changing = pluginChanges[p.name] !== undefined}
-              {@const updating = working === p.name || (working === "all" && hasUpdate(p))}
-              {@const busy = changing || updating}
-              {@const warning = p.status === "loaded" && !!linkWarning(p)}
-              <li class={{ "plugin-busy": busy }}>
-                <div class="p-row">
-                  <button
-                    class="p-name"
-                    aria-expanded={openPlugin === p.name}
-                    aria-controls="plugin-details-{p.name}"
-                    onclick={() => (openPlugin = openPlugin === p.name ? null : p.name)}
-                  >
-                    <span class="plugin-icon" aria-hidden="true">
-                      {#if p.iconUrl && failedIcons[p.name] !== p.iconUrl}
-                        <img
-                          src={p.iconUrl}
-                          alt=""
-                          width="40"
-                          height="40"
-                          loading="lazy"
-                          referrerpolicy="no-referrer"
-                          onerror={() => {
-                            failedIcons[p.name] = p.iconUrl!;
-                          }}
-                        />
-                      {:else}<Puzzle size={23} strokeWidth={1.6} />{/if}
-                    </span>
-                    <span class="plugin-copy">
-                      <span class="plugin-title"
-                        ><b>{p.name}</b><ChevronDown size={15} aria-hidden="true" /></span
-                      >
-                      <span class="plugin-meta"
-                        >{p.version != null ? `v${p.version}` : "Version unavailable"}{hasUpdate(p)
-                          ? ` → v${p.available}`
-                          : ""}{p.providers.length ? ` · ${p.providers.join(", ")}` : ""}{p.nsfw
-                          ? " · NSFW"
-                          : ""}</span
-                      >
-                    </span>
-                  </button>
-                  <div class="plugin-actions">
-                    {#if hasUpdate(p) || (p.status === "missing" && p.available != null && p.enabled)}
-                      <button
-                        class="btn small-btn"
-                        onclick={() => repoAction(p.name, () => api.updatePlugins([p.name]))}
-                        disabled={working !== null || changingPlugins || status.data?.building}
-                      >
-                        {#if updating}<span class="spinner" aria-hidden="true"
-                          ></span>{/if}{p.status === "missing" ? "Install" : "Update"}
-                      </button>
-                    {/if}
-                    <label class="plugin-toggle">
-                      <input
-                        type="checkbox"
-                        role="switch"
-                        bind:checked={
-                          () => pluginChanges[p.name] ?? p.enabled,
-                          (checked) => {
-                            void setEnabled(p.name, checked);
-                          }
-                        }
-                        disabled={busy || working !== null || status.data?.building}
-                        aria-label="Enable {p.name}"
-                        aria-describedby="plugin-state-{p.name}"
+        {#if repo && !selectedRepo}
+          <div class="repositories">
+            <h3>Repositories</h3>
+            {#each repoUrls as u (u)}
+              {@const info = src?.repos?.find((r) => r.url === u)}
+              <div class="repository-row">
+                <button
+                  class="repository-open"
+                  onclick={() => {
+                    selectedRepo = u;
+                    pluginSearch = "";
+                    pluginFilter = "all";
+                  }}
+                >
+                  <span class="plugin-icon" aria-hidden="true">
+                    {#if info?.iconUrl && failedRepoIcons[u] !== info.iconUrl}
+                      <img
+                        src={info.iconUrl}
+                        alt=""
+                        width="40"
+                        height="40"
+                        loading="lazy"
+                        referrerpolicy="no-referrer"
+                        onerror={() => {
+                          failedRepoIcons[u] = info.iconUrl!;
+                        }}
                       />
-                    </label>
-                  </div>
-                </div>
-                <div class="plugin-feedback" id="plugin-state-{p.name}" aria-live="polite">
-                  {#if busy}<p class="p-progress">
-                      {changing
-                        ? pluginChanges[p.name]
-                          ? "Loading the plugin and its providers…"
-                          : "Unloading the plugin and its providers…"
-                        : "Downloading and loading the plugin…"}
-                    </p>
-                  {:else if pluginErrors[p.name] || p.error}<p class="p-error">
-                      <CircleAlert size={15} aria-hidden="true" />{pluginErrors[p.name] || p.error}
-                    </p>
-                  {:else if p.status === "error"}<p class="p-error">
-                      <CircleAlert size={15} aria-hidden="true" />Failed to load this plugin.
-                    </p>
-                  {:else if p.status === "missing"}<p class="p-warn">
-                      <CircleAlert size={15} aria-hidden="true" />Plugin not installed.
-                    </p>
-                  {:else if warning}<p class="p-warn">
-                      <CircleAlert size={15} aria-hidden="true" />{linkWarning(p)}
-                    </p>{/if}
-                </div>
-                {#if openPlugin === p.name}
-                  <div class="p-more" id="plugin-details-{p.name}">
-                    {#if p.description}<p class="muted small">
-                        {p.description}
-                      </p>{/if}
-                    {#if p.linkage.length > 1}
-                      <pre class="log">{p.linkage.join("\n")}</pre>
-                    {/if}
-                    {#if p.previous != null}
-                      <button
-                        class="link-btn"
-                        onclick={() => repoAction(p.name, () => api.rollbackPlugin(p.name))}
-                        disabled={working !== null || changingPlugins || status.data?.building}
-                        >Roll back to v{p.previous}</button
-                      >
-                    {/if}
-                    {#if p.status === "loaded" && !busy}<PluginSettings
-                        name={p.name}
-                        schema={p.settingsSchema ?? []}
-                      />{/if}
-                  </div>
-                {/if}
-              </li>
+                    {:else}<Layers size={21} />{/if}
+                  </span>
+                  <span class="repo-id"
+                    ><b>{info?.name || hostOf(u)}</b><small title={u}>{u}</small
+                    >{#if info?.error}<small class="p-error">{info.error}</small>{/if}</span
+                  >
+                </button>
+                <button
+                  class="repository-remove"
+                  aria-label="Remove repository {info?.name || hostOf(u)}"
+                  disabled={changingPlugins || working !== null || status.data?.building}
+                  onclick={() => removeRepo(u)}><Trash2 size={19} aria-hidden="true" /></button
+                >
+              </div>
             {/each}
-          </ul>
+            {#if !repoUrls.length}<p class="muted small">No repositories added yet.</p>{/if}
+            <form
+              class="repo-row repo-add"
+              onsubmit={(e) => {
+                e.preventDefault();
+                addRepo();
+              }}
+            >
+              <input
+                type="url"
+                placeholder="https://…/repo.json"
+                aria-label="Add repository URL"
+                disabled={changingPlugins || working !== null || status.data?.building}
+                bind:value={newRepoUrl}
+              />
+              <button
+                class="btn"
+                type="submit"
+                disabled={!newRepoUrl.trim() ||
+                  changingPlugins ||
+                  working !== null ||
+                  status.data?.building}>Add</button
+              >
+            </form>
+          </div>
+        {:else}
+          {#if repo && selectedRepo}
+            <button
+              class="link-btn repo-back"
+              onclick={() => {
+                selectedRepo = null;
+                openPlugin = null;
+              }}
+            >
+              <ArrowLeft size={18} aria-hidden="true" /> Repositories</button
+            >
+            <h3>{src?.repos?.find((r) => r.url === selectedRepo)?.name || hostOf(selectedRepo)}</h3>
+          {/if}
+          {#if plugins.isPending}
+            <div class="plugin-skeleton" role="status">
+              <span class="sr-only">Loading plugins…</span>
+              {#each [0, 1, 2] as row (row)}<div><span></span><span></span></div>{/each}
+            </div>
+          {:else if plugins.isError}
+            <div class="plugin-empty" role="alert">
+              <p>Could not load plugins. Check your connection and try again.</p>
+              <button class="btn" onclick={() => plugins.refetch()}>Try again</button>
+            </div>
+          {:else if !scopedPlugins.length}
+            <p class="muted small">No plugins found in this source.</p>
+          {:else}
+            <div class="plugin-tools">
+              <label class="plugin-search">
+                <Search size={18} aria-hidden="true" />
+                <input
+                  type="search"
+                  bind:value={pluginSearch}
+                  placeholder="Search plugins or providers"
+                  aria-label="Search plugins or providers"
+                />
+              </label>
+              <select bind:value={pluginFilter} aria-label="Filter plugins">
+                <option value="all">All plugins</option>
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+                <option value="attention">Needs attention</option>
+              </select>
+            </div>
+            <div class="plugin-list-heading">
+              <p class="plugin-count" aria-live="polite">
+                {pluginSearch.trim() || pluginFilter !== "all"
+                  ? `${visiblePlugins.length} of ${scopedPlugins.length}`
+                  : scopedPlugins.length} plugins
+              </p>
+              <span>{scopedPlugins.filter((p) => p.status === "loaded").length} loaded</span>
+            </div>
+            {#if !visiblePlugins.length}
+              <div class="plugin-empty">
+                <p>No plugins match your search and filter.</p>
+                <button
+                  class="link-btn"
+                  onclick={() => {
+                    pluginSearch = "";
+                    pluginFilter = "all";
+                  }}>Clear search and filter</button
+                >
+              </div>
+            {/if}
+            {#each pluginGroups as g (g.key)}
+              {#if g.label && !selectedRepo}<h3 class="plugin-group" title={g.key}>
+                  {g.label}<span>{g.plugins.length}</span>
+                </h3>{/if}
+              <ul class="plugins">
+                {#each g.plugins as p (p.id)}
+                  {@const changing = pluginChanges[p.id] !== undefined}
+                  {@const updating = working === p.id || (working === "all" && hasUpdate(p))}
+                  {@const busy = changing || updating}
+                  {@const warning = p.status === "loaded" && !!linkWarning(p)}
+                  <li class={{ "plugin-busy": busy }}>
+                    <div class="p-row">
+                      <button
+                        class="p-name"
+                        aria-expanded={openPlugin === p.id}
+                        aria-controls="plugin-details-{p.id}"
+                        onclick={() => (openPlugin = openPlugin === p.id ? null : p.id)}
+                      >
+                        <span class="plugin-icon" aria-hidden="true">
+                          {#if p.iconUrl && failedIcons[p.id] !== p.iconUrl}
+                            <img
+                              src={p.iconUrl}
+                              alt=""
+                              width="40"
+                              height="40"
+                              loading="lazy"
+                              referrerpolicy="no-referrer"
+                              onerror={() => {
+                                failedIcons[p.id] = p.iconUrl!;
+                              }}
+                            />
+                          {:else}<Puzzle size={23} strokeWidth={1.6} />{/if}
+                        </span>
+                        <span class="plugin-copy">
+                          <span class="plugin-title"
+                            ><b>{p.name}</b><ChevronDown size={15} aria-hidden="true" /></span
+                          >
+                          <span class="plugin-meta"
+                            >{p.version != null
+                              ? `v${p.version}`
+                              : "Version unavailable"}{hasUpdate(p) ? ` → v${p.available}` : ""}{p
+                              .providers.length
+                              ? ` · ${p.providers.join(", ")}`
+                              : ""}{p.nsfw ? " · NSFW" : ""}</span
+                          >
+                        </span>
+                      </button>
+                      <div class="plugin-actions">
+                        {#if hasUpdate(p) || (p.status === "missing" && p.available != null && p.enabled)}
+                          <button
+                            class="btn small-btn"
+                            onclick={() => repoAction(p.id, () => api.updatePlugins([p.id]))}
+                            disabled={working !== null || changingPlugins || status.data?.building}
+                          >
+                            {#if updating}<span class="spinner" aria-hidden="true"
+                              ></span>{/if}{p.status === "missing" ? "Install" : "Update"}
+                          </button>
+                        {/if}
+                        <label class="plugin-toggle">
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            bind:checked={
+                              () => pluginChanges[p.id] ?? p.enabled,
+                              (checked) => {
+                                void setEnabled(p, checked);
+                              }
+                            }
+                            disabled={busy || working !== null || status.data?.building}
+                            aria-label="Enable {p.name}"
+                            aria-describedby="plugin-state-{p.id}"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    <div class="plugin-feedback" id="plugin-state-{p.id}" aria-live="polite">
+                      {#if busy}<p class="p-progress">
+                          {changing
+                            ? pluginChanges[p.id]
+                              ? "Loading the plugin and its providers…"
+                              : "Unloading the plugin and its providers…"
+                            : "Downloading and loading the plugin…"}
+                        </p>
+                      {:else if pluginErrors[p.id] || p.error}<p class="p-error">
+                          <CircleAlert size={15} aria-hidden="true" />{pluginErrors[p.id] ||
+                            p.error}
+                        </p>
+                      {:else if p.status === "error"}<p class="p-error">
+                          <CircleAlert size={15} aria-hidden="true" />Failed to load this plugin.
+                        </p>
+                      {:else if p.status === "missing"}<p class="p-warn">
+                          <CircleAlert size={15} aria-hidden="true" />Plugin not installed.
+                        </p>
+                      {:else if warning}<p class="p-warn">
+                          <CircleAlert size={15} aria-hidden="true" />{linkWarning(p)}
+                        </p>{/if}
+                    </div>
+                    {#if openPlugin === p.id}
+                      <div class="p-more" id="plugin-details-{p.id}">
+                        {#if p.description}<p class="muted small">
+                            {p.description}
+                          </p>{/if}
+                        {#if p.linkage.length > 1}
+                          <pre class="log">{p.linkage.join("\n")}</pre>
+                        {/if}
+                        {#if p.previous != null}
+                          <button
+                            class="link-btn"
+                            onclick={() => repoAction(p.id, () => api.rollbackPlugin(p.id))}
+                            disabled={working !== null || changingPlugins || status.data?.building}
+                            >Roll back to v{p.previous}</button
+                          >
+                        {/if}
+                        {#if p.status === "loaded" && !busy}<PluginSettings
+                            id={p.id}
+                            name={p.name}
+                            schema={p.settingsSchema ?? []}
+                          />{/if}
+                      </div>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            {/each}
+          {/if}
         {/if}
       </section>
     </div>
@@ -1192,9 +1285,67 @@
     gap: 8px;
     align-items: center;
   }
-  .repo-row code {
+  .repositories {
+    margin-top: 24px;
+  }
+  .repositories h3 {
+    margin-bottom: 12px;
+  }
+  .repository-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .repository-open {
+    display: flex;
+    align-items: center;
+    gap: 16px;
     flex: 1;
-    overflow-wrap: anywhere;
+    min-width: 0;
+    padding: 12px 0;
+    text-align: left;
+    color: inherit;
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  .repository-open:hover b {
+    color: var(--accent);
+  }
+  .repository-open small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .repository-remove {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    color: var(--text);
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  .repository-remove:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .repo-add {
+    margin-top: 16px;
+  }
+  .repo-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 24px 0 12px;
+  }
+  .repo-id {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
   }
   .repo-row input {
     flex: 1;
@@ -1324,6 +1475,20 @@
     list-style: none;
     margin: 0;
     padding: 0;
+  }
+  .plugin-group {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 28px 0 0;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text);
+  }
+  .plugin-group span {
+    color: var(--muted);
+    font-weight: 400;
   }
   .plugin-tools {
     display: flex;

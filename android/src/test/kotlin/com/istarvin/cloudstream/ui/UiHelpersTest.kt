@@ -1,6 +1,8 @@
 package com.istarvin.cloudstream.ui
 
 import desktop.api.PluginDto
+import desktop.api.PluginSourceDto
+import desktop.api.RepoDto
 import com.istarvin.cloudstream.data.ApiException
 import com.istarvin.cloudstream.data.RecentSearches
 import org.junit.Assert.assertEquals
@@ -48,8 +50,8 @@ class UiHelpersTest {
         assertEquals(emptyList<String>(), RecentSearches.add(emptyList(), "   "))
     }
 
-    private fun plugin(name: String, version: Int = 1, available: Int? = null, status: String = "loaded", error: String? = null) =
-        PluginDto(name, version, null, status, error, false, emptyList(), true, listOf(name), 0, emptyList(), available = available)
+    private fun plugin(name: String, version: Int = 1, available: Int? = null, status: String = "loaded", error: String? = null, repo: String? = null) =
+        PluginDto(if (repo == null) name else "$name@$repo", name, version, null, status, error, false, emptyList(), true, listOf(name), 0, emptyList(), available = available, repo = repo)
 
     private val plugins = listOf(
         plugin("Zeta"), plugin("Alpha", version = 2, available = 3), plugin("Broken", status = "error", error = "boom"), plugin("Same", version = 4, available = 4),
@@ -60,6 +62,18 @@ class UiHelpersTest {
         assertEquals(listOf("Alpha"), filterPlugins(plugins, "", PluginFilter.Updates).map { it.name })
         assertEquals(listOf("Broken"), filterPlugins(plugins, "", PluginFilter.Issues).map { it.name })
         assertEquals(listOf("Zeta"), filterPlugins(plugins, " zet", PluginFilter.All).map { it.name })
+    }
+
+    @Test fun repoModeGroupsPluginsByRepoInPriorityOrder() {
+        val a = "https://a.test/repo.json"
+        val b = "https://b.test/repo.json"
+        val list = listOf(plugin("Dulo", repo = b), plugin("Dulo", repo = a), plugin("Lost", repo = "https://gone.test/repo.json"))
+        val source = PluginSourceDto("repo", "", false, listOf(a, b), repos = listOf(RepoDto(a, "Main"), RepoDto(b)))
+        assertEquals(
+            listOf("Main" to listOf("Dulo@$a"), "b.test" to listOf("Dulo@$b"), "Other" to listOf("Lost@https://gone.test/repo.json")),
+            groupByRepo(list, source).map { (label, ps) -> label to ps.map { it.id } },
+        )
+        assertEquals(listOf(null to list), groupByRepo(list, source.copy(mode = "dev")))
     }
 
     @Test fun anAvailableVersionOnlyCountsWhenItIsNewer() {
