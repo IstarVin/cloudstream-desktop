@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
@@ -31,8 +32,6 @@ import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -127,6 +126,7 @@ class PluginsController(private val api: Api, private val scope: CoroutineScope,
     var selected by mutableStateOf<String?>(null)
     var selectedRepo by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)
+    var addingRepo by mutableStateOf(false)
     /** The desktop is building or loading plugins. */
     var building by mutableStateOf(false)
     /** The last gradle build's output, while shown. */
@@ -188,12 +188,21 @@ class PluginsController(private val api: Api, private val scope: CoroutineScope,
         load()
     }
 
-    fun addRepo(url: String) {
+    fun addRepo(url: String, onAdded: () -> Unit) {
         val urls = source?.repoUrls.orEmpty()
         val u = url.trim()
         if (u.isEmpty() || u in urls) return
-        if (!Regex("https?://\\S+").matches(u)) { tell("Enter an http(s) link to a repo.json or plugins.json"); return }
-        setRepos(urls + u, "Couldn't add the repository", "Adding repository…")
+        if (!Regex("https?://\\S+|[A-Za-z0-9_-]+").matches(u)) { tell("Enter a repository URL or shortcode"); return }
+        run("Couldn't add the repository") {
+            addingRepo = true
+            try {
+                api.addRepository(u)
+                load()
+                onAdded()
+            } finally {
+                addingRepo = false
+            }
+        }
     }
 
     fun removeRepo(url: String) =
@@ -225,17 +234,28 @@ class PluginsController(private val api: Api, private val scope: CoroutineScope,
 
 fun LazyListScope.pluginItems(c: PluginsController, onRetry: () -> Unit) {
     if (c.source?.mode == "repo" && c.selectedRepo == null) {
-        item { PluginSource(c, onRetry) }
         item { RepositoryList(c) }
+        if (c.plugins is Load.Failed) item { ErrorBox((c.plugins as Load.Failed).message, onRetry = onRetry) }
+        item { PluginSource(c, onRetry) }
         return
     }
     if (c.source?.mode == "repo") {
         item {
-            TextButton(onClick = { c.selectedRepo = null; c.selected = null }, modifier = Modifier.tvFocusIndicator()) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, Modifier.size(18.dp))
-                Text("Repositories", Modifier.padding(start = 8.dp))
+            Column(Modifier.padding(bottom = 12.dp)) {
+                TextButton(
+                    onClick = { c.selectedRepo = null; c.selected = null },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                    modifier = Modifier.tvFocusIndicator(),
+                ) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, Modifier.size(18.dp))
+                    Text("Repositories", Modifier.padding(start = 8.dp))
+                }
+                Text(
+                    c.source?.repos?.firstOrNull { it.url == c.selectedRepo }?.name ?: runCatching { java.net.URI(c.selectedRepo).host }.getOrNull() ?: c.selectedRepo.orEmpty(),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 8.dp).semantics { heading() },
+                )
             }
-            Text(c.source?.repos?.firstOrNull { it.url == c.selectedRepo }?.name ?: runCatching { java.net.URI(c.selectedRepo).host }.getOrNull() ?: c.selectedRepo.orEmpty(), style = MaterialTheme.typography.titleMedium)
         }
     } else item { PluginSource(c, onRetry) }
     when (val loaded = c.plugins) {
@@ -246,7 +266,7 @@ fun LazyListScope.pluginItems(c: PluginsController, onRetry: () -> Unit) {
             if (all.isEmpty()) {
                 item {
                     Text(
-                        "No plugins found in this source.",
+                        if (c.source?.mode == "repo") "No plugins found in this repository." else "No plugins found in this source. Refresh to try again.",
                         style = MaterialTheme.typography.bodyMedium, color = Palette.muted, modifier = Modifier.padding(vertical = 12.dp),
                     )
                 }
@@ -272,7 +292,7 @@ fun LazyListScope.pluginItems(c: PluginsController, onRetry: () -> Unit) {
                 )
             }
             item {
-                PluginFilterMenu(c, updates, issues)
+                PluginFilters(c, updates, issues)
                 Row(Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     val count = filterPlugins(all, c.query, c.filter).size
                     Text(if (count == all.size) "${all.size} plugins" else "$count of ${all.size} plugins", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
@@ -286,7 +306,11 @@ fun LazyListScope.pluginItems(c: PluginsController, onRetry: () -> Unit) {
             }
             val shown = filterPlugins(all, c.query, c.filter)
             if (shown.isEmpty()) item {
-                Text("No plugin matches.", style = MaterialTheme.typography.bodyMedium, color = Palette.muted, modifier = Modifier.padding(vertical = 12.dp))
+                Column(Modifier.padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("No plugins found", style = MaterialTheme.typography.titleSmall)
+                    Text("Try a different search or filter.", style = MaterialTheme.typography.bodyMedium, color = Palette.muted)
+                    TextButton(onClick = { c.query = ""; c.filter = PluginFilter.All }, modifier = Modifier.tvFocusIndicator()) { Text("Clear search and filters") }
+                }
             }
             // Repo mode: a heading per repo, in priority order, so same-named plugins from two repos are told apart.
             for ((label, group) in groupByRepo(shown, if (c.selectedRepo != null) null else c.source)) {
@@ -316,7 +340,10 @@ private fun RepositoryList(c: PluginsController) {
         )
     }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Repositories", style = MaterialTheme.typography.titleMedium)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Repositories", Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleMedium)
+            Text("${c.source?.repoUrls?.size ?: 0}", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+        }
         val source = c.source
         source?.repoUrls?.forEach { u ->
             val info = source.repos.firstOrNull { it.url == u }
@@ -333,23 +360,26 @@ private fun RepositoryList(c: PluginsController) {
                     }
                     Column(Modifier.weight(1f).padding(start = 16.dp)) {
                         Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(u, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        val count = (c.plugins as? Load.Ok)?.value?.count { it.repo == u }
+                        Text(listOfNotNull(count?.let { "$it ${if (it == 1) "plugin" else "plugins"}" }, u).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         info?.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.danger) }
                     }
+                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, Modifier.size(20.dp), tint = Palette.muted)
                 }
                 IconButton(onClick = { removing = u }, enabled = !c.busy && !c.building, modifier = Modifier.tvFocusIndicator()) {
                     Icon(Icons.Rounded.Delete, "Remove repository $name", Modifier.size(20.dp))
                 }
             }
         }
-        if (source?.repoUrls.isNullOrEmpty()) Text("No repositories added yet.", style = MaterialTheme.typography.bodyMedium, color = Palette.muted)
+        if (source?.repoUrls.isNullOrEmpty()) Text("Add a repository to browse its plugins.", style = MaterialTheme.typography.bodyMedium, color = Palette.muted, modifier = Modifier.padding(vertical = 8.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             RemoteTextField(newRepo, { newRepo = it }, Modifier.weight(1f), enabled = !c.busy && !c.building,
-                label = { Text("Add repository") }, placeholder = { Text("https://…/repo.json") }, singleLine = true,
+                label = { Text("Add repository") }, placeholder = { Text("Repository URL or shortcode") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
-                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { c.addRepo(newRepo); newRepo = "" }))
-            Button(onClick = { c.addRepo(newRepo); newRepo = "" }, enabled = newRepo.isNotBlank() && !c.busy && !c.building, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) { Text("Add") }
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { if (!c.busy && !c.building) c.addRepo(newRepo) { newRepo = "" } }))
+            Button(onClick = { c.addRepo(newRepo) { newRepo = "" } }, enabled = newRepo.isNotBlank() && !c.busy && !c.building, modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator()) { Text(if (c.addingRepo) "Loading…" else "Add") }
         }
+        if (c.addingRepo) Text("Loading repository…", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
     }
 }
 
@@ -358,7 +388,7 @@ private fun PluginSource(c: PluginsController, onRefresh: () -> Unit) {
     val source = c.source
     val repo = source?.mode == "repo"
     var expanded by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         OutlinedButton(shape = MaterialTheme.shapes.small,
             onClick = { if (repo) c.checkUpdates() else onRefresh() },
             enabled = !c.busy && c.plugins !is Load.Loading,
@@ -381,26 +411,24 @@ private fun PluginSource(c: PluginsController, onRefresh: () -> Unit) {
             else Icon(Icons.Rounded.Build, null, Modifier.size(18.dp))
             Text(if (c.building) "Building…" else "Rebuild", Modifier.padding(start = 10.dp))
         }
-        HorizontalDivider(Modifier.padding(top = 8.dp, bottom = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
-        Text("Plugin source", style = MaterialTheme.typography.labelLarge)
-        Surface(color = Palette.surface2, contentColor = Palette.text, shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-            Text(
-                when { source == null -> "Source unavailable"; repo -> source.repoName ?: "Online repo (published plugins)"; else -> "Local extensions repo (built with gradle)" },
-                Modifier.fillMaxWidth().padding(14.dp), style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-        TextButton(onClick = { expanded = !expanded }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp), modifier = Modifier.tvFocusIndicator()) {
-            Text(if (repo) "Repository details" else "Local build details", color = Palette.muted)
-            Icon(if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, Modifier.padding(start = 8.dp).size(18.dp), tint = Palette.muted)
-        }
-        if (expanded) {
-            if (repo) {
-                Text("Plugins are kept per repository. Removing a repository removes its plugins.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
-            } else source?.let {
-                Text(it.devPath, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+        if (!repo) {
+            HorizontalDivider(Modifier.padding(top = 8.dp, bottom = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            Text("Plugin source", style = MaterialTheme.typography.labelLarge)
+            Surface(color = Palette.surface2, contentColor = Palette.text, shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                Text(
+                    if (source == null) "Source unavailable" else "Local extensions repo (built with gradle)",
+                    Modifier.fillMaxWidth().padding(14.dp), style = MaterialTheme.typography.bodyMedium,
+                )
             }
-            Text("Plugins run on your desktop; switching between local and online plugins is done in desktop settings.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
-            if (!repo) {
+            TextButton(onClick = { expanded = !expanded }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp), modifier = Modifier.tvFocusIndicator()) {
+                Text("Local build details", color = Palette.muted)
+                Icon(if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, Modifier.padding(start = 8.dp).size(18.dp), tint = Palette.muted)
+            }
+            if (expanded) {
+                source?.let {
+                    Text(it.devPath, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                }
+                Text("Plugins run on your desktop; switching between local and online plugins is done in desktop settings.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                 TextButton(onClick = { c.toggleBuildLog() }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp), modifier = Modifier.tvFocusIndicator()) {
                     Text(if (c.buildLog == null) "Show build log" else "Hide build log")
                 }
@@ -417,29 +445,24 @@ private fun PluginSource(c: PluginsController, onRefresh: () -> Unit) {
             }
         }
         source?.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.danger) }
-        HorizontalDivider(Modifier.padding(top = 8.dp, bottom = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
+        if (!repo) HorizontalDivider(Modifier.padding(top = 8.dp, bottom = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
 @Composable
-private fun PluginFilterMenu(c: PluginsController, updates: Int, issues: Int) {
-    var expanded by remember { mutableStateOf(false) }
-    Box(Modifier.padding(top = 12.dp)) {
-        Surface(
-            onClick = { expanded = true }, color = Palette.surface2, contentColor = Palette.text, shape = RoundedCornerShape(8.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Filter plugins: ${c.filter.label}" },
-        ) {
-            Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(c.filter.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                Icon(Icons.Rounded.ExpandMore, null, Modifier.size(18.dp), tint = Palette.muted)
-            }
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            PluginFilter.entries.forEach { filter ->
-                val count = when (filter) { PluginFilter.All -> null; PluginFilter.Updates -> updates; PluginFilter.Issues -> issues }
-                DropdownMenuItem(text = { Text(filter.label + (count?.let { " ($it)" } ?: "")) }, onClick = { c.filter = filter; expanded = false }, modifier = Modifier.tvFocusIndicator())
-            }
+private fun PluginFilters(c: PluginsController, updates: Int, issues: Int) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(PluginFilter.entries) { filter ->
+            val count = when (filter) { PluginFilter.All -> null; PluginFilter.Updates -> updates; PluginFilter.Issues -> issues }
+            FilterChip(
+                selected = c.filter == filter,
+                onClick = { c.filter = filter },
+                label = { Text(filter.label + (count?.let { " ($it)" } ?: "")) },
+                modifier = Modifier.heightIn(min = 48.dp).tvFocusIndicator(),
+            )
         }
     }
 }
@@ -475,7 +498,7 @@ private fun PluginRow(p: PluginDto, onOpen: () -> Unit, onToggle: (Boolean) -> U
                 }
                 Text(
                     pluginSummary(p), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    color = if (p.hasUpdate()) Palette.accent else if (p.hasIssue()) Palette.danger else Palette.muted,
+                    color = if (p.hasIssue()) Palette.danger else if (p.hasUpdate()) Palette.accent else Palette.muted,
                 )
                 if (p.error != null) Text(p.error!!, style = MaterialTheme.typography.bodySmall, color = Palette.danger, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }

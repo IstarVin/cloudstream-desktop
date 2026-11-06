@@ -89,18 +89,30 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
                 is Boolean -> (v as? JsonPrimitive)?.booleanOrNull != null
                 is Number -> (v as? JsonPrimitive)?.longOrNull != null
                 is List<*> -> v is JsonArray && v.all { it is JsonPrimitive && it.isString } &&
-                    (key != PLUGIN_REPO_URLS || (v.all { (it as JsonPrimitive).content.matches(Regex("""https?://\S+""")) }))
+                    (key != PLUGIN_REPO_URLS || v.all { repoUrl((it as JsonPrimitive).content) != null })
                 else -> v is JsonPrimitive && v.isString && choices[key].let { it == null || v.content in it }
             }
             require(ok) { "Setting $key has the wrong type or value" }
         }
         for ((key, v) in values) {
-            db.update("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, v.toString())
+            val saved = if (key == PLUGIN_REPO_URLS) {
+                JsonArray((v as JsonArray).map { repoUrl((it as JsonPrimitive).content)!! }.distinct().map(::JsonPrimitive))
+            } else v
+            db.update("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, saved.toString())
             listeners.forEach { it(key) }
         }
     }
 
     companion object {
+        fun repoUrl(input: String): String? {
+            val value = input.trim()
+            return when {
+                value.matches(Regex("""https?://\S+""")) -> value
+                value.matches(Regex("""[A-Za-z0-9_-]+""")) -> "https://cutt.ly/$value"
+                else -> null
+            }
+        }
+
         const val MPV_EXTRA_ARGS = "mpv_extra_args"
         const val SOURCE_PROFILE = "source_profile"
         const val SOURCE_PROFILES = "source_profiles"

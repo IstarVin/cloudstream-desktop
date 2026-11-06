@@ -80,6 +80,9 @@ class Services(
 data class EnabledRequest(val enabled: Boolean)
 
 @Serializable
+data class AddRepositoryRequest(val url: String)
+
+@Serializable
 data class RebuildRequest(val modules: List<String>? = null)
 
 private const val EMBEDDED_POLL_MS = 20_000L
@@ -364,6 +367,10 @@ fun Route.apiRoutes(s: Services) {
             })
         }
         get("/plugins/source") { call.respond(pluginSource(s)) }
+        post("/plugins/repositories") {
+            s.host.addRepository(call.receive<AddRepositoryRequest>().url)
+            call.respond(pluginSource(s))
+        }
         post("/plugins/check-updates") {
             s.host.checkUpdates()
             call.respond(pluginSource(s))

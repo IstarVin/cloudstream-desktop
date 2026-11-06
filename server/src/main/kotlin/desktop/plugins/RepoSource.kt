@@ -215,18 +215,35 @@ class RepoSource(val urls: List<String>, private val dir: File, private val http
         results.forEach { (u, r) -> r.exceptionOrNull()?.let { log.warn("Plugin repo {}: {}", u, it.message) } }
     }
 
-    private data class FetchedIndex(val name: String?, val iconUrl: String?, val entries: List<Entry>)
+    data class FetchedIndex(val url: String, val name: String?, val iconUrl: String?, val entries: List<Entry>)
+
+    /** Follow redirects and verify that the repository and its plugin lists can be read. */
+    suspend fun resolveRepository(url: String): FetchedIndex = withContext(Dispatchers.IO) { fetchIndex(url) }
+
+    suspend fun addPrepared(repo: FetchedIndex) = mutex.withLock {
+        val old = state
+        save(old.copy(
+            repoNames = if (repo.name != null) old.repoNames + (repo.url to repo.name) else old.repoNames,
+            repoIcons = if (repo.iconUrl != null) old.repoIcons + (repo.url to repo.iconUrl) else old.repoIcons,
+            index = (old.index.filterNot { it.repo == repo.url } + repo.entries.map { it.copy(repo = repo.url) }).distinctBy { it.id },
+            checkedAt = System.currentTimeMillis(),
+        ))
+    }
 
     private fun fetchIndex(url: String): FetchedIndex {
-        val root = Json.parseToJsonElement(fetchText(url))
+        val (rootText, rootUrl) = fetchText(url)
+        val root = Json.parseToJsonElement(rootText)
         val (name, lists) = if (root is JsonObject && "pluginLists" in root) {
-            root["name"]?.jsonPrimitive?.content to root.getValue("pluginLists").jsonArray.map { resolve(url, it.jsonPrimitive.content) }
+            root["name"]?.jsonPrimitive?.content to root.getValue("pluginLists").jsonArray.map { resolve(rootUrl, it.jsonPrimitive.content) }
         } else {
-            null to listOf(url)
+            null to emptyList()
         }
-        val index = lists.flatMap { list -> entries(if (list == url) root else Json.parseToJsonElement(fetchText(list)), list).map { it.copy(repo = url) } }
-        val icon = (root as? JsonObject)?.get("iconUrl")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }?.let { resolve(url, it) }
-        return FetchedIndex(name, icon, index)
+        val index = (if (root !is JsonObject || "pluginLists" !in root) entries(root, rootUrl) else lists.flatMap { list ->
+            val (text, finalUrl) = fetchText(list)
+            entries(Json.parseToJsonElement(text), finalUrl)
+        }).map { it.copy(repo = url) }
+        val icon = (root as? JsonObject)?.get("iconUrl")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }?.let { resolve(rootUrl, it) }
+        return FetchedIndex(rootUrl, name, icon, index)
     }
 
     private fun entries(json: JsonElement, base: String): List<Entry> = (json as? JsonArray ?: throw IOException("$base isn't a plugin list"))
@@ -332,9 +349,9 @@ class RepoSource(val urls: List<String>, private val dir: File, private val http
         }
     }
 
-    private fun fetchText(url: String): String = http.newCall(Request.Builder().url(url).build()).execute().use { res ->
+    private fun fetchText(url: String): Pair<String, String> = http.newCall(Request.Builder().url(url).build()).execute().use { res ->
         if (!res.isSuccessful) throw IOException("HTTP ${res.code} for $url")
-        res.body.string()
+        res.body.string() to res.request.url.toString()
     }
 
     /**

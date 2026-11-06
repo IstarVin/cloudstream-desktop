@@ -19,6 +19,7 @@
     Check,
     CircleAlert,
     ChevronDown,
+    ChevronRight,
     ArrowLeft,
     Trash2,
     Globe,
@@ -256,9 +257,17 @@
   let newRepoUrl = $state("");
   async function addRepo() {
     const u = newRepoUrl.trim();
-    if (!u || repoUrls.includes(u)) return;
-    await setSource({ plugin_repo_urls: [...repoUrls, u] });
-    newRepoUrl = "";
+    if (!u || working !== null) return;
+    working = "add-repo";
+    try {
+      await api.addRepository(u);
+      newRepoUrl = "";
+      await client.invalidateQueries();
+    } catch (e) {
+      toasts.error(e);
+    } finally {
+      working = null;
+    }
   }
   async function removeRepo(u: string) {
     if (!confirm(`Remove this repository? Plugins installed from it are removed too.\n\n${u}`))
@@ -787,7 +796,7 @@
             </label>
             <details class="source-details">
               <summary
-                >{repo ? (src.repoName ?? "Repository details") : "Local build details"}<ChevronDown
+                >{repo ? "Repository details" : "Local build details"}<ChevronDown
                   size={16}
                   aria-hidden="true"
                 /></summary
@@ -842,47 +851,57 @@
 
         {#if repo && !selectedRepo}
           <div class="repositories">
-            <h3>Repositories</h3>
-            {#each repoUrls as u (u)}
-              {@const info = src?.repos?.find((r) => r.url === u)}
-              <div class="repository-row">
-                <button
-                  class="repository-open"
-                  onclick={() => {
-                    selectedRepo = u;
-                    pluginSearch = "";
-                    pluginFilter = "all";
-                  }}
-                >
-                  <span class="plugin-icon" aria-hidden="true">
-                    {#if info?.iconUrl && failedRepoIcons[u] !== info.iconUrl}
-                      <img
-                        src={info.iconUrl}
-                        alt=""
-                        width="40"
-                        height="40"
-                        loading="lazy"
-                        referrerpolicy="no-referrer"
-                        onerror={() => {
-                          failedRepoIcons[u] = info.iconUrl!;
-                        }}
-                      />
-                    {:else}<Layers size={21} />{/if}
-                  </span>
-                  <span class="repo-id"
-                    ><b>{info?.name || hostOf(u)}</b><small title={u}>{u}</small
-                    >{#if info?.error}<small class="p-error">{info.error}</small>{/if}</span
-                  >
-                </button>
-                <button
-                  class="repository-remove"
-                  aria-label="Remove repository {info?.name || hostOf(u)}"
-                  disabled={changingPlugins || working !== null || status.data?.building}
-                  onclick={() => removeRepo(u)}><Trash2 size={19} aria-hidden="true" /></button
-                >
+            <div class="repositories-heading">
+              <div>
+                <h3>Repositories <span>{repoUrls.length}</span></h3>
+                <p>Select a repository to manage its plugins.</p>
               </div>
-            {/each}
-            {#if !repoUrls.length}<p class="muted small">No repositories added yet.</p>{/if}
+            </div>
+            <div class="repository-list">
+              {#each repoUrls as u (u)}
+                {@const info = src?.repos?.find((r) => r.url === u)}
+                <div class="repository-row">
+                  <button
+                    class="repository-open"
+                    onclick={() => {
+                      selectedRepo = u;
+                      pluginSearch = "";
+                      pluginFilter = "all";
+                    }}
+                  >
+                    <span class="plugin-icon" aria-hidden="true">
+                      {#if info?.iconUrl && failedRepoIcons[u] !== info.iconUrl}
+                        <img
+                          src={info.iconUrl}
+                          alt=""
+                          width="40"
+                          height="40"
+                          loading="lazy"
+                          referrerpolicy="no-referrer"
+                          onerror={() => {
+                            failedRepoIcons[u] = info.iconUrl!;
+                          }}
+                        />
+                      {:else}<Layers size={21} />{/if}
+                    </span>
+                    <span class="repo-id"
+                      ><b>{info?.name || hostOf(u)}</b><small title={u}>{u}</small
+                      >{#if info?.error}<small class="p-error">{info.error}</small>{/if}</span
+                    >
+                    <ChevronRight class="repository-chevron" size={18} aria-hidden="true" />
+                  </button>
+                  <button
+                    class="repository-remove"
+                    aria-label="Remove repository {info?.name || hostOf(u)}"
+                    disabled={changingPlugins || working !== null || status.data?.building}
+                    onclick={() => removeRepo(u)}><Trash2 size={19} aria-hidden="true" /></button
+                  >
+                </div>
+              {/each}
+              {#if !repoUrls.length}<p class="repository-empty">
+                  No repositories added yet. Add one below to get started.
+                </p>{/if}
+            </div>
             <form
               class="repo-row repo-add"
               onsubmit={(e) => {
@@ -890,35 +909,42 @@
                 addRepo();
               }}
             >
-              <input
-                type="url"
-                placeholder="https://…/repo.json"
-                aria-label="Add repository URL"
-                disabled={changingPlugins || working !== null || status.data?.building}
-                bind:value={newRepoUrl}
-              />
+              <label class="repo-input">
+                <span>Add a repository</span>
+                <input
+                  type="text"
+                  placeholder="Repository URL or shortcode"
+                  disabled={changingPlugins || working !== null || status.data?.building}
+                  bind:value={newRepoUrl}
+                />
+              </label>
               <button
                 class="btn"
                 type="submit"
                 disabled={!newRepoUrl.trim() ||
                   changingPlugins ||
                   working !== null ||
-                  status.data?.building}>Add</button
+                  status.data?.building}>{working === "add-repo" ? "Loading…" : "Add"}</button
               >
             </form>
+            {#if working === "add-repo"}<p class="muted small" role="status">
+                Loading repository…
+              </p>{/if}
           </div>
         {:else}
           {#if repo && selectedRepo}
-            <button
-              class="link-btn repo-back"
-              onclick={() => {
-                selectedRepo = null;
-                openPlugin = null;
-              }}
-            >
-              <ArrowLeft size={18} aria-hidden="true" /> Repositories</button
-            >
-            <h3>{src?.repos?.find((r) => r.url === selectedRepo)?.name || hostOf(selectedRepo)}</h3>
+            <div class="repo-detail-heading">
+              <button
+                class="link-btn repo-back"
+                onclick={() => {
+                  selectedRepo = null;
+                  openPlugin = null;
+                }}
+              >
+                <ArrowLeft size={18} aria-hidden="true" /> Repositories</button
+              >
+              <h3>{src?.repos?.find((r) => r.url === selectedRepo)?.name || hostOf(selectedRepo)}</h3>
+            </div>
           {/if}
           {#if plugins.isPending}
             <div class="plugin-skeleton" role="status">
@@ -1286,15 +1312,34 @@
     align-items: center;
   }
   .repositories {
-    margin-top: 24px;
+    margin-top: 4px;
   }
   .repositories h3 {
-    margin-bottom: 12px;
+    margin: 0;
+    color: var(--text);
+    font-size: 16px;
+  }
+  .repositories h3 span {
+    margin-left: 6px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .repositories-heading p {
+    margin: 5px 0 16px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .repository-list {
+    border-block: 1px solid var(--line);
   }
   .repository-row {
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  .repository-row + .repository-row {
+    border-top: 1px solid var(--line);
   }
   .repository-open {
     display: flex;
@@ -1302,7 +1347,7 @@
     gap: 16px;
     flex: 1;
     min-width: 0;
-    padding: 12px 0;
+    padding: 14px 8px;
     text-align: left;
     color: inherit;
     background: none;
@@ -1311,6 +1356,13 @@
   }
   .repository-open:hover b {
     color: var(--accent);
+  }
+  .repository-open:hover :global(.repository-chevron) {
+    color: var(--accent);
+  }
+  .repository-open :global(.repository-chevron) {
+    flex-shrink: 0;
+    color: var(--muted);
   }
   .repository-open small {
     overflow: hidden;
@@ -1325,20 +1377,51 @@
     color: var(--text);
     background: none;
     border: 0;
+    border-radius: var(--radius-sm);
     cursor: pointer;
+  }
+  .repository-remove:not(:disabled):hover {
+    color: var(--text);
+    background: var(--surface-3);
   }
   .repository-remove:disabled {
     opacity: 0.5;
     cursor: default;
   }
   .repo-add {
-    margin-top: 16px;
+    align-items: end;
+    margin-top: 24px;
+  }
+  .repo-input {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 550;
+  }
+  .repo-input input {
+    width: 100%;
+  }
+  .repository-empty {
+    margin: 0;
+    padding: 20px 8px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .repo-detail-heading {
+    display: grid;
+    justify-items: start;
+    gap: 16px;
+  }
+  .repo-detail-heading h3 {
+    margin: 0;
   }
   .repo-back {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    margin: 24px 0 12px;
+    min-height: 44px;
   }
   .repo-id {
     flex: 1;

@@ -158,6 +158,7 @@ export const api = {
   rebuild: (modules?: string[]) => post("/api/plugins/rebuild", { modules }),
   buildLog: async () => (await fetch("/api/plugins/build-log")).text(),
   pluginSource: () => get<PluginSource>("/api/plugins/source"),
+  addRepository: (url: string) => post<PluginSource>("/api/plugins/repositories", { url }),
   checkUpdates: () => post<PluginSource>("/api/plugins/check-updates"),
   updatePlugins: (modules?: string[]) =>
     post<{ failed: Record<string, string>; source: PluginSource }>("/api/plugins/update", {

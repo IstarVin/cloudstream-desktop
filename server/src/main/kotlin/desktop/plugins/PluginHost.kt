@@ -166,10 +166,15 @@ class PluginHost(private val config: Config, private val settings: Settings) {
     }
 
     /** Unloads everything and loads from the source the settings now name. */
-    private suspend fun switchSource() {
+    private val sourceSwitchMutex = Mutex()
+
+    private suspend fun switchSource() = sourceSwitchMutex.withLock { switchSourceLocked() }
+
+    private suspend fun switchSourceLocked(prepared: RepoSource.FetchedIndex? = null) {
         val next = mutex.withLock {
             val next = pickSource(source)
             if (next === source) return
+            if (next is RepoSource && prepared != null) next.addPrepared(prepared)
             records.values.forEach(::unload)
             records.clear()
             source = next
@@ -179,9 +184,25 @@ class PluginHost(private val config: Config, private val settings: Settings) {
         }
         log.info("Plugin source is now {}", if (next is RepoSource) next.urls else config.devPath)
         if (next is RepoSource) {
-            fetchRepo(next)
+            if (prepared != null) installEnabled(next) else fetchRepo(next)
             mutex.withLock { syncAll() }
         }
+    }
+
+    /** Verify a repository before adding its resolved URL, then wait for the plugin list to reload. */
+    suspend fun addRepository(input: String) = sourceSwitchMutex.withLock {
+        val url = Settings.repoUrl(input) ?: throw IllegalArgumentException("Enter a repository URL or shortcode")
+        val prepared = try {
+            repo().resolveRepository(url)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            throw IllegalArgumentException("Couldn't load repository: ${e.message ?: "Invalid repository"}", e)
+        }
+        val urls = settings.repoUrls()
+        if (prepared.url !in urls) {
+            settings.update(kotlinx.serialization.json.JsonObject(mapOf(Settings.PLUGIN_REPO_URLS to kotlinx.serialization.json.JsonArray((urls + prepared.url).map { kotlinx.serialization.json.JsonPrimitive(it) }))))
+        }
+        switchSourceLocked(prepared)
     }
 
     /** Refreshes the repo's index (keeping the saved one when that fails) and installs enabled plugins that are new. */

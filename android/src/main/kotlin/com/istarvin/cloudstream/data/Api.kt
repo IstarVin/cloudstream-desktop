@@ -258,6 +258,7 @@ class Api(initial: ServerConfig?) {
     }
 
     suspend fun pluginSource(): PluginSourceDto = get("/api/plugins/source")
+    suspend fun addRepository(url: String): PluginSourceDto = json.decodeFromString(post("/api/plugins/repositories", JsonObject(mapOf("url" to JsonPrimitive(url))).toString()))
 
     private suspend fun post(path: String, payload: String = "{}"): String =
         call(Request.Builder().url(url(path)).post(body(payload)).build())

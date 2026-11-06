@@ -32,6 +32,9 @@ class RepoSourceTest {
     private val server = LocalServer { ex ->
         val path = ex.requestURI.path
         when {
+            path == "/short" -> ex.respond(302, "", headers = mapOf("Location" to "/nested/repo.json"))
+            path == "/nested/repo.json" -> ex.respond(200, """{"name":"Redirected","iconUrl":"icon.png","pluginLists":["plugins.json"]}""", "application/json")
+            path == "/nested/plugins.json" -> ex.respond(302, "", headers = mapOf("Location" to "/builds/plugins.json"))
             path == "/repo.json" -> ex.respond(200, """{"name":"$repoName","iconUrl":"$repoIcon","pluginLists":["$pluginList"]}""", "application/json")
             path == "/new/plugins.json" -> ex.respond(200, """[{"internalName":"NewPlugin","version":1}]""", "application/json")
             path == "/builds/plugins.json" -> {
@@ -60,6 +63,20 @@ class RepoSourceTest {
 
     @AfterTest
     fun close() = server.close()
+
+    @Test
+    fun followsRedirectsAndResolvesRelativeUrlsFromTheirDestinations() = runBlocking {
+        val repo = RepoSource("${server.url}/short", dir)
+        val prepared = repo.resolveRepository("${server.url}/short")
+        assertEquals("${server.url}/nested/repo.json", prepared.url)
+        val resolvedRepo = RepoSource(prepared.url, createTempDirectory().toFile())
+        resolvedRepo.addPrepared(prepared)
+        assertEquals("${server.url}/nested/repo.json", resolvedRepo.available("Dulo")!!.repo)
+        repo.refresh()
+        assertEquals("Redirected", repo.repoName)
+        assertEquals("${server.url}/nested/icon.png", repo.repos().single().iconUrl)
+        assertEquals("${server.url}/builds/Dulo-1.jar", repo.available("Dulo")!!.jarUrl)
+    }
 
     @Test
     fun readsARepoJsonAndResolvesRelativeUrls() = runBlocking {
