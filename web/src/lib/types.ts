@@ -53,7 +53,7 @@ export interface PluginSource {
   mode: PluginSourceMode;
   devPath: string;
   devAvailable: boolean;
-  repoUrl: string;
+  repoUrls: string[];
   repoName?: string | null;
   /** When the repo's index was last read, or 0. */
   checkedAt: number;
@@ -333,7 +333,7 @@ export interface Settings {
   skip_segments: SkipMode;
   chromium_mode: BrowserMode;
   plugin_source: PluginSourceMode;
-  plugin_repo_url: string;
+  plugin_repo_urls: string[];
 }
 
 export interface SourceProfile {

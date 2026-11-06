@@ -427,7 +427,7 @@ private fun pluginSource(s: Services): PluginSourceDto {
         mode = if (repo != null) "repo" else "dev",
         devPath = s.devPath.path,
         devAvailable = DevSource(s.devPath).error == null,
-        repoUrl = s.settings.string(Settings.PLUGIN_REPO_URL),
+        repoUrls = s.settings.repoUrls(),
         repoName = repo?.repoName,
         checkedAt = repo?.checkedAt ?: 0,
         error = src.error,

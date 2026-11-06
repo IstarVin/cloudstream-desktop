@@ -4,9 +4,10 @@
 bind = "0.0.0.0:6969"            # LAN remote is a v1 goal; use 127.0.0.1 to keep it desktop-only
 
 # Where plugins come from (UI): "dev" builds the local extensions repo at dev_path, "repo" downloads the published
-# jars listed by repo_url (a repo.json or plugins.json). Defaults to dev when dev_path holds a checkout, else repo.
+# jars listed by repo_urls (each a repo.json or plugins.json; the earlier one wins when two publish the same plugin).
+# Defaults to dev when dev_path holds a checkout, else repo.
 # plugins.source = "repo"
-plugins.repo_url = "https://raw.githubusercontent.com/NropVox/cloudstream-extensions-nropvox/builds/repo.json"   # (UI)
+plugins.repo_urls = ["https://raw.githubusercontent.com/NropVox/cloudstream-extensions-nropvox/builds/repo.json"]   # (UI)
 plugins.dev_path = "/mnt/AJ/Projects/cloudstream-extensions-istarvin"
 plugins.build_on_start = true    # dev mode: run gradlew for enabled modules at startup
 plugins.disabled = ["Fetcharr", "StreamCorner"]   # (UI)

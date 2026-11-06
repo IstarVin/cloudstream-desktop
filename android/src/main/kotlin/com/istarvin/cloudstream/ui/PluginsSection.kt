@@ -278,7 +278,7 @@ private fun PluginSource(c: PluginsController, onRefresh: () -> Unit) {
         }
         if (expanded) {
             source?.let {
-                Text(if (repo) it.repoUrl else it.devPath, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                Text(if (repo) it.repoUrls.joinToString("\n") else it.devPath, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
             }
             Text("Plugins run on your desktop. Change the source from desktop settings.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
             if (!repo) {

@@ -52,7 +52,8 @@ data class PluginSourceDto(
     val mode: String,
     val devPath: String,
     val devAvailable: Boolean,
-    val repoUrl: String,
+    /** Repo URLs in priority order: the earlier one wins when two publish the same plugin. */
+    val repoUrls: List<String>,
     val repoName: String? = null,
     /** When the repo's index was last read, or 0. */
     val checkedAt: Long = 0,

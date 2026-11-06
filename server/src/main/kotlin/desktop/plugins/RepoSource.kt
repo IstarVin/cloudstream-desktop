@@ -28,13 +28,17 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
- * Repo mode: plugins from a published Cloudstream repo. [url] is a `repo.json` (its `pluginLists`) or a `plugins.json`.
+ * Repo mode: plugins from published Cloudstream repos. Each of [urls] is a `repo.json` (its `pluginLists`) or a `plugins.json`;
+ * when two repos publish the same plugin, the earlier URL wins.
  * The gradle plugin lists a `jarUrl`/`jarHash`/`jarFileSize` for every `isCrossPlatform` module; those jars are used as
  * they are. Any other plugin's `.cs3` (`url`/`fileHash`/`fileSize`) is converted to a jar with [Cs3Converter]. Every
  * download is checked against the repo's hash, and the previous two versions are kept in [dir] for rollback. The index
  * and what's installed are saved, so the plugins load offline.
  */
-class RepoSource(val url: String, private val dir: File, private val http: OkHttpClient = defaultClient) : PluginSource {
+class RepoSource(val urls: List<String>, private val dir: File, private val http: OkHttpClient = defaultClient) : PluginSource {
+    constructor(url: String, dir: File, http: OkHttpClient = defaultClient) : this(listOf(url), dir, http)
+
+
     private val log = LoggerFactory.getLogger(RepoSource::class.java)
     private val stateFile = File(dir, "state.json")
     private val jarDir = File(dir, "jars")
@@ -61,6 +65,8 @@ class RepoSource(val url: String, private val dir: File, private val http: OkHtt
         val jarUrl: String? = null,
         val jarHash: String? = null,
         val jarFileSize: Long? = null,
+        /** The repo URL this entry came from. */
+        val repo: String? = null,
     ) {
         fun info() = ModuleInfo(
             name = internalName,
@@ -135,23 +141,39 @@ class RepoSource(val url: String, private val dir: File, private val http: OkHtt
         }
     }
 
-    /** Fetches the index again. Throws when the repo can't be read; the saved index stays in use. */
+    /**
+     * Fetches every repo's index again and merges them. A repo that can't be read keeps its saved entries and is reported
+     * by [error]; throws only when none can be read, leaving the saved index in use.
+     */
     suspend fun refresh() = withContext(Dispatchers.IO) {
-        try {
-            val root = Json.parseToJsonElement(fetchText(url))
-            val (name, lists) = if (root is JsonObject && "pluginLists" in root) {
-                root["name"]?.jsonPrimitive?.content to root.getValue("pluginLists").jsonArray.map { resolve(url, it.jsonPrimitive.content) }
-            } else {
-                null to listOf(url)
-            }
-            val index = lists.flatMap { list -> entries(if (list == url) root else Json.parseToJsonElement(fetchText(list)), list) }
-            mutex.withLock { save(state.copy(repoName = name, index = index, checkedAt = System.currentTimeMillis())) }
-            fetchError = null
-            log.info("Plugin repo {}: {} plugins, {} with jars (the rest are converted from their .cs3)", name ?: url, index.size, index.count { it.jarUrl != null })
-        } catch (e: Exception) {
+        val results = urls.map { u -> u to runCatching { fetchIndex(u) } }
+        val failed = results.filter { it.second.isFailure }
+        if (failed.size == results.size) {
+            val e = failed.first().second.exceptionOrNull()!!
             fetchError = e.message ?: e.javaClass.simpleName
             throw e
         }
+        val old = state.index
+        val merged = LinkedHashMap<String, Entry>()
+        for ((u, r) in results) {
+            (r.getOrNull()?.second ?: old.filter { it.repo == u }).forEach { merged.putIfAbsent(it.internalName, it) }
+        }
+        val names = results.mapNotNull { it.second.getOrNull()?.first }
+        mutex.withLock { save(state.copy(repoName = names.joinToString(", ").ifEmpty { null }, index = merged.values.toList(), checkedAt = System.currentTimeMillis())) }
+        fetchError = failed.takeIf { it.isNotEmpty() }?.joinToString("; ") { (u, r) -> "$u: ${r.exceptionOrNull()?.message}" }
+        failed.forEach { (u, r) -> log.warn("Plugin repo {}: {}", u, r.exceptionOrNull()?.message) }
+        log.info("Plugin repos {}: {} plugins, {} with jars (the rest are converted from their .cs3)", names.ifEmpty { urls }, merged.size, merged.values.count { it.jarUrl != null })
+    }
+
+    private fun fetchIndex(url: String): Pair<String?, List<Entry>> {
+        val root = Json.parseToJsonElement(fetchText(url))
+        val (name, lists) = if (root is JsonObject && "pluginLists" in root) {
+            root["name"]?.jsonPrimitive?.content to root.getValue("pluginLists").jsonArray.map { resolve(url, it.jsonPrimitive.content) }
+        } else {
+            null to listOf(url)
+        }
+        val index = lists.flatMap { list -> entries(if (list == url) root else Json.parseToJsonElement(fetchText(list)), list).map { it.copy(repo = url) } }
+        return name to index
     }
 
     private fun entries(json: JsonElement, base: String): List<Entry> = (json as? JsonArray ?: throw IOException("$base isn't a plugin list"))
@@ -277,10 +299,18 @@ class RepoSource(val url: String, private val dir: File, private val http: OkHtt
             .readTimeout(60, TimeUnit.SECONDS)
             .build()
 
-        /** Each repo URL keeps its own downloads, so switching repos never mixes their jars. */
-        fun dirFor(base: File, url: String): File {
+        /** The old per-URL folder (single-repo installs). */
+        fun legacyDirFor(base: File, url: String): File {
             val id = MessageDigest.getInstance("SHA-1").digest(url.toByteArray()).joinToString("") { "%02x".format(it) }.take(12)
             return File(base, id)
+        }
+
+        /** All repos share one folder (jar names carry name, version and hash), so adding a repo keeps what's installed. */
+        fun dirFor(base: File, urls: List<String>): File {
+            val shared = File(base, "repos")
+            val legacy = legacyDirFor(base, urls.first())
+            if (!shared.exists() && legacy.exists()) legacy.renameTo(shared)
+            return shared
         }
 
         private fun resolve(base: String, ref: String): String = base.toHttpUrl().resolve(ref)?.toString() ?: ref

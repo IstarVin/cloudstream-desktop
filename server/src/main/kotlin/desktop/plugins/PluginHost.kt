@@ -91,8 +91,8 @@ class PluginHost(private val config: Config, private val settings: Settings) {
 
     /** The settings' source; [current] is kept when it already is that source, so its state survives. */
     private fun pickSource(current: PluginSource?): PluginSource = when (settings.string(Settings.PLUGIN_SOURCE)) {
-        "repo" -> settings.string(Settings.PLUGIN_REPO_URL).let { url ->
-            (current as? RepoSource)?.takeIf { it.url == url } ?: RepoSource(url, RepoSource.dirFor(repoBase, url))
+        "repo" -> settings.repoUrls().let { urls ->
+            (current as? RepoSource)?.takeIf { it.urls == urls } ?: RepoSource(urls, RepoSource.dirFor(repoBase, urls))
         }
         else -> dev
     }
@@ -136,7 +136,7 @@ class PluginHost(private val config: Config, private val settings: Settings) {
                     (source as? RepoSource)?.let { installEnabled(it) }
                     mutex.withLock { syncAll() }
                 }
-                Settings.PLUGIN_SOURCE, Settings.PLUGIN_REPO_URL -> scope.launch { switchSource() }
+                Settings.PLUGIN_SOURCE, Settings.PLUGIN_REPO_URLS -> scope.launch { switchSource() }
             }
         }
     }
@@ -153,7 +153,7 @@ class PluginHost(private val config: Config, private val settings: Settings) {
             syncAll()
             next
         }
-        log.info("Plugin source is now {}", if (next is RepoSource) next.url else config.devPath)
+        log.info("Plugin source is now {}", if (next is RepoSource) next.urls else config.devPath)
         if (next is RepoSource) {
             fetchRepo(next)
             mutex.withLock { syncAll() }
@@ -162,7 +162,7 @@ class PluginHost(private val config: Config, private val settings: Settings) {
 
     /** Refreshes the repo's index (keeping the saved one when that fails) and installs enabled plugins that are new. */
     private suspend fun fetchRepo(repo: RepoSource) = busy {
-        runCatching { repo.refresh() }.onFailure { log.warn("Plugin repo {}: {}", repo.url, it.message) }
+        runCatching { repo.refresh() }.onFailure { log.warn("Plugin repos {}: {}", repo.urls, it.message) }
         mutex.withLock { discover() }
         installEnabled(repo)
     }

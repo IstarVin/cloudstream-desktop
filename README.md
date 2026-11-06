@@ -89,7 +89,7 @@ repository. Change the source in **Settings → Plugins** on the desktop:
 
 | Source | Configuration | Behavior |
 | --- | --- | --- |
-| Published repository | `plugins.source = "repo"`, `plugins.repo_url` | Accepts a Cloudstream `repo.json` or `plugins.json`; loads JVM jars or converts `.cs3` files with dex2jar; verifies supplied hashes |
+| Published repository | `plugins.source = "repo"`, `plugins.repo_urls` | Accepts one or more Cloudstream `repo.json` or `plugins.json` URLs (the earlier wins on a duplicate plugin); loads JVM jars or converts `.cs3` files with dex2jar; verifies supplied hashes |
 | Local extensions checkout | `plugins.source = "dev"`, `plugins.dev_path` | Builds with Gradle and hot-reloads plugin jars; needs the extensions repo's Android SDK configuration (`local.properties`) |
 
 Plugin compatibility depends on the extension; conversion does not guarantee every

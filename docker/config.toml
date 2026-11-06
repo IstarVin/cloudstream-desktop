@@ -5,7 +5,7 @@ bind = "0.0.0.0:6969"
 
 # No local extensions checkout in the container: plugins are downloaded from the published repo.
 plugins.source = "repo"
-plugins.repo_url = "https://raw.githubusercontent.com/NropVox/cloudstream-extensions-nropvox/builds/repo.json"   # (UI)
+plugins.repo_urls = ["https://raw.githubusercontent.com/NropVox/cloudstream-extensions-nropvox/builds/repo.json"]   # (UI)
 plugins.disabled = ["Fetcharr"]   # (UI)
 
 # No display or audio in a container; play on a client (the Android app).

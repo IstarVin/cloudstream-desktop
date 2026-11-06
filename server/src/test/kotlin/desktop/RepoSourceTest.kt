@@ -68,6 +68,16 @@ class RepoSourceTest {
     }
 
     @Test
+    fun mergesSeveralReposAndSurvivesOneFailing() = runBlocking {
+        val repo = RepoSource(listOf("${server.url}/missing.json", "${server.url}/repo.json", "${server.url}/repo.json?again"), dir)
+        repo.refresh()
+        assertEquals(listOf("Dulo", "Kayoanime", "KissKH"), repo.discover().map { it.name })
+        assertEquals("${server.url}/repo.json", repo.available("Dulo")!!.repo)
+        assertTrue("missing.json" in repo.error!!)
+        Unit
+    }
+
+    @Test
     fun installsVerifiedJarsAndRollsBack() = runBlocking {
         val repo = source()
         repo.refresh()

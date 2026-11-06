@@ -247,7 +247,16 @@
   const src = $derived(source.data);
   const repo = $derived(src?.mode === "repo");
 
-  let repoUrl = $derived(settings.data?.plugin_repo_url ?? "");
+  const repoUrls = $derived(settings.data?.plugin_repo_urls ?? []);
+  let newRepoUrl = $state("");
+  async function addRepo() {
+    const u = newRepoUrl.trim();
+    if (!u || repoUrls.includes(u)) return;
+    await setSource({ plugin_repo_urls: [...repoUrls, u] });
+    newRepoUrl = "";
+  }
+  const removeRepo = (u: string) =>
+    setSource({ plugin_repo_urls: repoUrls.filter((x) => x !== u) });
 
   const sessions = createQuery(() => ({ queryKey: ["auth-sessions"], queryFn: api.sessions }));
   const authInfo = createQuery(() => ({ queryKey: ["auth-info"], queryFn: api.authStatus }));
@@ -747,24 +756,43 @@
               >
               {#if repo}
                 {#if status.data?.loopback}
-                  <label class="stack">
-                    <b>Repo URL</b>
+                  <div class="stack">
+                    <b>Repo URLs</b>
                     <small class="muted"
-                      >A Cloudstream <code>repo.json</code> or
-                      <code>plugins.json</code>. Only plugins it publishes as cross-platform jars
-                      run here.</small
+                      >Cloudstream <code>repo.json</code> or <code>plugins.json</code> links. Only plugins
+                      published as cross-platform jars run here. If two repos have the same plugin, the
+                      one listed first is used.</small
                     >
-                    <input
-                      type="url"
-                      disabled={changingPlugins || working !== null || status.data?.building}
-                      value={repoUrl}
-                      oninput={(e) => (repoUrl = e.currentTarget.value)}
-                      onchange={() =>
-                        repoUrl.trim() &&
-                        repoUrl !== settings.data?.plugin_repo_url &&
-                        setSource({ plugin_repo_url: repoUrl.trim() })}
-                    />
-                  </label>
+                    {#each repoUrls as u (u)}
+                      <div class="repo-row">
+                        <code>{u}</code>
+                        <button
+                          class="link-btn"
+                          disabled={repoUrls.length < 2 ||
+                            changingPlugins ||
+                            working !== null ||
+                            status.data?.building}
+                          onclick={() => removeRepo(u)}>Remove</button
+                        >
+                      </div>
+                    {/each}
+                    <form
+                      class="repo-row"
+                      onsubmit={(e) => {
+                        e.preventDefault();
+                        addRepo();
+                      }}
+                    >
+                      <input
+                        type="url"
+                        placeholder="https://…/repo.json"
+                        aria-label="Add repository URL"
+                        disabled={changingPlugins || working !== null || status.data?.building}
+                        bind:value={newRepoUrl}
+                      />
+                      <button class="btn" type="submit" disabled={!newRepoUrl.trim()}>Add</button>
+                    </form>
+                  </div>
                 {/if}
                 <p class="muted small">
                   {src.repoName ?? "The repo"}{src.checkedAt
@@ -1159,6 +1187,18 @@
     cursor: pointer;
   }
   .toggle span,
+  .repo-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .repo-row code {
+    flex: 1;
+    overflow-wrap: anywhere;
+  }
+  .repo-row input {
+    flex: 1;
+  }
   .stack {
     display: flex;
     flex-direction: column;

@@ -32,6 +32,12 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
     fun strings(key: String): List<String> =
         (stored(key) as? JsonArray)?.map { (it as JsonPrimitive).content } ?: defaults[key] as List<String>
 
+    /** The plugin repo URLs, in priority order. Falls back to a single URL saved before the setting became a list. */
+    fun repoUrls(): List<String> {
+        val urls = if (stored(PLUGIN_REPO_URLS) == null) (stored(PLUGIN_REPO_URL) as? JsonPrimitive)?.takeIf { it.isString }?.let { listOf(it.content) } else null
+        return (urls ?: strings(PLUGIN_REPO_URLS)).distinct().ifEmpty { listOf(defaults[PLUGIN_REPO_URLS].let { (it as List<*>).first().toString() }) }
+    }
+
     val showNsfw get() = bool(SHOW_NSFW)
     val disabledPlugins get() = strings(DISABLED_PLUGINS).toSet()
 
@@ -81,9 +87,9 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
             val ok = when (d) {
                 is Boolean -> (v as? JsonPrimitive)?.booleanOrNull != null
                 is Number -> (v as? JsonPrimitive)?.longOrNull != null
-                is List<*> -> v is JsonArray && v.all { it is JsonPrimitive && it.isString }
-                else -> v is JsonPrimitive && v.isString && choices[key].let { it == null || v.content in it } &&
-                    (key != PLUGIN_REPO_URL || v.content.matches(Regex("""https?://\S+""")))
+                is List<*> -> v is JsonArray && v.all { it is JsonPrimitive && it.isString } &&
+                    (key != PLUGIN_REPO_URLS || (v.isNotEmpty() && v.all { (it as JsonPrimitive).content.matches(Regex("""https?://\S+""")) }))
+                else -> v is JsonPrimitive && v.isString && choices[key].let { it == null || v.content in it }
             }
             require(ok) { "Setting $key has the wrong type or value" }
         }
@@ -106,6 +112,8 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
         const val SKIP_SEGMENTS = "skip_segments"
         const val CHROMIUM_MODE = "chromium_mode"
         const val PLUGIN_SOURCE = "plugin_source"
+        const val PLUGIN_REPO_URLS = "plugin_repo_urls"
+        /** Pre-list setting; still read when [PLUGIN_REPO_URLS] was never saved. */
         const val PLUGIN_REPO_URL = "plugin_repo_url"
 
         /** The allowed values of string settings that have a fixed set. */
@@ -116,6 +124,6 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
         )
 
         /** Settings only the desktop (loopback) may change: they decide what code the server downloads and runs. */
-        val desktopOnly = setOf(PLUGIN_SOURCE, PLUGIN_REPO_URL)
+        val desktopOnly = setOf(PLUGIN_SOURCE, PLUGIN_REPO_URLS, PLUGIN_REPO_URL)
     }
 }

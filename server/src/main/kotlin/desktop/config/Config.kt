@@ -47,7 +47,8 @@ data class Config(
                 // Without a local extensions repo, plugins come from the published one.
                 Settings.PLUGIN_SOURCE to (str("plugins.source")?.takeIf { it in Settings.choices.getValue(Settings.PLUGIN_SOURCE) }
                     ?: if (File(devPath, "settings.gradle.kts").exists()) "dev" else "repo"),
-                Settings.PLUGIN_REPO_URL to (str("plugins.repo_url") ?: DEFAULT_REPO_URL),
+                Settings.PLUGIN_REPO_URLS to ((t["plugins.repo_urls"] as? List<*>)?.map { it.toString() }?.takeIf { it.isNotEmpty() }
+                    ?: listOf(str("plugins.repo_url") ?: DEFAULT_REPO_URL)),
                 Settings.CHROMIUM_MODE to (str("chromium.mode")?.takeIf { it in Settings.choices.getValue(Settings.CHROMIUM_MODE) } ?: "headless"),
             )
             return Config(
