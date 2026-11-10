@@ -943,7 +943,9 @@
               >
                 <ArrowLeft size={18} aria-hidden="true" /> Repositories</button
               >
-              <h3>{src?.repos?.find((r) => r.url === selectedRepo)?.name || hostOf(selectedRepo)}</h3>
+              <h3>
+                {src?.repos?.find((r) => r.url === selectedRepo)?.name || hostOf(selectedRepo)}
+              </h3>
             </div>
           {/if}
           {#if plugins.isPending}
