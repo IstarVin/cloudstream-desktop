@@ -25,16 +25,53 @@ import java.util.concurrent.TimeUnit
 /**
  * Opening/ending times from AniSkip (api.aniskip.com), by MyAnimeList id and episode number. Results are cached in
  * SQLite without AniSkip's length filter, and matched to the playing file's length here, so one fetch serves every
- * link of an episode. "Not found" is cached for a day.
+ * link of an episode. "Not found" is cached for a day. TV shows without a MAL/AniList id use IntroDB
+ * (api.introdb.app), by IMDb id, season and episode.
  */
 class SkipTimes(private val db: Database, private val http: OkHttpClient = defaultClient) {
     private val log = LoggerFactory.getLogger(SkipTimes::class.java)
     private val malIds = ConcurrentHashMap<Int, Int>()
 
     /** Skip ranges for an episode of [duration] seconds, or none when AniSkip doesn't know it. */
-    suspend fun forEpisode(malId: Int?, aniListId: Int?, episode: Int, duration: Double): List<SkipRange> {
-        val mal = malId ?: aniListId?.let { malIdFor(it) } ?: return emptyList()
-        return matching(results(mal, episode), duration)
+    suspend fun forEpisode(
+        malId: Int?, aniListId: Int?, episode: Int, duration: Double,
+        imdbId: String? = null, season: Int? = null,
+    ): List<SkipRange> {
+        if (malId != null || aniListId != null) {
+            val mal = malId ?: aniListId?.let { malIdFor(it) } ?: return emptyList()
+            return matching(results(mal, episode), duration)
+        }
+        if (imdbId == null || !IMDB_ID.matches(imdbId)) return emptyList()
+        return introDb(introDbResults(imdbId, season ?: 1, episode), duration)
+    }
+
+    private suspend fun introDbResults(imdb: String, season: Int, episode: Int): String {
+        val cached = db.query(
+            "SELECT json, fetched FROM intro_times WHERE imdb_id = ? AND season = ? AND episode = ?", imdb, season, episode,
+        ) { it.getString(1) to it.getLong(2) }.firstOrNull()
+        val now = System.currentTimeMillis()
+        if (cached != null) {
+            val found = introDb(cached.first, 0.0).isNotEmpty()
+            if (now - cached.second < if (found) FOUND_TTL else NOT_FOUND_TTL) return cached.first
+        }
+        val url = "$INTRODB/segments?imdb_id=$imdb&season=$season&episode=$episode"
+        val body = try {
+            withContext(Dispatchers.IO) {
+                http.newCall(Request.Builder().url(url).build()).execute().use { res ->
+                    // A show or episode IntroDB doesn't know answers 404.
+                    if (!res.isSuccessful && res.code != 404) throw IllegalStateException("IntroDB answered ${res.code}")
+                    if (res.code == 404) "{}" else res.body.string()
+                }
+            }
+        } catch (e: Exception) {
+            log.info("IntroDB lookup for {} S{}E{} failed: {}", imdb, season, episode, e.message)
+            return cached?.first ?: "{}"
+        }
+        db.update(
+            "INSERT INTO intro_times(imdb_id, season, episode, json, fetched) VALUES(?,?,?,?,?) ON CONFLICT(imdb_id, season, episode) DO UPDATE SET json = excluded.json, fetched = excluded.fetched",
+            imdb, season, episode, body, now,
+        )
+        return body
     }
 
     private suspend fun results(mal: Int, episode: Int): String {
@@ -90,6 +127,8 @@ class SkipTimes(private val db: Database, private val http: OkHttpClient = defau
 
     companion object {
         private const val API = "https://api.aniskip.com/v2"
+        private const val INTRODB = "https://api.introdb.app"
+        private val IMDB_ID = Regex("tt\\d+")
         private const val FOUND_TTL = 7 * 86_400_000L
         private const val NOT_FOUND_TTL = 86_400_000L
 
@@ -121,6 +160,18 @@ class SkipTimes(private val db: Database, private val http: OkHttpClient = defau
                     o["episodeLength"]?.jsonPrimitive?.doubleOrNull ?: 0.0,
                 )
             }
+        }.getOrDefault(emptyList())
+
+        /** Ranges from an IntroDB `/segments` answer: intro → op, recap → recap, outro → ed, clamped to [duration]. */
+        fun introDb(json: String, duration: Double): List<SkipRange> = runCatching {
+            val o = Json.parseToJsonElement(json) as? JsonObject ?: return emptyList()
+            listOf("intro" to "op", "recap" to "recap", "outro" to "ed").mapNotNull { (key, type) ->
+                val seg = o[key] as? JsonObject ?: return@mapNotNull null
+                val start = seg["start_sec"]?.jsonPrimitive?.doubleOrNull?.coerceAtLeast(0.0) ?: return@mapNotNull null
+                val end = seg["end_sec"]?.jsonPrimitive?.doubleOrNull ?: return@mapNotNull null
+                if (duration > 0 && start >= duration) return@mapNotNull null
+                SkipRange(type, start, if (duration > 0) end.coerceAtMost(duration) else end)
+            }.filter { it.end - it.start >= 5 }.sortedBy { it.start }
         }.getOrDefault(emptyList())
 
         /**

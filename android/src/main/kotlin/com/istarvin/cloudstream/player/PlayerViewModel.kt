@@ -525,9 +525,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
     private fun loadSkips(item: Item, duration: Double) {
         val d = item.details
         val episode = item.episode?.episode ?: return
-        if (d.kind != "anime" || (d.malId == null && d.aniListId == null) || settings.skipSegments == "off") return
+        if (!desktop.player.SkipRule.eligible(d.kind, d.malId, d.aniListId, d.imdbId) || settings.skipSegments == "off") return
         viewModelScope.launch {
-            val ranges = runCatching { api.skips(d.malId, d.aniListId, episode, duration) }.getOrDefault(emptyList())
+            val ranges = runCatching { api.skips(d.malId, d.aniListId, episode, duration, d.imdbId, item.episode?.season) }.getOrDefault(emptyList())
             if (_session.value.item == item) _session.update { it.copy(skips = ranges) }
         }
     }

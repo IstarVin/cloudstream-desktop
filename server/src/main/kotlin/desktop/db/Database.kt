@@ -44,6 +44,12 @@ class Database(file: File) {
                     mal_id INTEGER NOT NULL, episode INTEGER NOT NULL, json TEXT NOT NULL, fetched INTEGER NOT NULL,
                     PRIMARY KEY(mal_id, episode))"""
             )
+            // IntroDB's answer per IMDb id, season and episode (desktop.player.SkipTimes).
+            st.execute(
+                """CREATE TABLE IF NOT EXISTS intro_times(
+                    imdb_id TEXT NOT NULL, season INTEGER NOT NULL, episode INTEGER NOT NULL, json TEXT NOT NULL, fetched INTEGER NOT NULL,
+                    PRIMARY KEY(imdb_id, season, episode))"""
+            )
         }
     }
 

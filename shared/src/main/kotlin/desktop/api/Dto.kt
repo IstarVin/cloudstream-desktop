@@ -180,6 +180,8 @@ data class Details(
     /** MyAnimeList and AniList ids, when the provider sets them (anime); used for AniSkip. */
     val malId: Int? = null,
     val aniListId: Int? = null,
+    /** IMDb id (tt…), when the provider sets it; used for IntroDB on TV shows. */
+    val imdbId: String? = null,
 )
 
 @Serializable

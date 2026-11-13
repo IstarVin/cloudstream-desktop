@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.LiveStreamLoadResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.LoadResponse.Companion.getAniListId
+import com.lagradost.cloudstream3.LoadResponse.Companion.getImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.getMalId
 import com.lagradost.cloudstream3.MovieLoadResponse
 import com.lagradost.cloudstream3.MovieSearchResponse
@@ -105,6 +106,7 @@ object Mapper {
             nsfw = providerNsfw || r.type == TvType.NSFW,
             malId = runCatching { r.getMalId()?.toIntOrNull() }.getOrNull(),
             aniListId = runCatching { r.getAniListId()?.toIntOrNull() }.getOrNull(),
+            imdbId = runCatching { r.getImdbId() }.getOrNull()?.takeIf { it.matches(Regex("tt\\d+")) },
         )
     }
 

@@ -31,7 +31,9 @@ class TomlTest {
     @Test
     fun readsTheShippedDefaultConfig() {
         val t = Toml.parse(javaClass.getResource("/default-config.toml")!!.readText())
-        assertEquals(listOf("Fetcharr", "StreamCorner"), t["plugins.disabled"])
+        assertEquals(null, t["plugins.disabled"], "plugins start disabled; the selection lives in settings")
+        assertEquals("repo", t["plugins.source"])
+        assertEquals(false, t["plugins.build_on_start"])
         assertEquals(emptyList<Any>(), t["mpv.extra_args"])
     }
 }

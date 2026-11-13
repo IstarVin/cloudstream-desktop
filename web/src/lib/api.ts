@@ -125,6 +125,8 @@ export const api = {
     duration: number;
     malId?: number | null;
     aniListId?: number | null;
+    imdbId?: string | null;
+    season?: number | null;
   }) =>
     get<SkipRange[]>(
       `/api/skips?${q({
@@ -132,6 +134,8 @@ export const api = {
         duration: String(p.duration),
         ...(p.malId != null ? { malId: String(p.malId) } : {}),
         ...(p.aniListId != null ? { aniListId: String(p.aniListId) } : {}),
+        ...(p.imdbId ? { imdbId: p.imdbId } : {}),
+        ...(p.season != null ? { season: String(p.season) } : {}),
       })}`,
     ),
 

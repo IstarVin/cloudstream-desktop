@@ -684,11 +684,22 @@ class WebPlayer {
 
   private loadSkips(item: Item, duration: number) {
     const d = item.details;
-    const episode = episodeOf(item)?.episode;
-    if (episode == null || d.kind !== "anime" || (d.malId == null && d.aniListId == null)) return;
+    const ep = episodeOf(item);
+    const episode = ep?.episode;
+    const anime = d.kind === "anime" && (d.malId != null || d.aniListId != null);
+    // Same rule as SkipRule.eligible (shared/.../Rules.kt): AniSkip for anime, IntroDB for TV series only.
+    const imdb = d.kind === "series" && !!d.imdbId;
+    if (episode == null || !(anime || imdb)) return;
     if (this.settings?.skip_segments === "off") return;
     api
-      .skips({ episode, duration, malId: d.malId, aniListId: d.aniListId })
+      .skips({
+        episode,
+        duration,
+        malId: d.malId,
+        aniListId: d.aniListId,
+        imdbId: d.imdbId,
+        season: ep?.season,
+      })
       .then((ranges) => {
         if (this.item === item) this.skips = ranges;
       })

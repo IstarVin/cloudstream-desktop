@@ -14,6 +14,7 @@ import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -55,6 +56,28 @@ class SkipTimesTest {
         assertTrue(skips.forEpisode(21, null, 2, 1431.0).isEmpty())
         assertTrue(skips.forEpisode(null, null, 1, 1431.0).isEmpty(), "no ids: no lookup")
         assertEquals(listOf("/v2/skip-times/21/1", "/v2/skip-times/21/2"), calls)
+    }
+
+    @Test
+    fun eligibleUsesAniSkipForAnimeAndIntroDbOnlyForSeries() {
+        assertTrue(SkipRule.eligible("anime", 21, null, null))
+        assertTrue(SkipRule.eligible("anime", null, 21, null))
+        assertTrue(SkipRule.eligible("series", null, null, "tt0903747"))
+        assertFalse(SkipRule.eligible("anime", null, null, "tt0903747"), "anime numbering rarely matches IMDb seasons")
+        assertFalse(SkipRule.eligible("movie", null, null, "tt0903747"))
+        assertFalse(SkipRule.eligible("series", null, null, null))
+    }
+
+    @Test
+    fun introDbSegmentsMapToRanges() {
+        val json = """{"intro":{"start_sec":30.5,"end_sec":120},"recap":null,"outro":{"start_sec":3431,"end_sec":3500}}"""
+        assertEquals(
+            listOf(SkipRange("op", 30.5, 120.0), SkipRange("ed", 3431.0, 3450.0)),
+            SkipTimes.introDb(json, 3450.0),
+            "outro is clamped to the file",
+        )
+        assertTrue(SkipTimes.introDb("{}", 3450.0).isEmpty())
+        assertTrue(SkipTimes.introDb("not json", 0.0).isEmpty())
     }
 
     @Test

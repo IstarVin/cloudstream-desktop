@@ -435,16 +435,16 @@ class Playback(
         if (duration > 0 && pos > duration * 0.85 && s.item.hasNext && s.nextSet?.stale != false) prefetchNext(s)
     }
 
-    /** Fetches AniSkip ranges for an anime episode once its length is known, and hands them to the script. */
+    /** Fetches skip ranges (AniSkip for anime, IntroDB for TV) once the episode's length is known, and hands them to the script. */
     private suspend fun loadSkips(s: Session, duration: Double) {
         val d = s.item.details
         val episode = s.item.episode?.episode
-        if (d.kind != "anime" || episode == null || (d.malId == null && d.aniListId == null)) return
+        if (episode == null || !SkipRule.eligible(d.kind, d.malId, d.aniListId, d.imdbId)) return
         if (settings.string(Settings.SKIP_SEGMENTS) == "off") return
         val entry = s.entryId
-        val ranges = skipTimes.forEpisode(d.malId, d.aniListId, episode, duration)
+        val ranges = skipTimes.forEpisode(d.malId, d.aniListId, episode, duration, d.imdbId, s.item.episode?.season)
         if (ranges.isEmpty() || s.generation != generation || s.entryId != entry) return
-        log.info("AniSkip for {} {}: {}", d.name, s.item.label, ranges.joinToString { "${it.type} ${it.start.toInt()}–${it.end.toInt()}" })
+        log.info("Skip times for {} {}: {}", d.name, s.item.label, ranges.joinToString { "${it.type} ${it.start.toInt()}–${it.end.toInt()}" })
         s.skips = ranges
         script("skips", mapOf("ranges" to ranges.map { mapOf("type" to it.type, "label" to it.label, "start" to it.start, "end" to it.end) },
             "auto" to (settings.string(Settings.SKIP_SEGMENTS) == "auto")))

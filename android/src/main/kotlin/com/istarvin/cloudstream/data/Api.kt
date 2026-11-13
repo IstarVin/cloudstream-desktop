@@ -234,8 +234,8 @@ class Api(initial: ServerConfig?) {
         send("POST", "/api/progress", req)
     }
 
-    suspend fun skips(malId: Int?, aniListId: Int?, episode: Int, duration: Double): List<SkipRange> =
-        get("/api/skips", mapOf("malId" to malId, "aniListId" to aniListId, "episode" to episode, "duration" to duration))
+    suspend fun skips(malId: Int?, aniListId: Int?, episode: Int, duration: Double, imdbId: String? = null, season: Int? = null): List<SkipRange> =
+        get("/api/skips", mapOf("malId" to malId, "aniListId" to aniListId, "episode" to episode, "duration" to duration, "imdbId" to imdbId, "season" to season))
 
     suspend fun history(): List<HistoryEntry> = get("/api/history")
     suspend fun forget(provider: String, url: String) = delete("/api/history", mapOf("provider" to provider, "url" to url))

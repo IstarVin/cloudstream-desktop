@@ -298,7 +298,7 @@ fun Route.apiRoutes(s: Services) {
             val episode = q["episode"]?.toIntOrNull() ?: throw IllegalArgumentException("Missing parameter episode")
             val duration = q["duration"]?.toDoubleOrNull() ?: 0.0
             val ranges = if (s.settings.string(Settings.SKIP_SEGMENTS) == "off") emptyList()
-                else s.skipTimes.forEpisode(q["malId"]?.toIntOrNull(), q["aniListId"]?.toIntOrNull(), episode, duration)
+                else s.skipTimes.forEpisode(q["malId"]?.toIntOrNull(), q["aniListId"]?.toIntOrNull(), episode, duration, q["imdbId"], q["season"]?.toIntOrNull())
             call.respond(ranges)
         }
         get("/bookmarks") { call.respond(s.store.bookmarks(s.settings.showNsfw)) }

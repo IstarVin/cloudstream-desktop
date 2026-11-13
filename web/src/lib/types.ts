@@ -157,6 +157,7 @@ export interface Details {
   bookmarked?: string | null;
   malId?: number | null;
   aniListId?: number | null;
+  imdbId?: string | null;
 }
 
 export interface Link {

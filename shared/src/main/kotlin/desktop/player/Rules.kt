@@ -54,6 +54,14 @@ object SkipRule {
 
     /** The range auto mode should skip now, or null; [skipped] holds the ranges already skipped in this file. */
     fun autoSkip(ranges: List<SkipRange>, pos: Double, skipped: Set<SkipRange>): SkipRange? = current(ranges, pos)?.takeIf { it !in skipped }
+
+    /**
+     * Whether skip times can be looked up: anime with a MAL/AniList id (AniSkip), or TV series with an IMDb id
+     * (IntroDB). Anime never use IntroDB, since their absolute episode numbers rarely match IMDb's seasons.
+     * web/src/lib/web-player.svelte.ts (loadSkips) repeats this rule; keep them in step.
+     */
+    fun eligible(kind: String, malId: Int?, aniListId: Int?, imdbId: String?): Boolean =
+        (kind == "anime" && (malId != null || aniListId != null)) || (kind == "series" && imdbId != null)
 }
 
 /** Progress rules shared by the mpv session and the phone's player. */
