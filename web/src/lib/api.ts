@@ -23,6 +23,7 @@ import type {
   Stream,
   Subtitle,
 } from "./types";
+import { content } from "./nsfw.svelte";
 
 export class ApiError extends Error {
   constructor(
@@ -36,7 +37,10 @@ export class ApiError extends Error {
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    headers: {
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+      ...(content.flag === null ? {} : { "x-show-nsfw": content.flag }),
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();
@@ -53,6 +57,9 @@ const get = <T>(path: string) => request<T>("GET", path);
 const post = <T>(path: string, body?: unknown) => request<T>("POST", path, body ?? {});
 const put = <T>(path: string, body: unknown) => request<T>("PUT", path, body);
 const q = (params: Record<string, string>) => new URLSearchParams(params).toString();
+/** Query for EventSource calls, which can't send the `X-Show-NSFW` header. */
+const withNsfw = (params: Record<string, string>) =>
+  q(content.flag === null ? params : { ...params, nsfw: content.flag });
 
 export interface DeviceAuthorization {
   userCode: string;
@@ -202,7 +209,7 @@ export function streamSearch(
   provider?: string,
 ): () => void {
   const es = new EventSource(
-    `/api/search?${q(provider ? { q: query, providers: provider } : { q: query })}`,
+    `/api/search?${withNsfw(provider ? { q: query, providers: provider } : { q: query })}`,
   );
   es.addEventListener("results", (e) => {
     const d = JSON.parse((e as MessageEvent).data);
@@ -238,7 +245,7 @@ export function streamLinks(
   fresh = false,
 ): () => void {
   const es = new EventSource(
-    `/api/links?${q(fresh ? { provider, data, fresh: "1" } : { provider, data })}`,
+    `/api/links?${withNsfw(fresh ? { provider, data, fresh: "1" } : { provider, data })}`,
   );
   es.addEventListener("link", (e) => handlers.link(JSON.parse((e as MessageEvent).data)));
   es.addEventListener("subtitle", (e) => handlers.subtitle(JSON.parse((e as MessageEvent).data)));

@@ -352,9 +352,10 @@ export interface Settings {
   mpv_extra_args: string[];
   autoplay_best: boolean;
   autoplay_next: boolean;
-  show_nsfw: boolean;
   disabled_plugins: string[];
   enabled_plugins: string[];
+  /** NSFW visibility for a device that hasn't chosen its own (see `content` in nsfw.svelte.ts). */
+  show_nsfw: boolean;
   proxy_all: boolean;
   skip_segments: SkipMode;
   chromium_mode: BrowserMode;

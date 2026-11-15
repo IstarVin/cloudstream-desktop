@@ -69,6 +69,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -90,6 +91,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch { categories.value = ContentTypes.normalize(prefs.homeCategories.first()) }
         load()
+        // A change to this device's NSFW choice changes which providers and titles show.
+        viewModelScope.launch { api.showNsfwChoice.drop(1).collect { load() } }
         // Plugins build in the background after the server starts; show the progress and reload when they're in.
         viewModelScope.launch {
             while (true) {

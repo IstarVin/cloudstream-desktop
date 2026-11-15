@@ -19,7 +19,8 @@ playback.autoplay_next = true    # (UI)
 playback.proxy_all = false       # (UI) send every stream through the built-in proxy, not just ones mpv can't fetch
 playback.skip_segments = "prompt" # (UI) anime openings/endings from AniSkip: prompt | auto | off
 
-ui.show_nsfw = false             # (UI)
+# Whether NSFW providers show on a device that hasn't chosen for itself. Each device's own Settings switch overrides it.
+ui.show_nsfw = false
 
 # Where android.jar comes from (only its class shapes are used). Defaults to the SDK the extensions repo builds with.
 # android.sdk_path = "/home/you/Android/Sdk"

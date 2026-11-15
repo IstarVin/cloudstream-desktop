@@ -126,7 +126,7 @@ class Playback(
 
     suspend fun play(req: PlayRequest) {
         mpv.checkAvailable()
-        val (p, r) = catalog.loadRaw(req.provider, req.url)
+        val (p, r) = catalog.loadRaw(req.provider, req.url, nsfw = true) // the route already checked visibility
         val details = Mapper.details(p.id, r, p.nsfw, true)
         val item = if (details.movieData == req.data || details.episodes.isEmpty()) {
             Item(details, emptyList(), -1, req.data)

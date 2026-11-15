@@ -2,7 +2,6 @@ package desktop.api
 
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainPageRequest
-import desktop.config.Settings
 import desktop.db.Store
 import desktop.plugins.PluginHost
 import kotlinx.coroutines.CancellationException
@@ -18,24 +17,22 @@ class NotFound(message: String) : Exception(message)
 class PluginFailure(message: String, cause: Throwable) : Exception(message, cause)
 
 /** Home pages, search and details, with NSFW filtering applied here so filtered data never reaches the browser. */
-class Catalog(private val host: PluginHost, private val settings: Settings, private val store: Store) {
+class Catalog(private val host: PluginHost, private val store: Store) {
     private class Cached(val response: LoadResponse, val at: Long)
 
     private val loadCache = ConcurrentHashMap<Pair<String, String>, Cached>()
     private val LOAD_TTL = 10 * 60_000L
 
-    fun visibleProviders(): List<PluginHost.Provider> {
-        val nsfw = settings.showNsfw
-        return host.providers().filter { nsfw || !it.nsfw }
-    }
+    /** [nsfw] is the calling client's own "show NSFW" choice; the server keeps no global one. */
+    fun visibleProviders(nsfw: Boolean): List<PluginHost.Provider> = host.providers().filter { nsfw || !it.nsfw }
 
-    fun provider(name: String): PluginHost.Provider {
+    fun provider(name: String, nsfw: Boolean): PluginHost.Provider {
         val p = host.provider(name) ?: throw NotFound("No provider $name")
-        if (p.nsfw && !settings.showNsfw) throw NotFound("No provider $name")
+        if (p.nsfw && !nsfw) throw NotFound("No provider $name")
         return p
     }
 
-    fun providerDtos() = visibleProviders().map { p ->
+    fun providerDtos(nsfw: Boolean) = visibleProviders(nsfw).map { p ->
         ProviderDto(
             name = p.id,
             plugin = p.plugin.id,
@@ -49,16 +46,16 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
         )
     }.sortedBy { it.name.lowercase() }
 
-    fun homeSections(name: String): List<HomeSection> {
-        val api = provider(name).api
+    fun homeSections(name: String, nsfw: Boolean): List<HomeSection> {
+        val api = provider(name, nsfw).api
         if (!api.hasMainPage) return emptyList()
         // Providers that override getMainPage without mainPageOf get one request with empty data.
         return api.mainPage.ifEmpty { listOf(com.lagradost.cloudstream3.MainPageData("", "", false)) }
             .mapIndexed { i, d -> HomeSection(i, d.name, d.horizontalImages) }
     }
 
-    suspend fun home(name: String, section: Int, page: Int): HomePage {
-        val p = provider(name)
+    suspend fun home(name: String, section: Int, page: Int, nsfw: Boolean): HomePage {
+        val p = provider(name, nsfw)
         val api = p.api
         val data = api.mainPage.getOrNull(section) ?: com.lagradost.cloudstream3.MainPageData("", "", false)
         val res = guarded(p) {
@@ -66,7 +63,6 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
                 api.getMainPage(page, MainPageRequest(data.name, data.data, data.horizontalImages))
             }
         } ?: return HomePage(emptyList(), false)
-        val nsfw = settings.showNsfw
         return HomePage(res.items.map { Mapper.homeRow(p.id, it, nsfw) }, res.hasNext)
     }
 
@@ -74,10 +70,10 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
     suspend fun search(
         query: String,
         only: Set<String>?,
+        nsfw: Boolean,
         emit: suspend (provider: String, items: List<SearchItem>?, error: String?) -> Unit,
     ) = coroutineScope {
-        val nsfw = settings.showNsfw
-        visibleProviders().filter { only == null || it.id in only }.map { p ->
+        visibleProviders(nsfw).filter { only == null || it.id in only }.map { p ->
             async {
                 val api = p.api
                 val result = runCatching {
@@ -98,8 +94,8 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
     }
 
     /** `load()` through a 10-minute cache keyed by (provider, url); expired entries are dropped on each call. */
-    suspend fun loadRaw(name: String, url: String): Pair<PluginHost.Provider, LoadResponse> {
-        val p = provider(name)
+    suspend fun loadRaw(name: String, url: String, nsfw: Boolean): Pair<PluginHost.Provider, LoadResponse> {
+        val p = provider(name, nsfw)
         val key = name to url
         val now = System.currentTimeMillis()
         loadCache.values.removeIf { now - it.at >= LOAD_TTL }
@@ -124,9 +120,9 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
             throw PluginFailure(describe(e), e)
         }
 
-    suspend fun details(name: String, url: String): Details {
-        val (p, r) = loadRaw(name, url)
-        val d = Mapper.details(p.id, r, p.nsfw, settings.showNsfw)
+    suspend fun details(name: String, url: String, nsfw: Boolean): Details {
+        val (p, r) = loadRaw(name, url, nsfw)
+        val d = Mapper.details(p.id, r, p.nsfw, nsfw)
         val progress = store.progressFor(p.id)
         return d.copy(
             episodes = d.episodes.map { e -> progress[e.data]?.let { e.copy(progress = it) } ?: e },

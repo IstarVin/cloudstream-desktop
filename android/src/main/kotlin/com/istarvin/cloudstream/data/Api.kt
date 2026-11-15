@@ -33,6 +33,8 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -94,6 +96,16 @@ data class SseEvent(val event: String, val data: String)
 class Api(initial: ServerConfig?) {
     @Volatile var server: ServerConfig? = initial
 
+    private val _showNsfw = MutableStateFlow<Boolean?>(null)
+    /**
+     * This device's "show NSFW" choice, sent with every request to the server. `null` until the user picks one: the
+     * device then sends nothing and follows the server's default (`show_nsfw`). Screens watch it to reload.
+     */
+    val showNsfwChoice: StateFlow<Boolean?> = _showNsfw
+    var showNsfw: Boolean?
+        get() = _showNsfw.value
+        set(value) { _showNsfw.value = value }
+
     private val _unauthorized = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     /** Fires when the session expires or is revoked. */
     val unauthorized: SharedFlow<Unit> = _unauthorized
@@ -106,7 +118,7 @@ class Api(initial: ServerConfig?) {
             val s = server
             // Only the paired server gets the token; direct stream hosts and image CDNs don't.
             val authed = if (s != null && req.url.scheme == s.url.scheme && req.url.host == s.url.host && req.url.port == s.url.port) {
-                req.newBuilder().header("Authorization", "Bearer ${s.token}").build()
+                req.newBuilder().header("Authorization", "Bearer ${s.token}").apply { showNsfw?.let { header("X-Show-NSFW", if (it) "1" else "0") } }.build()
             } else req
             val res = chain.proceed(authed)
             if (res.code == 401 && authed !== req) _unauthorized.tryEmit(Unit)

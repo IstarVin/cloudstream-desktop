@@ -341,6 +341,12 @@ the history.
 History never records NSFW content. `GET /api/history` and `GET /api/continue` always exclude NSFW entries,
 including older saved entries, regardless of the `show_nsfw` setting.
 
+NSFW visibility is chosen per device. Clients send `X-Show-NSFW: 1` or `0` (or `?nsfw=` on EventSource requests), and
+the server filters each response by it. A client that sends neither, such as an older app or a device that never
+changed the switch, gets `ui.show_nsfw` (the `show_nsfw` setting) as its default. The browser extension always sends
+`1`, because it only acts on the site the user is already on. Casting an NSFW title also lets the receiving device's
+sign-in load that provider (`DeviceHub.nsfwGranted`), so a receiver with NSFW off can still play what it was sent.
+
 `GET /api/history` includes `episodeLabel` (nullable), `position` and `duration` (seconds) from each title's
 most recently updated progress record, including completed episodes and playback under 30 seconds. Equal
 update timestamps use the later inserted progress row. Titles without progress return null/0/0. History
@@ -559,7 +565,7 @@ Each phase ends with a check that can be shown working. **v1 = Phases 0–6 (don
 **Phase 1: server core**
 - Ktor app, `config.toml` loading and the plugin host (dev mode: Gradle build on start, hot reload on jar change).
 - Normalized DTOs, plus `/providers`, `/home`, `/search` (SSE), `/load` and `/links` (SSE).
-- The server filters NSFW results using `ui.show_nsfw`.
+- The server filters NSFW results per client (`X-Show-NSFW`), defaulting to `ui.show_nsfw`.
 - **Done when:** all tier A plugins load. `curl` search, load and links work for at least one movie provider, one
   anime provider and one live provider. NSFW providers disappear when the toggle is off.
 

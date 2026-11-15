@@ -35,7 +35,9 @@ export class Api {
     path: string,
     init: { method?: string; body?: unknown } = {},
   ): Promise<T> {
-    const headers: Record<string, string> = { Accept: "application/json" };
+    // The extension only acts on the site the user is already on, so it sees NSFW providers too: otherwise an NSFW
+    // site would never match, and playing from it would fail on a device that keeps NSFW hidden.
+    const headers: Record<string, string> = { Accept: "application/json", "X-Show-NSFW": "1" };
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     if (init.body !== undefined) headers["Content-Type"] = "application/json";
     let res: Response;

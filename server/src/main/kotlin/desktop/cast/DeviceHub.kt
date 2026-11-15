@@ -33,7 +33,13 @@ class DeviceHub(private val scope: CoroutineScope, private val mpv: LocalPlayer?
     }
 
     /** One device's socket. What the server sends it comes out of [outgoing]. */
-    class Session internal constructor(@Volatile var info: DeviceInfo) {
+    class Session internal constructor(@Volatile var info: DeviceInfo, internal val authKey: String? = null) {
+        /**
+         * The NSFW provider the last cast to this device came from, which the device may then load even with NSFW off:
+         * the sender, who had NSFW on, chose to play it here. Requests made with [authKey] get it.
+         */
+        @Volatile internal var nsfwGrant: String? = null
+
         // Dropping the oldest keeps a stalled socket from holding the server up; states are resent often anyway.
         private val channel = Channel<CastFrame>(256, BufferOverflow.DROP_OLDEST)
         val outgoing: ReceiveChannel<CastFrame> get() = channel
@@ -62,9 +68,10 @@ class DeviceHub(private val scope: CoroutineScope, private val mpv: LocalPlayer?
     }
 
     /** Registers a device that said hello. A device reconnecting under the same id replaces its old socket. */
-    fun connect(hello: CastFrame.Hello): Session {
+    /** [authKey] is the sign-in the device connected with, so its HTTP requests can be matched to its cast grant. */
+    fun connect(hello: CastFrame.Hello, authKey: String? = null): Session {
         require(hello.id.isNotBlank() && hello.id != MPV_ID) { "Invalid device id" }
-        val session = Session(hello.info())
+        val session = Session(hello.info(), authKey)
         sessions.put(hello.id, session)?.close()
         log.debug("Cast device connected: {} ({})", hello.name, hello.kind)
         session.send(CastFrame.Devices(listed()))
@@ -127,14 +134,21 @@ class DeviceHub(private val scope: CoroutineScope, private val mpv: LocalPlayer?
         true
     }
 
-    suspend fun play(device: String, req: PlayRequest, from: String? = null) {
+    /** [nsfw]: the title is NSFW and the caller may see it, so the receiving device is granted its provider. */
+    suspend fun play(device: String, req: PlayRequest, from: String? = null, nsfw: Boolean = false) {
         if (from != null) synchronized(claims) {
             val holder = claims[device]
             require(holder == null || holder == from || !sessions.containsKey(holder)) { "That device is being used by another device" }
         }
         if (device == MPV_ID) return mpvOrThrow().play(req)
-        target(device).send(CastFrame.Play(req, from))
+        val target = target(device)
+        target.nsfwGrant = if (nsfw) req.provider else null
+        target.send(CastFrame.Play(req, from))
     }
+
+    /** Whether a device connected with [authKey] was cast a title from the NSFW [provider] (see [Session.nsfwGrant]). */
+    fun nsfwGranted(authKey: String?, provider: String): Boolean =
+        sessions.values.any { it.authKey == authKey && it.nsfwGrant == provider }
 
     suspend fun command(device: String, cmd: String, body: PlayerCommand) {
         if (device == MPV_ID) return mpvOrThrow().command(cmd, body)

@@ -38,6 +38,7 @@ class Settings(private val db: Database, private val defaults: Map<String, Any>)
         return (urls ?: strings(PLUGIN_REPO_URLS)).distinct()
     }
 
+    /** NSFW visibility for a client that hasn't made its own choice (older apps, or a device that never changed it). */
     val showNsfw get() = bool(SHOW_NSFW)
     val disabledPlugins get() = strings(DISABLED_PLUGINS).toSet()
     val enabledPlugins get() = strings(ENABLED_PLUGINS).toSet()

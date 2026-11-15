@@ -47,8 +47,8 @@ class App : Application(), SingletonImageLoader.Factory {
         super.onCreate()
         prefs = Prefs(this)
         // One small DataStore read, so every screen starts with the paired server known.
-        val (server, castPrefs) = runBlocking { prefs.server() to prefs.cast() }
-        api = Api(server)
+        val (server, castPrefs, showNsfw) = runBlocking { Triple(prefs.server(), prefs.cast(), prefs.showNsfw()) }
+        api = Api(server).also { it.showNsfw = showNsfw }
         cast = Cast(api, prefs, scope, if (isTv()) DeviceKind.TV else DeviceKind.PHONE, castPrefs, deviceName())
         cast.onPlay = { req -> PlayerActivity.startCast(this, req) }
         registerActivityLifecycleCallbacks(Visibility())

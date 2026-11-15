@@ -86,6 +86,21 @@ class DeviceHubTest {
     }
 
     @Test
+    fun `casting an NSFW title grants only the receiver's sign-in that provider`() = runBlocking {
+        val hub = DeviceHub(scope, null)
+        hub.connect(hello("phone"), authKey = "phone-token")
+        hub.connect(hello("tv"), authKey = "tv-token")
+        hub.play("tv", req, from = "phone", nsfw = true)
+        assertTrue(hub.nsfwGranted("tv-token", "Prov"))
+        assertTrue(!hub.nsfwGranted("tv-token", "Other"), "only the cast title's provider")
+        assertTrue(!hub.nsfwGranted("phone-token", "Prov"), "not the sender, whose own choice applies")
+        assertTrue(!hub.nsfwGranted(null, "Prov"))
+
+        hub.play("tv", req.copy(provider = "Safe"), from = "phone")
+        assertTrue(!hub.nsfwGranted("tv-token", "Prov"), "a later cast replaces the grant")
+    }
+
+    @Test
     fun `mpv is driven directly`() = runBlocking {
         val mpv = FakeMpv()
         val hub = DeviceHub(scope, mpv)

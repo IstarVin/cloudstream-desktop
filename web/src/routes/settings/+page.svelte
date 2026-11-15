@@ -2,6 +2,8 @@
   import { page } from "$app/state";
   import { api } from "#lib/api";
   import { cast } from "#lib/cast.svelte";
+  import { content } from "#lib/nsfw.svelte";
+  import { searchState } from "#lib/search-state.svelte";
   import PluginSettings from "#lib/components/PluginSettings.svelte";
   import SourceProfiles from "#lib/components/SourceProfiles.svelte";
   import { prefs } from "#lib/player/prefs.svelte";
@@ -106,7 +108,7 @@
       const s = await api.saveSettings(patch);
       client.setQueryData(["settings"], s);
       // Visibility settings change what every list shows.
-      if ("show_nsfw" in patch || "enabled_plugins" in patch) client.invalidateQueries();
+      if ("enabled_plugins" in patch) client.invalidateQueries();
     } catch (e) {
       saveFailed = true;
       toasts.error(e);
@@ -660,14 +662,18 @@
             <span
               ><b>Show NSFW providers</b><small
                 >Off hides them from home, search and the plugin list. NSFW content is never added
-                to history.</small
+                to history. Applies to this device only.</small
               ></span
             >
             <input
               type="checkbox"
               role="switch"
-              checked={s.show_nsfw}
-              onchange={(e) => save({ show_nsfw: e.currentTarget.checked })}
+              checked={content.showNsfw ?? s.show_nsfw}
+              onchange={(e) => {
+                content.setShowNsfw(e.currentTarget.checked);
+                searchState.reset();
+                client.invalidateQueries();
+              }}
             />
           </label>
         </section>

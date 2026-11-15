@@ -16,7 +16,7 @@ playback.autoplay_next = true    # (UI)
 playback.proxy_all = false       # (UI)
 playback.skip_segments = "prompt" # (UI) prompt | auto | off
 
-ui.show_nsfw = false             # (UI)
+ui.show_nsfw = false             # default for devices that haven't chosen; each device can override
 
 # Chromium, for sites behind Cloudflare or that need a real browser. It starts on demand.
 chromium.path = "chromium"

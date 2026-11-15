@@ -23,6 +23,7 @@ data class ServerSettings(
     @SerialName("source_profiles") val sourceProfiles: List<SourceProfile> = SourceProfile.defaults(),
     @SerialName("autoplay_best") val autoplayBest: Boolean = true,
     @SerialName("autoplay_next") val autoplayNext: Boolean = true,
+    /** NSFW visibility for a device that hasn't chosen its own (see [Api.showNsfw]). */
     @SerialName("show_nsfw") val showNsfw: Boolean = false,
     @SerialName("proxy_all") val proxyAll: Boolean = false,
     /** prompt | auto | off */
@@ -80,6 +81,7 @@ class Prefs(private val context: Context) {
         val castName = stringPreferencesKey("cast_name")
         val castReceiver = booleanPreferencesKey("cast_receiver")
         val playTarget = stringPreferencesKey("play_target")
+        val showNsfw = booleanPreferencesKey("show_nsfw")
     }
 
     /** This device on the casting socket: its id (made once), its name if the user set one, and whether it takes casts. */
@@ -95,6 +97,10 @@ class Prefs(private val context: Context) {
     suspend fun setCastName(name: String?) = context.store.edit { if (name == null) it.remove(K.castName) else it[K.castName] = name }
     suspend fun setCastReceiver(on: Boolean) = context.store.edit { it[K.castReceiver] = on }
     suspend fun setPlayTarget(target: String?) = context.store.edit { if (target == null) it.remove(K.playTarget) else it[K.playTarget] = target }
+
+    /** Whether this device shows NSFW content, or null to follow the server's default. See [Api.showNsfw]. */
+    suspend fun showNsfw(): Boolean? = context.store.data.first()[K.showNsfw]
+    suspend fun setShowNsfw(on: Boolean) = context.store.edit { it[K.showNsfw] = on }
 
     suspend fun server(): ServerConfig? =
         context.store.data.first()[K.server]?.let {

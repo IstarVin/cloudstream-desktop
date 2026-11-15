@@ -18,6 +18,12 @@ describe("Api", () => {
     expect(req.credentials).toBe("omit");
   });
 
+  it("asks to see NSFW providers, since it only acts on the site the user is on", async () => {
+    const seen: Request[] = [];
+    await new Api("https://s", "tok", fake(200, "[]", seen)).providers();
+    expect((seen[0] as Request).headers.get("X-Show-NSFW")).toBe("1");
+  });
+
   it("posts JSON bodies", async () => {
     const seen: Request[] = [];
     await new Api("https://s", "tok", fake(200, '{"ok":true}', seen)).playTitle({

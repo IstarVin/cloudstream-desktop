@@ -48,7 +48,7 @@ import kotlin.time.Duration.Companion.seconds
 fun serve(config: Config, db: Database, settings: Settings, host: PluginHost, scope: CoroutineScope) {
     val log = LoggerFactory.getLogger("desktop.Server")
     val store = Store(db)
-    val catalog = Catalog(host, settings, store)
+    val catalog = Catalog(host, store)
     val links = LinkService(scope, store, host)
     val proxy = StreamProxy()
     val mpv = MpvManager(config, settings)

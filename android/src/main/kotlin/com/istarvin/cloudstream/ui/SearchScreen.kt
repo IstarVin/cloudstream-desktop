@@ -60,6 +60,7 @@ import com.istarvin.cloudstream.data.results
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -72,6 +73,11 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     var lastQuery by mutableStateOf("")
         private set
     private var job: Job? = null
+
+    init {
+        // A change to this device's NSFW choice changes which providers are searched.
+        viewModelScope.launch { api.showNsfwChoice.drop(1).collect { if (lastQuery.isNotEmpty()) search(lastQuery) } }
+    }
 
     /** Searches every provider, or only [only] (a retry); results arrive per provider over SSE. */
     fun search(q: String, only: String? = null) {

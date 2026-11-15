@@ -90,6 +90,24 @@ private const val EMBEDDED_POLL_MS = 20_000L
 private val sseJson = Json { encodeDefaults = true }
 private val castJson = Json { encodeDefaults = true; ignoreUnknownKeys = true; explicitNulls = false }
 
+/**
+ * This client's own "show NSFW" choice: the `X-Show-NSFW` header (`1` or `0`), or `?nsfw=` where headers can't be set
+ * (EventSource). A client that sends neither (an older app, or a device that never chose) gets the server's default.
+ */
+internal fun showNsfw(header: String?, query: String?, default: Boolean): Boolean =
+    when (header ?: query) {
+        "1" -> true
+        "0" -> false
+        else -> default
+    }
+
+private fun ApplicationCall.showNsfw(s: Services): Boolean =
+    showNsfw(request.headers["X-Show-NSFW"], request.queryParameters["nsfw"], s.settings.showNsfw)
+
+/** [showNsfw], or a device that was cast a title from [provider] by one that could see it (see [DeviceHub.nsfwGranted]). */
+private fun ApplicationCall.showNsfwFor(s: Services, provider: String): Boolean =
+    showNsfw(s) || s.cast.nsfwGranted(s.auth.token(this), provider)
+
 private fun ApplicationCall.param(name: String): String =
     request.queryParameters[name] ?: throw IllegalArgumentException("Missing parameter $name")
 
@@ -123,7 +141,7 @@ fun Route.apiRoutes(s: Services) {
                 building = s.host.building,
                 plugins = plugins.size,
                 loaded = plugins.count { it.status == PluginHost.Status.LOADED },
-                providers = s.catalog.visibleProviders().size,
+                providers = s.catalog.visibleProviders(call.showNsfw(s)).size,
                 mpvRunning = s.playback.state.value.mpvRunning,
                 mpvAvailable = s.playback.mpvAvailable,
                 authed = true,
@@ -131,18 +149,18 @@ fun Route.apiRoutes(s: Services) {
             ))
         }
 
-        get("/providers") { call.respond(s.catalog.providerDtos()) }
-        get("/providers/{name}/home") { call.respond(s.catalog.homeSections(call.parameters["name"]!!)) }
+        get("/providers") { call.respond(s.catalog.providerDtos(call.showNsfw(s))) }
+        get("/providers/{name}/home") { call.respond(s.catalog.homeSections(call.parameters["name"]!!, call.showNsfw(s))) }
         get("/providers/{name}/home/{section}") {
             val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
-            call.respond(s.catalog.home(call.parameters["name"]!!, call.parameters["section"]!!.toInt(), page))
+            call.respond(s.catalog.home(call.parameters["name"]!!, call.parameters["section"]!!.toInt(), page, call.showNsfw(s)))
         }
 
         get("/search") {
             val q = call.param("q")
             val only = call.request.queryParameters["providers"]?.split(',')?.filter { it.isNotBlank() }?.toSet()
             call.sse { emit ->
-                s.catalog.search(q, only) { provider, items, error ->
+                s.catalog.search(q, only, call.showNsfw(s)) { provider, items, error ->
                     if (items != null) emit("results", sseJson.encodeToString(SearchResults(provider, items)))
                     else emit("error", sseJson.encodeToString(mapOf("provider" to provider, "error" to error)))
                 }
@@ -150,10 +168,13 @@ fun Route.apiRoutes(s: Services) {
             }
         }
 
-        get("/load") { call.respond(s.catalog.details(call.param("provider"), call.param("url"))) }
+        get("/load") {
+            val provider = call.param("provider")
+            call.respond(s.catalog.details(provider, call.param("url"), call.showNsfwFor(s, provider)))
+        }
 
         get("/links") {
-            val provider = s.catalog.provider(call.param("provider"))
+            val provider = call.param("provider").let { s.catalog.provider(it, call.showNsfwFor(s, it)) }
             val data = call.param("data")
             val set = s.links.resolve(provider, data, fresh = call.request.queryParameters["fresh"] == "1")
             call.sse { emit ->
@@ -173,15 +194,15 @@ fun Route.apiRoutes(s: Services) {
 
         post("/play") {
             val req = call.receive<PlayRequest>()
-            s.catalog.provider(req.provider) // NSFW/visibility check
+            s.catalog.provider(req.provider, call.showNsfw(s)) // NSFW/visibility check
             s.playback.play(req)
             call.respond(mapOf("ok" to true))
         }
         post("/play-title") {
             val req = call.receive<PlayTitleRequest>()
-            val details = s.catalog.details(req.provider, req.url)
+            val details = s.catalog.details(req.provider, req.url, call.showNsfw(s))
             val data = desktop.player.NextUp.data(details) ?: throw IllegalArgumentException("${details.name} has nothing to play")
-            s.cast.play(req.device ?: DeviceHub.MPV_ID, PlayRequest(details.provider, details.url, data))
+            s.cast.play(req.device ?: DeviceHub.MPV_ID, PlayRequest(details.provider, details.url, data), nsfw = details.nsfw)
             call.respond(JsonObject(mapOf("ok" to JsonPrimitive(true), "title" to JsonPrimitive(details.name))))
         }
         get("/player/state") { call.respond(s.playback.state.value) }
@@ -203,7 +224,7 @@ fun Route.apiRoutes(s: Services) {
             webSocket {
                 val hello = (incoming.receive() as? Frame.Text)?.let { runCatching { castJson.decodeFromString<CastFrame>(it.readText()) }.getOrNull() }
                 if (hello !is CastFrame.Hello) return@webSocket close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Say hello first"))
-                val session = s.cast.connect(hello)
+                val session = s.cast.connect(hello, s.auth.token(call))
                 val sender = launch {
                     for (frame in session.outgoing) outgoing.send(Frame.Text(castJson.encodeToString<CastFrame>(frame)))
                     close(CloseReason(CloseReason.Codes.NORMAL, "Replaced by a newer connection"))
@@ -222,8 +243,8 @@ fun Route.apiRoutes(s: Services) {
             get("/{device}/state") { call.respond(s.cast.state(call.parameters["device"]!!)) }
             post("/{device}/play") {
                 val req = call.receive<PlayRequest>()
-                s.catalog.provider(req.provider) // NSFW/visibility check
-                s.cast.play(call.parameters["device"]!!, req, call.request.queryParameters["from"])
+                val p = s.catalog.provider(req.provider, call.showNsfw(s)) // NSFW/visibility check
+                s.cast.play(call.parameters["device"]!!, req, call.request.queryParameters["from"], nsfw = p.nsfw)
                 call.respond(mapOf("ok" to true))
             }
             post("/{device}/{cmd}") {
@@ -252,7 +273,7 @@ fun Route.apiRoutes(s: Services) {
             } else {
                 if (s.store.progress(req.provider, req.data) == null) {
                     // The first save of a title played elsewhere puts it in the history, as starting it in mpv does.
-                    val d = s.catalog.details(req.provider, req.url)
+                    val d = s.catalog.details(req.provider, req.url, call.showNsfwFor(s, req.provider))
                     s.store.touchHistory(d.provider, d.url, d.name, d.poster, d.type, d.nsfw)
                 }
                 s.store.saveProgress(req.provider, req.url, req.data, req.label, position, duration, req.watched || Watched.watched(position, duration))
@@ -308,10 +329,10 @@ fun Route.apiRoutes(s: Services) {
                 else s.skipTimes.forEpisode(q["malId"]?.toIntOrNull(), q["aniListId"]?.toIntOrNull(), episode, duration, q["imdbId"], q["season"]?.toIntOrNull())
             call.respond(ranges)
         }
-        get("/bookmarks") { call.respond(s.store.bookmarks(s.settings.showNsfw)) }
+        get("/bookmarks") { call.respond(s.store.bookmarks(call.showNsfw(s))) }
         post("/bookmarks") {
             val req = call.receive<BookmarkRequest>()
-            val p = s.catalog.provider(req.provider)
+            val p = s.catalog.provider(req.provider, call.showNsfwFor(s, req.provider))
             s.store.setBookmark(req.provider, req.url, req.title, req.poster, req.type, p.nsfw || req.type == "NSFW", req.list)
             call.respond(mapOf("ok" to true))
         }
@@ -345,7 +366,7 @@ fun Route.apiRoutes(s: Services) {
         }
 
         get("/plugins") {
-            val nsfw = s.settings.showNsfw
+            val nsfw = call.showNsfw(s)
             val enabled = s.settings.enabledPlugins
             val providers = s.host.providers().groupBy { it.plugin.id }
             val repo = s.host.source as? RepoSource

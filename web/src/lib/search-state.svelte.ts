@@ -35,6 +35,16 @@ class SearchState {
     );
     return true;
   }
+
+  /** Drops the results, so the next visit searches again (after a change to what's visible). */
+  reset() {
+    this.stop?.();
+    this.stop = null;
+    this.key = null;
+    this.results = [];
+    this.errors = [];
+    this.searching = false;
+  }
 }
 
 export const searchState = new SearchState();

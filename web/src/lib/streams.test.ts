@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { castSocket, streamLinks, streamSearch } from "./api";
+import { content } from "./nsfw.svelte";
 
 /** EventSource stand-in: tests push server events with `emit`. */
 class FakeEventSource {
@@ -53,6 +54,21 @@ describe("streamSearch", () => {
     es.emit("done", {});
     expect(done).toHaveBeenCalledOnce();
     expect(es.closed).toBe(true);
+  });
+
+  it("carries this device's NSFW choice only once one is made", () => {
+    try {
+      content.setShowNsfw(true);
+      streamSearch("x", { results: vi.fn(), error: vi.fn(), done: vi.fn() });
+      expect(FakeEventSource.last.url).toBe("/api/search?q=x&nsfw=1");
+      content.setShowNsfw(false);
+      streamSearch("x", { results: vi.fn(), error: vi.fn(), done: vi.fn() });
+      expect(FakeEventSource.last.url).toBe("/api/search?q=x&nsfw=0");
+    } finally {
+      content.setShowNsfw(null);
+    }
+    streamSearch("x", { results: vi.fn(), error: vi.fn(), done: vi.fn() });
+    expect(FakeEventSource.last.url).toBe("/api/search?q=x");
   });
 
   it("finishes instead of reconnecting when the connection drops", () => {

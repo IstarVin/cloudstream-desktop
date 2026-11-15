@@ -239,20 +239,26 @@ fun SettingsScreen(onUnpair: () -> Unit) {
                                 }
                             }
                             SettingsTab.Priority, SettingsTab.Content -> {
-                                item { SettingsSectionTitle(tab.label, if (tab == SettingsTab.Priority) "Choose which sources and qualities play first." else "Choose what appears in Cloudstream.", manualSave = tab == SettingsTab.Priority) }
-                                when (val s = settings) {
+                                item { SettingsSectionTitle(tab.label, if (tab == SettingsTab.Priority) "Choose which sources and qualities play first." else "Choose what appears in Cloudstream.", manualSave = tab == SettingsTab.Priority, showSaveNote = tab != SettingsTab.Content) }
+                                if (tab == SettingsTab.Content) {
+                                    item {
+                                        val choice by api.showNsfwChoice.collectAsState()
+                                        // Until this device chooses, it follows the desktop's default.
+                                        val shown = choice ?: (settings as? Load.Ok)?.value?.showNsfw ?: false
+                                        SwitchRow("Show NSFW content", shown, help = "Applies to this device only.") {
+                                            api.showNsfw = it
+                                            scope.launch { prefs.setShowNsfw(it) }
+                                        }
+                                    }
+                                } else when (val s = settings) {
                                     Load.Loading -> item { Loading() }
                                     is Load.Failed -> item { ErrorBox(s.message, onRetry = { reload() }) }
                                     is Load.Ok -> {
                                         val v = s.value
-                                        if (tab == SettingsTab.Content) {
-                                            item { SwitchRow("Show NSFW content", v.showNsfw) { save("show_nsfw" to JsonPrimitive(it)) } }
-                                        } else {
-                                            item {
-                                                profileDraft?.let { draft ->
-                                                    ProfileEditor(v, draft) { profiles, active ->
-                                                        save("source_profiles" to json.encodeToJsonElement(profiles), "source_profile" to JsonPrimitive(active))
-                                                    }
+                                        item {
+                                            profileDraft?.let { draft ->
+                                                ProfileEditor(v, draft) { profiles, active ->
+                                                    save("source_profiles" to json.encodeToJsonElement(profiles), "source_profile" to JsonPrimitive(active))
                                                 }
                                             }
                                         }
