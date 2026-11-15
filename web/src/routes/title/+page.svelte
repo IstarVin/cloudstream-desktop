@@ -159,12 +159,7 @@
           {#if d.duration}<span>{d.duration} min</span>{/if}
           {#if d.showStatus}<span>{d.showStatus}</span>{/if}
           {#if /^https?:\/\//.test(d.url)}
-            <a
-              class="muted source-link"
-              href={d.url}
-              target="_blank"
-              rel="noreferrer"
-              title={d.url}
+            <a class="muted source-link" href={d.url} target="_blank" rel="noreferrer" title={d.url}
               ><ExternalLink size={13} strokeWidth={1.8} aria-hidden="true" /> {d.provider}</a
             >
           {:else}

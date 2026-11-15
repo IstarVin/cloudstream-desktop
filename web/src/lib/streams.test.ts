@@ -108,7 +108,7 @@ describe("castSocket", () => {
     sent: string[] = [];
     onopen: (() => void) | null = null;
     onmessage: ((e: { data: string }) => void) | null = null;
-    onclose: (() => void) | null = null;
+    onclose: ((e: { reason: string }) => void) | null = null;
     constructor(readonly url: string) {
       FakeWebSocket.all.push(this);
     }
@@ -119,14 +119,17 @@ describe("castSocket", () => {
       this.readyState = 1;
       this.onopen?.();
     }
-    close() {
+    close(reason = "") {
       this.readyState = 3;
-      this.onclose?.();
+      this.onclose?.({ reason });
     }
   }
 
+  let visibility: EventTarget & { visibilityState: string };
   beforeEach(() => {
     FakeWebSocket.all = [];
+    visibility = Object.assign(new EventTarget(), { visibilityState: "visible" });
+    vi.stubGlobal("document", visibility);
     vi.useFakeTimers();
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("location", { protocol: "http:", host: "192.168.1.5:6969" });
@@ -159,6 +162,28 @@ describe("castSocket", () => {
     expect(JSON.parse(FakeWebSocket.all[1].sent[0])).toEqual(hello);
 
     sock.stop();
+    vi.advanceTimersByTime(5000);
+    expect(FakeWebSocket.all).toHaveLength(2);
+  });
+
+  it("waits for a replaced tab to become visible before reconnecting", () => {
+    const sock = castSocket(() => hello, vi.fn(), vi.fn());
+    FakeWebSocket.all[0].open();
+    FakeWebSocket.all[0].close("Replaced by a newer connection");
+    vi.advanceTimersByTime(5000);
+    expect(FakeWebSocket.all).toHaveLength(1);
+
+    visibility.visibilityState = "hidden";
+    visibility.dispatchEvent(new Event("visibilitychange"));
+    expect(FakeWebSocket.all).toHaveLength(1);
+    visibility.visibilityState = "visible";
+    visibility.dispatchEvent(new Event("visibilitychange"));
+    expect(FakeWebSocket.all).toHaveLength(2);
+
+    FakeWebSocket.all[1].open();
+    FakeWebSocket.all[1].close("Replaced by a newer connection");
+    sock.stop();
+    visibility.dispatchEvent(new Event("visibilitychange"));
     vi.advanceTimersByTime(5000);
     expect(FakeWebSocket.all).toHaveLength(2);
   });
