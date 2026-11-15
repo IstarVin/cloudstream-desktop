@@ -18,6 +18,7 @@ import desktop.api.DeviceKind
 import com.istarvin.cloudstream.data.Api
 import com.istarvin.cloudstream.data.Cast
 import com.istarvin.cloudstream.data.Prefs
+import com.istarvin.cloudstream.player.MediaHub
 import com.istarvin.cloudstream.player.PlayerActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,8 @@ class App : Application(), SingletonImageLoader.Factory {
         private set
     lateinit var cast: Cast
         private set
+    lateinit var media: MediaHub
+        private set
 
     /** For writes that must outlive the screen that started them (the last progress save of a closing player). */
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -50,11 +53,18 @@ class App : Application(), SingletonImageLoader.Factory {
         val (server, castPrefs, showNsfw) = runBlocking { Triple(prefs.server(), prefs.cast(), prefs.showNsfw()) }
         api = Api(server).also { it.showNsfw = showNsfw }
         cast = Cast(api, prefs, scope, if (isTv()) DeviceKind.TV else DeviceKind.PHONE, castPrefs, deviceName())
-        cast.onPlay = { req -> PlayerActivity.startCast(this, req) }
+        // Android won't open the player from the background, where the socket only stays up for a remote session.
+        cast.onPlay = { req -> if (started > 0) PlayerActivity.startCast(this, req) }
+        media = MediaHub(this)
+        media.onRemoteReleased = { if (started == 0) cast.stop() }
+        media.start()
         registerActivityLifecycleCallbacks(Visibility())
     }
 
-    /** The casting socket is up while any screen of the app is visible (PiP included). */
+    /**
+     * The casting socket is up while any screen of the app is visible (PiP included), and while this device controls
+     * another's player, so its notification and the volume keys keep working with the app hidden.
+     */
     private inner class Visibility : ActivityLifecycleCallbacks {
         override fun onActivityStarted(activity: Activity) {
             if (started++ == 0) {
@@ -68,7 +78,7 @@ class App : Application(), SingletonImageLoader.Factory {
                 // Rotation and switching between screens stop one activity just before starting the next.
                 pendingStop = scope.launch {
                     delay(5000)
-                    if (started == 0) cast.stop()
+                    if (started == 0 && !media.holdsCast) cast.stop()
                 }
             }
         }

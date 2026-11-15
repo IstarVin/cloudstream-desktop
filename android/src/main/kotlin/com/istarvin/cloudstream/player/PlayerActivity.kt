@@ -60,7 +60,7 @@ class PlayerActivity : ComponentActivity() {
         }
         hideSystemBars()
 
-        session = runCatching { MediaSession.Builder(this, vm.player).build() }.getOrNull()
+        session = runCatching { app.media.openLocal(vm.sessionPlayer) }.getOrNull()
         vm.player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) = updatePip()
             override fun onVideoSizeChanged(videoSize: VideoSize) = updatePip()
@@ -82,6 +82,7 @@ class PlayerActivity : ComponentActivity() {
             handoff = null
             vm.start(details, data, startAt, linkId, subtitleIds)
         }
+        lifecycleScope.launch { app.prefs.player.collect { prefs = it } }
         // A device controlling this one sent Stop.
         lifecycleScope.launch { vm.closed.collect { if (it) finish() } }
 
@@ -154,12 +155,13 @@ class PlayerActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         vm.onStop()
-        // In PiP the activity stops when the PiP window is dismissed; keep playing only while it's visible.
-        if (!isInPictureInPictureMode) vm.player.pause()
+        // In PiP the activity stops when the PiP window is dismissed; keep playing only while it's visible, unless
+        // background playback is on (the notification then controls it). Leaving for good still stops it.
+        if (!isInPictureInPictureMode && (!prefs.backgroundPlay || isFinishing)) vm.player.pause()
     }
 
     override fun onDestroy() {
-        session?.release()
+        session?.let { app.media.closeLocal(it) }
         session = null
         super.onDestroy()
     }

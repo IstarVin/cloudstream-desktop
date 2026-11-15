@@ -55,6 +55,8 @@ data class PlayerPrefs(
     /** 0 fit, 1 fill, 2 zoom. */
     val resizeMode: Int = 0,
     val pictureInPicture: Boolean = true,
+    /** Keep the audio going when the player is hidden (screen off, app left without PiP); the notification controls it. */
+    val backgroundPlay: Boolean = false,
 )
 
 private val Context.store by preferencesDataStore("prefs")
@@ -76,6 +78,7 @@ class Prefs(private val context: Context) {
         val directLinks = booleanPreferencesKey("direct_links")
         val resizeMode = intPreferencesKey("resize_mode")
         val pip = booleanPreferencesKey("pip")
+        val backgroundPlay = booleanPreferencesKey("background_play")
         val recentSearches = stringPreferencesKey("recent_searches")
         val castId = stringPreferencesKey("cast_id")
         val castName = stringPreferencesKey("cast_name")
@@ -146,6 +149,7 @@ class Prefs(private val context: Context) {
             directLinks = this[K.directLinks] ?: d.directLinks,
             resizeMode = this[K.resizeMode] ?: d.resizeMode,
             pictureInPicture = this[K.pip] ?: d.pictureInPicture,
+            backgroundPlay = this[K.backgroundPlay] ?: d.backgroundPlay,
         )
     }
 
@@ -163,6 +167,7 @@ class Prefs(private val context: Context) {
             p[K.directLinks] = n.directLinks
             p[K.resizeMode] = n.resizeMode
             p[K.pip] = n.pictureInPicture
+            p[K.backgroundPlay] = n.backgroundPlay
         }
     }
 }

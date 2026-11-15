@@ -457,7 +457,7 @@ private fun RemoteSourcesSheet(device: DeviceInfo, provider: String, data: Strin
     var error by remember { mutableStateOf<String?>(null) }
     var settings by remember { mutableStateOf(ServerSettings()) }
     // Bumped by the reload button; the server then runs the plugin's loadLinks again.
-    var reloads by remember { mutableStateOf(0) }
+    var reloads by remember(provider, data) { mutableStateOf(0) }
     LaunchedEffect(provider, data) { runCatching { api.settings() }.onSuccess { settings = it } }
     LaunchedEffect(provider, data, reloads) {
         links = emptyList(); subtitles = emptyList(); error = null; done = false

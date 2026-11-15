@@ -276,6 +276,8 @@ export function castSocket(
   let ws: WebSocket | null = null;
   let stopped = false;
   let retry: ReturnType<typeof setTimeout> | undefined;
+  let replaced = false;
+  const REPLACED = "Replaced by a newer connection"; // the server's close reason (api/Routes.kt)
   const connect = () => {
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const sock = new WebSocket(`${proto}://${location.host}/api/cast`);
@@ -285,12 +287,23 @@ export function castSocket(
       onOpen(true);
     };
     sock.onmessage = (e) => onFrame(JSON.parse(e.data));
-    sock.onclose = () => {
+    sock.onclose = (e) => {
       if (ws !== sock) return;
       onOpen(false);
-      if (!stopped) retry = setTimeout(connect, 1500);
+      if (stopped) return;
+      // Another tab of this browser (same device id) took over the slot. Reconnecting at once would just take it
+      // back and the two tabs would bump each other forever; wait until this tab is shown again.
+      replaced = e.reason === REPLACED;
+      if (!replaced) retry = setTimeout(connect, 1500);
     };
   };
+  const onVisible = () => {
+    if (replaced && !stopped && document.visibilityState === "visible") {
+      replaced = false;
+      connect();
+    }
+  };
+  document.addEventListener("visibilitychange", onVisible);
   connect();
   return {
     send(f) {
@@ -299,6 +312,7 @@ export function castSocket(
     stop() {
       stopped = true;
       clearTimeout(retry);
+      document.removeEventListener("visibilitychange", onVisible);
       ws?.close();
     },
   };

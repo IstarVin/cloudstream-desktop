@@ -2,6 +2,8 @@ package com.istarvin.cloudstream.ui
 
 import android.graphics.Color
 import android.os.Bundle
+import android.view.KeyEvent
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -76,6 +78,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.istarvin.cloudstream.app
+import com.istarvin.cloudstream.data.PlayTargets
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
@@ -97,6 +100,29 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private var volumeToast: Toast? = null
+
+    /**
+     * While this device controls another's player, the volume keys set that device's volume. The media session does
+     * this with the app hidden; on screen the keys come here first, and Android may not route them while it's paused.
+     */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        val up = when (keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP -> true
+            KeyEvent.KEYCODE_VOLUME_DOWN -> false
+            else -> return super.onKeyDown(keyCode, event)
+        }
+        val volume = app.media.adjustRemoteVolume(up) ?: return super.onKeyDown(keyCode, event)
+        val name = PlayTargets.controlled(app.cast.devices.value, app.cast.id)?.name ?: "Remote"
+        volumeToast?.cancel()
+        volumeToast = Toast.makeText(this, "$name volume: $volume", Toast.LENGTH_SHORT).also { it.show() }
+        return true
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean =
+        if ((keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) && app.media.remote != null) true
+        else super.onKeyUp(keyCode, event)
 }
 
 @Composable

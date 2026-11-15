@@ -203,6 +203,7 @@ fun SettingsScreen(onUnpair: () -> Unit) {
                                 item { SwitchRow("Dark subtitle background", player.subtitleBackground, help = "Applies to SRT and VTT subtitles.") { v -> updatePlayer { it.copy(subtitleBackground = v) } } }
                                 item { Header("Playback") }
                                 item { SwitchRow("Picture-in-picture", player.pictureInPicture, help = "Keep the video playing when you leave the app.") { v -> updatePlayer { it.copy(pictureInPicture = v) } } }
+                                if (!tv) item { SwitchRow("Background playback", player.backgroundPlay, help = "Keep the sound going when the screen turns off or you leave the app. Control it from the notification.") { v -> updatePlayer { it.copy(backgroundPlay = v) } } }
                                 item {
                                     SwitchRow(
                                         "Direct video links",

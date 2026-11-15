@@ -106,10 +106,10 @@ class Engine(context: Context, http: OkHttpClient) {
     }
 
     /**
-     * The media item for [stream] at [url] (already resolved against the server), with the side-loaded [subtitles].
-     * Direct links carry their own headers; proxied ones only need the token the client adds.
+     * The media item for [stream] at [url] (already resolved against the server), with the side-loaded [subtitles] and
+     * the [metadata] the notification shows. Direct links carry their own headers; proxied ones only need the token the client adds.
      */
-    fun item(stream: StreamDto, url: String, subtitles: List<MediaItem.SubtitleConfiguration>, title: String): MediaItem {
+    fun item(stream: StreamDto, url: String, subtitles: List<MediaItem.SubtitleConfiguration>, metadata: androidx.media3.common.MediaMetadata): MediaItem {
         clearKey = stream.clearKey
         httpFactory.setDefaultRequestProperties(if (stream.proxied) emptyMap() else stream.headers)
         return MediaItem.Builder()
@@ -122,7 +122,7 @@ class Engine(context: Context, http: OkHttpClient) {
                 },
             )
             .setSubtitleConfigurations(subtitles)
-            .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder().setTitle(title).build())
+            .setMediaMetadata(metadata)
             .apply { if (stream.clearKey != null) setDrmConfiguration(MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID).build()) }
             .build()
     }

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Captions, Check, RefreshCw, TriangleAlert, X } from "@lucide/svelte";
   import { createQuery } from "@tanstack/svelte-query";
+  import { untrack } from "svelte";
   import { api } from "../api";
   import { modal } from "../dialog";
   import { playTarget } from "../play-target.svelte";
@@ -57,6 +58,28 @@
   const groups = $derived(groupLinks(visible));
   const best = $derived(visible.find((l) => l.playable && !failed.has(l.id))?.id);
   let subsOpen = $state(false);
+
+  // Follow the remote player (mpv or a cast device) while the sheet is open: when it moves on to another episode
+  // (next/previous, auto-advance, played from elsewhere) show that episode's links. The browser player reloads
+  // them itself on start. Only changes count, so opening the sheet for an episode that isn't playing keeps it.
+  let followed: string | null = null;
+  $effect(() => {
+    const s = player.state;
+    const key = sources.open && s.provider && s.data ? `${s.provider}\n${s.data}` : null;
+    if (key === followed) return;
+    followed = key;
+    if (!key || !s.provider || !s.url || !s.data) return;
+    if (untrack(() => webPlayer.playing(s.provider!, s.data!))) return;
+    untrack(() =>
+      sources.load({
+        provider: s.provider!,
+        url: s.url!,
+        data: s.data!,
+        title: s.title ?? "",
+        label: s.episodeLabel ?? null,
+      }),
+    );
+  });
 
   function toggleSub(id: string) {
     sources.chosenSubs = sources.chosenSubs.includes(id)

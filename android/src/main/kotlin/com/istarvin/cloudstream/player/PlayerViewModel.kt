@@ -5,9 +5,11 @@ package com.istarvin.cloudstream.player
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import android.app.Application
+import android.media.AudioManager
 import android.net.Uri
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
@@ -46,7 +48,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -107,6 +111,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
     private val appScope = application.app.scope
     val engine = Engine(application, api.http)
     val player get() = engine.player
+    /** The player as the notification and media buttons see it, with next/previous moving between episodes. */
+    val sessionPlayer by lazy {
+        EpisodePlayer(
+            engine.player,
+            hasNext = { _session.value.item?.hasNext == true },
+            hasPrev = { _session.value.item?.hasPrev == true },
+            onNext = ::next,
+            onPrev = ::prev,
+        )
+    }
+    private val audio = application.getSystemService(AudioManager::class.java)
 
     private val _session = MutableStateFlow(Session())
     val session: StateFlow<Session> = _session
@@ -163,6 +178,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
             }
         })
         viewModelScope.launch { while (isActive) { tick(); delay(500) } }
+        viewModelScope.launch { _session.map { it.item?.index to it.item?.episodes?.size }.distinctUntilChanged().collect { sessionPlayer.refresh() } }
         cast.receiverPlayer = this
     }
 
@@ -322,7 +338,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
                 if (subs.none { it.id == SUB_PREFIX + _session.value.subtitle }) {
                     _session.update { it.copy(subtitle = null) }
                 }
-                val media = engine.item(stream, api.resolve(stream.url), subs, listOfNotNull(item.details.name, item.displayLabel).joinToString(" · "))
+                val metadata = MediaMetadata.Builder()
+                    .setTitle(item.details.name)
+                    .setDisplayTitle(listOfNotNull(item.details.name, item.displayLabel).joinToString(" · "))
+                    .setArtist(item.displayLabel)
+                    .setArtworkUri((item.episode?.poster ?: item.details.poster)?.let { runCatching { Uri.parse(api.resolve(it)) }.getOrNull() })
+                    .build()
+                val media = engine.item(stream, api.resolve(stream.url), subs, metadata)
                 player.setMediaItem(media, ((at ?: 0.0) * 1000).toLong().coerceAtLeast(0))
                 player.prepare()
                 player.playWhenReady = true
@@ -637,7 +659,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
             position = currentPosition(),
             duration = duration(),
             paused = paused,
-            volume = (player.volume * 100).toDouble(),
+            volume = deviceVolume(),
             title = item.details.name,
             episodeLabel = item.label,
             provider = item.details.provider,
@@ -683,7 +705,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
                 val to = if (body.relative) currentPosition() + (body.seconds ?: 0.0) else body.seconds ?: 0.0
                 player.seekTo((to.coerceAtLeast(0.0) * 1000).toLong())
             }
-            "volume" -> player.volume = ((body.value ?: 100.0) / 100).toFloat().coerceIn(0f, 1f)
+            "volume" -> setDeviceVolume(body.value ?: 100.0)
             "stop" -> {
                 saveProgress(force = true)
                 player.pause()
@@ -697,6 +719,30 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application),
             "source" -> s.links.firstOrNull { it.id == body.linkId }?.let { play(it, currentPosition().takeIf { p -> p > 5 }) }
             "sub-add" -> s.subtitles.firstOrNull { it.id == body.id }?.let(::selectSubtitle)
         }
+    }
+
+    /**
+     * The volume other devices see and set, 0-100: this device's media volume, so a phone's volume keys work the TV as
+     * its own remote would. Devices with a fixed volume (output to an amplifier) fall back to the player's gain.
+     */
+    private fun deviceVolume(): Double {
+        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        return if (audio.isVolumeFixed || max <= 0) (player.volume * 100).toDouble()
+        else audio.getStreamVolume(AudioManager.STREAM_MUSIC) * 100.0 / max
+    }
+
+    private fun setDeviceVolume(value: Double) {
+        val v = value.coerceIn(0.0, 100.0)
+        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (audio.isVolumeFixed || max <= 0) {
+            player.volume = (v / 100).toFloat()
+            return
+        }
+        player.volume = 1f
+        // Round toward the change, so small steps on a device with few volume levels still move it.
+        val exact = v / 100 * max
+        val index = if (v >= deviceVolume()) kotlin.math.ceil(exact) else kotlin.math.floor(exact)
+        runCatching { audio.setStreamVolume(AudioManager.STREAM_MUSIC, index.toInt().coerceIn(0, max), AudioManager.FLAG_SHOW_UI) }
     }
 
     private fun castTrack(type: String?, id: String?) {
