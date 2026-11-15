@@ -12,6 +12,9 @@ on:
       - "**/*.md"
       - ".agents/**"
       - ".claude/**"
+  # Weekly rebuild of latest, so the image's browser stays current: an outdated browser version is a bot signal.
+  schedule:
+    - cron: "17 4 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -81,10 +84,18 @@ jobs:
             type=semver,pattern={{version}},match=^server-v(.*)$
             type=semver,pattern={{major}}.{{minor}},match=^server-v(.*)$
 
+      # The ISO week busts the cached browser layer once a week (see BROWSER_REFRESH in the Dockerfile).
+      - name: Browser refresh key
+        id: refresh
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
       - uses: docker/build-push-action@v7
         id: build
         with:
           context: .
+          pull: true
+          build-args: |
+            BROWSER_REFRESH=${{ steps.refresh.outputs.week }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

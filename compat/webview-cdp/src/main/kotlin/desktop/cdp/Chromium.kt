@@ -283,13 +283,15 @@ object Chromium {
             "--disable-blink-features=AutomationControlled",
             "--disable-features=Translate,MediaRouter",
             "--mute-audio",
-            "--user-agent=$ua",
+            // No --user-agent: the full browser already reports [ua] in every mode, and overriding it empties
+            // navigator.userAgentData's brands and the Sec-CH-UA headers, which real Chrome never does.
             "--window-size=1100,850",
         )
         when (mode) {
             // The full browser drawing to no display. Turnstile stalls on its checkbox under `--headless` (the
-            // separate headless shell), and passes on its own here.
-            Mode.HEADLESS -> args += "--ozone-platform=headless"
+            // separate headless shell), and passes on its own here. Without a screen size the headless platform
+            // reports a 1x1 screen (smaller than the window), which bot checks flag.
+            Mode.HEADLESS -> args += listOf("--ozone-platform=headless", "--ozone-override-screen-size=$SCREEN_W,$SCREEN_H")
             Mode.XVFB -> {
                 val (process, display) = startXvfb()
                 xvfb = process
@@ -384,7 +386,7 @@ object Chromium {
     private suspend fun startXvfb(): Pair<Process, String> {
         val exe = which("Xvfb") ?: throw ChromiumUnavailableException("Xvfb isn't installed: install it or pick another browser mode")
         val n = (99..199).first { !File("/tmp/.X11-unix/X$it").exists() && !File("/tmp/.X$it-lock").exists() }
-        val process = ProcessBuilder(exe, ":$n", "-screen", "0", "1280x900x24", "-nolisten", "tcp")
+        val process = ProcessBuilder(exe, ":$n", "-screen", "0", "${SCREEN_W}x${SCREEN_H}x24", "-nolisten", "tcp")
             .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start()
         val socket = File("/tmp/.X11-unix/X$n")
         repeat(50) {
@@ -402,7 +404,7 @@ object Chromium {
         return (listOf(configured) + FALLBACKS).firstNotNullOfOrNull(::which)
     }
 
-    /** Chrome's reduced user agent for this build, without "HeadlessChrome", so every mode looks the same. */
+    /** Chrome's reduced user agent for this build: what the full browser itself reports in every mode. */
     private fun userAgent(exe: String): String = userAgents.getOrPut(exe) {
         val version = runCatching {
             val p = ProcessBuilder(exe, "--version").redirectErrorStream(true).start()
@@ -426,6 +428,10 @@ object Chromium {
 
     private fun which(name: String): String? = System.getenv("PATH").orEmpty().split(File.pathSeparator)
         .map { File(it, name) }.firstOrNull { it.canExecute() }?.absolutePath
+
+    /** The screen every mode reports: a common desktop size, larger than the window. */
+    private const val SCREEN_W = 1920
+    private const val SCREEN_H = 1080
 
     private val FALLBACKS = listOf("chromium", "chromium-browser", "google-chrome-stable", "google-chrome")
 

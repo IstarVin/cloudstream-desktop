@@ -108,11 +108,13 @@ installation while keeping data and settings.
 
 ### Run with Docker
 
-The headless image includes Chromium and serves the web UI and Android clients. It
-has no mpv; play in a browser or on an Android device. Published images are amd64.
+The headless image includes Google Chrome (for plugins behind Cloudflare and similar checks)
+and serves the web UI and Android clients. It has no mpv; play in a browser or on an Android
+device. Published images are amd64 and are rebuilt weekly to keep the browser current. Build
+with `--build-arg BROWSER=chromium` to use Debian's Chromium instead.
 
 ```bash
-docker run -d --init --name cloudstream -p 6969:6969 --shm-size=1g --env-file .env \
+docker run -d --name cloudstream -p 6969:6969 --env-file .env \
   -v cs-config:/config -v cs-data:/data ghcr.io/istarvin/cloudstream-desktop:latest
 ```
 
@@ -120,6 +122,8 @@ Set `TZ` in `.env` to your own timezone (for example, `Asia/Manila`). Cloudflare
 browser's timezone with your IP's location, and a container defaults to UTC, which makes
 sites such as OnlyKDrama and GoPlay reject the background Chromium. Compose reads `TZ`
 from your shell (`TZ=Asia/Manila docker compose up -d --build`), or edit `docker-compose.yml`.
+`LANGUAGE` (default `en_US:en`) sets the browser's language, and `JAVA_OPTS` replaces the
+default `-Xmx1g` heap limit.
 
 Or build the image locally with `docker compose up -d --build`.
 

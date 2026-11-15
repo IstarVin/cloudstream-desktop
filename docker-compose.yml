@@ -1,12 +1,12 @@
 services:
   cloudstream:
     build: .
-    init: true            # reaps Chromium's child processes
-    shm_size: 1gb         # Chromium's shared memory
     environment:
       # Your own timezone (e.g. Asia/Manila). Cloudflare compares the browser's timezone with your IP's location, and
       # a container defaults to UTC, which fails the check for most users.
       TZ: ${TZ:-UTC}
+      # The browser's language and Accept-Language; match your region if sites expect it (e.g. en_PH:en).
+      LANGUAGE: ${LANGUAGE:-en_US:en}
       CLOUDSTREAM_AUTH_URL: ${CLOUDSTREAM_AUTH_URL:-}
       CLOUDSTREAM_AUTH_SECRET: ${CLOUDSTREAM_AUTH_SECRET:-}
       CLOUDSTREAM_SERVER_NAME: ${CLOUDSTREAM_SERVER_NAME:-Cloudstream server}
