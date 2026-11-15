@@ -59,12 +59,14 @@ fun Route.authRoutes(auth: Auth) {
         suspend fun io.ktor.server.application.ApplicationCall.complete(name: String, epoch: Long) {
             auth.acceptEpoch(epoch)
             val issued = auth.issue(name, epoch)
-            response.cookies.append(Cookie(Auth.COOKIE, issued.token, maxAge = Auth.SESSION_SECONDS, httpOnly = true,
+            val client = request.queryParameters["client"]
+            // Native clients and the extension keep a Bearer token; only the web UI gets the cookie.
+            if (client != "extension") response.cookies.append(Cookie(Auth.COOKIE, issued.token, maxAge = Auth.SESSION_SECONDS, httpOnly = true,
                 secure = request.origin.scheme == "https" || auth.publicOrigin != null, path = "/", extensions = mapOf("SameSite" to "Strict")))
             respond(buildJsonObject {
                 put("status", JsonPrimitive("approved"))
                 put("expiresAt", JsonPrimitive(issued.expiresAt))
-                if (request.queryParameters["client"] == "android") put("token", JsonPrimitive(issued.token))
+                if (client == "android" || client == "extension") put("token", JsonPrimitive(issued.token))
             })
         }
         post("/device") {

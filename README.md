@@ -33,6 +33,8 @@ and watch progress together across desktop, phone, tablet, and Android TV.
 - **Manage Cloudstream plugins.** Load a published repository, check for updates, update
   or roll back plugins, and edit plugin settings. For extension development, build a local
   checkout and hot-reload its plugin jars.
+- **Browser extension.** On a provider's own site, open the page or right-click a title link to open it in
+  Cloudstream, or start it on mpv, a TV or a phone. See [`extension/`](extension/).
 - **Browser support for providers.** Optional Chromium handles plugins that need a real
   browser or Cloudflare checks, with headless, Xvfb, and visible-window modes plus a Solve banner
   for checks that need interaction.
@@ -256,6 +258,7 @@ Android includes the server's browser settings, Cloudflare Solve banner, and dev
 | Android TV UI tests | `ANDROID_SERIAL=emulator-5556 ./gradlew :android:connectedDebugAndroidTest` |
 | Web UI with hot reload | `cd web && vp dev` (proxies `/api` to a running server) |
 | Web checks and tests | `cd web && vp check && vpr check && vp test` |
+| Browser extension | `cd extension && pnpm install && pnpm dev` (or `pnpm dev:firefox`); checks: `pnpm format:check && pnpm lint && pnpm check && pnpm test` |
 | Release tooling tests | `python3 -m unittest discover -s scripts -p 'test_*.py' -v` |
 | Plugin CLI smoke check | `./gradlew :server:run --args="spike Dulo dune"` |
 
@@ -270,7 +273,7 @@ that are not marked `isCrossPlatform`.
 For debugging, run the server with `-Dcs.debug.failSources="Dulo Pickle,…"` to exercise
 source fallback, or `-Dcs.debug.webview` to log CDP events and request decisions to stderr.
 
-See [Releases](docs/RELEASING.md) for independent Android/server versioning, the
+See [Releases](docs/RELEASING.md) for independent Android/server/extension versioning, the
 release helper and skill, signing secrets, tags, and publishing workflows.
 
 ## Project layout
@@ -281,12 +284,13 @@ release helper and skill, signing secrets, tags, and publishing workflows.
 | [`shared/`](shared/) | API models and shared playback rules: ranking, source profiles, subtitles, and skips |
 | [`web/`](web/) | SvelteKit SPA on Vite+, bundled into the server |
 | [`android/`](android/) | Compose app with Media3 ExoPlayer and libass |
+| [`extension/`](extension/) | Chrome/Firefox extension (WXT + Svelte) for opening and playing titles from provider sites |
 | [`compat/android-shim/`](compat/android-shim/) | Desktop implementations of the Android and Cloudstream interfaces plugins need |
 | [`compat/webview-cdp/`](compat/webview-cdp/) | WebView and Cloudflare compatibility through Chromium over CDP; precedes `library-jvm` on the classpath |
 | [`mpv/`](mpv/) | Player script, on-screen controls, optional uosc integration, and default keybindings |
-| [`testdata/`](testdata/) | Shared link-ranking test cases |
+| [`testdata/`](testdata/) | Test cases shared by the Kotlin and web implementations (link ranking, source priority, next-up episode) |
 | [`packaging/`](packaging/) | systemd user service, desktop entry, and installer |
-| [`.github/workflows/`](.github/workflows/) | CI checks, Android APK releases, and Docker publishing |
+| [`.github/workflows/`](.github/workflows/) | CI checks, Android APK and browser-extension releases, and Docker publishing |
 
 For architecture and design context, see the [project plan](docs/PLAN.md) and
 [design system](DESIGN.md).

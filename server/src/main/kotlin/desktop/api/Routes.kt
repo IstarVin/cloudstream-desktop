@@ -177,6 +177,13 @@ fun Route.apiRoutes(s: Services) {
             s.playback.play(req)
             call.respond(mapOf("ok" to true))
         }
+        post("/play-title") {
+            val req = call.receive<PlayTitleRequest>()
+            val details = s.catalog.details(req.provider, req.url)
+            val data = desktop.player.NextUp.data(details) ?: throw IllegalArgumentException("${details.name} has nothing to play")
+            s.cast.play(req.device ?: DeviceHub.MPV_ID, PlayRequest(details.provider, details.url, data))
+            call.respond(JsonObject(mapOf("ok" to JsonPrimitive(true), "title" to JsonPrimitive(details.name))))
+        }
         get("/player/state") { call.respond(s.playback.state.value) }
         post("/player/{cmd}") {
             val body = runCatching { call.receive<PlayerCommand>() }.getOrDefault(PlayerCommand())

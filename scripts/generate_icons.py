@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate web PNGs, the Android vector and TV banner from the favicon artwork.
+"""Generate web PNGs, browser-extension icons, the Android vector and TV banner from the favicon artwork.
 
 Run `python3 scripts/generate_icons.py` after editing web/static/favicon.svg.
 Requires ImageMagick (`magick`); PNGs render at 4x size before downsampling.
@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "web/static"
+EXTENSION_ICONS = ROOT / "extension/public/icon"
 RES = ROOT / "android/src/main/res"
 SVG_NS = "{http://www.w3.org/2000/svg}"
 
@@ -41,6 +42,22 @@ def main():
                     str(svg), "-resize", f"{size * 4}x{size * 4}",
                     "-resize", f"{size}x{size}", "-strip",
                     f"PNG32:{STATIC / 'icons' / name}",
+                ],
+                check=True,
+            )
+
+        # Toolbar and store icons for the browser extension, with the rounded background.
+        background.set("rx", "24")
+        svg = Path(temporary) / "icon.svg"
+        ET.ElementTree(source).write(svg, encoding="unicode")
+        EXTENSION_ICONS.mkdir(parents=True, exist_ok=True)
+        for size in (16, 32, 48, 96, 128):
+            subprocess.run(
+                [
+                    "magick", "-background", "none", "-density", str(size * 4 * 96 / 108),
+                    str(svg), "-resize", f"{size * 4}x{size * 4}",
+                    "-resize", f"{size}x{size}", "-strip",
+                    f"PNG32:{EXTENSION_ICONS / f'{size}.png'}",
                 ],
                 check=True,
             )

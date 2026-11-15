@@ -18,6 +18,17 @@ data class ProviderDto(
     val nsfw: Boolean,
     val hasMainPage: Boolean,
     val iconUrl: String?,
+    /** When its plugin was first installed, kept across updates (repo mode); null in dev mode. Picks between providers that share a site. */
+    val installedAt: Long? = null,
+)
+
+/** Plays a title on a device without choosing an episode: the movie, or the episode to resume or watch next. */
+@Serializable
+data class PlayTitleRequest(
+    val provider: String,
+    val url: String,
+    /** A device id from /api/cast/devices; the server's mpv when null. */
+    val device: String? = null,
 )
 
 @Serializable

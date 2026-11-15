@@ -121,13 +121,29 @@ class Auth(
 
     /** Browser origins are checked before cookies are accepted, including WebSocket upgrades. */
     fun sameOrigin(call: ApplicationCall): Boolean {
+        if (isExtension(call)) return true
         if (call.request.headers["Sec-Fetch-Site"] == "cross-site") return false
         val origin = call.request.headers["Origin"] ?: return true // native clients have no Origin
         val expected = origin(call)
         return origin == expected
     }
 
+    /**
+     * The browser extension calls from its own origin. It never relies on the cookie: it signs in with the device-code flow and
+     * then sends a Bearer header, which web pages can't attach cross-site without the token. So an extension origin is accepted
+     * only on the device sign-in endpoints or with a Bearer header, and other cross-origin requests stay rejected.
+     */
+    fun isExtension(call: ApplicationCall): Boolean {
+        val bearer = call.request.headers["Authorization"]?.startsWith("Bearer ") == true
+        // A page can attach Authorization only in CORS mode, which always sends Origin; so a Bearer without one is never a web page.
+        val origin = call.request.headers["Origin"] ?: return bearer
+        if (EXTENSION_ORIGINS.none { origin.startsWith(it) }) return false
+        return bearer || call.request.path() in EXTENSION_SIGN_IN
+    }
+
     companion object {
+        private val EXTENSION_ORIGINS = listOf("chrome-extension://", "moz-extension://")
+        private val EXTENSION_SIGN_IN = setOf("/api/auth/status", "/api/auth/device", "/api/auth/device/poll")
         const val COOKIE = "cs_session"
         const val SESSION_SECONDS = 30 * 86400
         /** How long the last verified Worker epoch is trusted while the Worker is unreachable. */

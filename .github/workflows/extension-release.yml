@@ -1,0 +1,123 @@
+name: Browser extension release
+
+on:
+  push:
+    tags: ["extension-v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing extension tag to release (for example extension-v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extension-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Validate release tag
+        id: version
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^extension-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo "::error::Expected extension-vMAJOR.MINOR.PATCH, optionally followed by a prerelease suffix."
+            exit 1
+          fi
+          echo "name=${RELEASE_TAG#extension-v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+          persist-credentials: false
+
+      - name: Validate release notes
+        run: |
+          notes="release-notes/$RELEASE_TAG.md"
+          if [[ ! -s "$notes" ]] || ! grep -q '[^[:space:]]' "$notes" || grep -Eiq '\b(TODO|TBD)\b' "$notes"; then
+            echo "::error::Commit finished release notes in $notes before tagging."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+
+      - name: Install pnpm
+        run: npm install -g pnpm@12.16.1
+
+      - name: Install dependencies
+        working-directory: extension
+        run: pnpm install --frozen-lockfile
+
+      # The tag is the version: package.json stays at its development value, as Android's versionName does.
+      - name: Check, test and build
+        working-directory: extension
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          npm pkg set "version=$VERSION_NAME"
+          pnpm run format:check && pnpm run lint && pnpm run check && pnpm test
+          pnpm run zip
+          pnpm run zip:firefox
+          pnpm exec web-ext lint --source-dir .output/firefox-mv3
+
+      # Firefox installs only signed add-ons. With AMO API credentials the build is signed as an unlisted
+      # (self-distributed) add-on; without them the release carries the unsigned zip and says so.
+      - name: Sign for Firefox
+        id: sign
+        working-directory: extension
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          if [[ -z "$AMO_JWT_ISSUER" || -z "$AMO_JWT_SECRET" ]]; then
+            echo "::warning::AMO_JWT_ISSUER/AMO_JWT_SECRET aren't set; publishing the Firefox build unsigned."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          pnpm exec web-ext sign --channel unlisted --source-dir .output/firefox-mv3 --artifacts-dir signed \
+            --upload-source-code .output/*-sources.zip --approval-timeout 900000 \
+            --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare release assets
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          SIGNED: ${{ steps.sign.outputs.signed }}
+        run: |
+          mkdir -p dist
+          cp extension/.output/*-chrome.zip "dist/cloudstream-extension-$VERSION_NAME-chrome.zip"
+          if [[ "$SIGNED" == "true" ]]; then
+            cp extension/signed/*.xpi "dist/cloudstream-extension-$VERSION_NAME-firefox.xpi"
+          else
+            cp extension/.output/*-firefox.zip "dist/cloudstream-extension-$VERSION_NAME-firefox-unsigned.zip"
+          fi
+          cd dist
+          sha256sum ./* > SHA256SUMS
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          flags=()
+          if [[ "$VERSION_NAME" == *-* ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" dist/* \
+            --verify-tag --title "Browser extension $VERSION_NAME" \
+            --notes-file "release-notes/$RELEASE_TAG.md" "${flags[@]}"

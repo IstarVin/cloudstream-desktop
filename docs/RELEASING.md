@@ -1,18 +1,18 @@
 # Releases
 
-Android and server releases use independent versions and tags. Run the commands below from the repository root.
+Android, server and browser-extension releases use independent versions and tags. Run the commands below from the repository root.
 
 ## Preparing and publishing versions
 
 The repository skill [cloudstream-release](../.agents/skills/cloudstream-release/SKILL.md) supports requests such as
 “bump Android patch,” “bump server minor,” and “release both: Android patch, server minor.” Bump requests prepare
 reviewed release notes, run relevant checks, and commit locally. Release requests additionally push the commit
-and tags and verify the publishing workflows. Both components have independent versions.
+and tags and verify the publishing workflows. Each component has its own version.
 
 The dependency-free helper can also be used directly from the repository:
 
 ```bash
-python3 scripts/release.py plan auto --android patch --server minor
+python3 scripts/release.py plan auto --android patch --server minor --extension patch
 python3 scripts/release.py prepare auto --android 0.1.0 --server 0.2.0
 # Replace the generated TODO with reviewed changes, run checks, and commit each component's notes separately.
 # Publish from clean main after the preparation is merged:
@@ -20,7 +20,8 @@ python3 scripts/release.py publish auto --android 0.1.0 --server 0.2.0
 ```
 
 `auto` picks the components that changed since their own last tag (path filters in `COMPONENT_PATHS`; docs,
-notes and agent files never count); `android`, `server` and `both` force a target. Each tag points at that
+notes and agent files never count); `android`, `server`, `extension` and `both` (Android and server) force a
+target. Each tag points at that
 component's latest change (including its own notes commit), not at `HEAD`, so the two tags can differ. Commit
 the notes of each component separately to keep them apart.
 
@@ -74,3 +75,23 @@ Tags such as `android-v0.2.0-beta.1` create GitHub prereleases. The APK version 
 version code is the workflow run number; publish versions in increasing order. You can also run the workflow
 manually with an existing Android tag, for example to retry a failed build. Creating a release fails if that tag
 already has a GitHub Release. Android tags are separate from the Docker workflow's `server-v*` tags.
+
+## Browser extension
+
+The `Browser extension release` workflow runs on `extension-v*` tags. It checks, tests and builds the extension
+([`extension/`](../extension/)) for Chrome and Firefox and publishes a GitHub Release with the Chrome zip, the
+Firefox add-on and `SHA256SUMS`. The extension version comes from the tag; `extension/package.json` keeps its
+development value. Prerelease tags create GitHub prereleases, but browsers only see the numeric part
+(`0.2.0-beta.1` installs as `0.2.0`), so don't release a prerelease and its final version to the same Firefox add-on.
+
+Firefox installs only signed add-ons. To sign builds as an unlisted (self-distributed) add-on, create API
+credentials at <https://addons.mozilla.org/developers/addon/api/key/> and add them as repository secrets:
+
+| Secret | Value |
+| --- | --- |
+| `AMO_JWT_ISSUER` | AMO API key (JWT issuer) |
+| `AMO_JWT_SECRET` | AMO API secret |
+
+Without them the release still succeeds, with a warning, and attaches an unsigned Firefox zip that only Firefox
+Developer Edition or Nightly can install (with `xpinstall.signatures.required` off). Each signed version must be
+new to AMO.

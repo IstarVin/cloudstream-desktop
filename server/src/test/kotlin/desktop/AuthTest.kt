@@ -142,6 +142,14 @@ class AuthTest {
         assertEquals(HttpStatusCode.OK, client.get("/proxy/t/x") { header(HttpHeaders.Cookie, "${Auth.COOKIE}=$token") }.status)
         assertEquals(HttpStatusCode.Forbidden, client.get("/api/providers") { bearerAuth(token); header(HttpHeaders.Origin, "https://evil.example") }.status)
         assertEquals(HttpStatusCode.Unauthorized, client.get("/api/providers") { header(HttpHeaders.Cookie, "cs_token=$token") }.status)
+        // The browser extension: its own origin works with a Bearer token, never with the cookie alone.
+        for (ext in listOf("chrome-extension://abcdef", "moz-extension://1234-5678")) {
+            assertEquals(HttpStatusCode.OK, client.get("/api/providers") { bearerAuth(token); header(HttpHeaders.Origin, ext); header("Sec-Fetch-Site", "none") }.status)
+            assertEquals(HttpStatusCode.Forbidden, client.get("/api/providers") { header(HttpHeaders.Cookie, "${Auth.COOKIE}=$token"); header(HttpHeaders.Origin, ext) }.status)
+            assertEquals(HttpStatusCode.OK, client.get("/api/auth/status") { header(HttpHeaders.Origin, ext) }.status)
+        }
+        assertEquals(HttpStatusCode.OK, client.get("/api/providers") { bearerAuth(token); header("Sec-Fetch-Site", "cross-site") }.status)
+        assertEquals(HttpStatusCode.Forbidden, client.get("/api/providers") { header(HttpHeaders.Cookie, "${Auth.COOKIE}=$token"); header("Sec-Fetch-Site", "cross-site") }.status)
     }
     @Test fun browserGetsOnlyACookieAndAndroidGetsItsOwnBearer() = testApplication {
         val auth = auth()
@@ -176,6 +184,24 @@ class AuthTest {
         assertEquals(HttpStatusCode.OK, poll().status)
         assertEquals(HttpStatusCode.Gone, poll().status)
         assertEquals(1, auth.list(null).size)
+    }
+    @Test fun extensionDeviceSignInGetsABearerAndNoCookie() = testApplication {
+        val auth = auth()
+        application {
+            install(ContentNegotiation) { json() }; install(Auth.plugin(auth))
+            install(StatusPages) { exception<AuthFailure> { call, e -> call.respond(HttpStatusCode.fromValue(e.status), mapOf("error" to e.message)) } }
+            routing { authRoutes(auth) }
+        }
+        val origin = "chrome-extension://abcdef"
+        val start = client.post("/api/auth/device") { header(HttpHeaders.Origin, origin); contentType(ContentType.Application.Json); setBody("""{"deviceName":"Browser extension"}""") }
+        assertEquals(HttpStatusCode.OK, start.status)
+        val poll = client.post("/api/auth/device/poll?client=extension") { header(HttpHeaders.Origin, origin); contentType(ContentType.Application.Json); setBody("""{"deviceCode":"${"a".repeat(64)}"}""") }
+        assertEquals(HttpStatusCode.OK, poll.status)
+        assertEquals(null, poll.headers[HttpHeaders.SetCookie])
+        val token = Json.parseToJsonElement(poll.bodyAsText()).jsonObject["token"]!!.jsonPrimitive.content
+        assertTrue(auth.isAuthorized(token))
+        // Password login stays same-origin only.
+        assertEquals(HttpStatusCode.Forbidden, client.post("/api/auth/login") { header(HttpHeaders.Origin, origin); contentType(ContentType.Application.Json); setBody("{}") }.status)
     }
     @Test fun serviceSecretRequiresHttpsAndAWorkerOrigin() {
         assertFailsWith<IllegalArgumentException> { WorkerClient("http://auth.example", "a".repeat(32), "a", "a") }

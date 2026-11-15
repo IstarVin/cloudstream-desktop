@@ -18,6 +18,8 @@ A local Ktor server that runs Cloudstream plugins on the desktop JVM, serves a S
 cd web && vp dev                               # web UI with hot reload; proxies /api, /proxy, /pair to a running server
 cd web && vp check && vpr check && vp test     # web lint/format, svelte-check, tests (what CI runs)
 cd web && vp test run src/lib/ranking.test.ts  # single web test file
+cd extension && pnpm dev                       # browser extension with hot reload (pnpm dev:firefox for Firefox)
+cd extension && pnpm format:check && pnpm lint && pnpm check && pnpm test   # extension checks (what CI runs)
 python3 -m unittest discover -s scripts -p 'test_*.py' -v   # release tooling tests
 ```
 
@@ -25,11 +27,11 @@ python3 -m unittest discover -s scripts -p 'test_*.py' -v   # release tooling te
 - `./gradlew :server:processResources` runs `vp install` + `vp build` (the `webBuild` task), which writes the SPA into `server/src/main/resources/web/` (gitignored). `vp` must be on PATH for any server build that processes resources.
 - `:android` is included in `settings.gradle.kts` only when an Android SDK is found, so server-only checkouts build without it.
 - Debug flags for the server JVM: `-Dcs.debug.failSources="Dulo Pickle,…"` (force source failures to exercise fallback), `-Dcs.debug.webview` (trace emulated WebView CDP events).
-- Releases (Android `android-v*` tags, server `server-v*` tags, independent versions, notes in `release-notes/`) go through the `cloudstream-release` skill / `scripts/release.py`; don't tag by hand.
+- Releases (Android `android-v*` tags, server `server-v*` tags, extension `extension-v*` tags, independent versions, notes in `release-notes/`) go through the `cloudstream-release` skill / `scripts/release.py`; don't tag by hand.
 
 ## Architecture
 
-Modules (Gradle): `shared`, `compat:android-shim`, `compat:webview-cdp`, `server`, `android`; plus `web/` (pnpm, not Gradle-managed except through `server`'s `webBuild`).
+Modules (Gradle): `shared`, `compat:android-shim`, `compat:webview-cdp`, `server`, `android`; plus `web/` (pnpm, not Gradle-managed except through `server`'s `webBuild`) and `extension/` (pnpm, standalone).
 
 **Plugin runtime** (`server/.../plugins/`). Cloudstream plugins are Android code; the server loads them on a plain JVM against `library-jvm`, so the compat modules stand in for Android APIs:
 - `compat/android-shim` provides `Context`, JSON-backed `SharedPreferences`, `Log`, `Uri`, `DataStore`, `Plugin`, `Dispatchers.Main` and empty fragment classes (needed only so the JVM verifier can load converted plugins' settings sheets). `AndroidStubs` also layers the SDK's `android.jar` between the host and plugin class loaders (parent-first, so shims win).
@@ -39,11 +41,13 @@ Modules (Gradle): `shared`, `compat:android-shim`, `compat:webview-cdp`, `server
 
 **Server** (`server/.../`). `Main.kt` wires config (`config/`, TOML at `~/.config/cloudstream-desktop/config.toml`), SQLite (`db/`), settings, `PluginHost`, then `Server.kt` (Ktor CIO + websockets). `api/Routes.kt` and `Catalog.kt` expose the REST/SSE API; `links/` resolves and proxies streams (`LinkService`, `StreamProxy` for HLS/DASH rewriting, ClearKey/CENC handling in `Cenc.kt`, MKV subtitle extraction); `player/` drives mpv over its IPC socket (`MpvManager`, `MpvIpc`, `Playback` for auto-play/fallback/prefetch, `SkipTimes` for AniSkip); `cast/DeviceHub` coordinates casting between browser tabs, the mpv player and Android clients; `auth/` does LAN pairing tokens (loopback is trusted, other clients need the token).
 
-**`shared/`** holds the API DTOs and playback rules (link ranking, source profiles, auto-play, subtitles, skip) used by both the server and the Android app. The web UI cannot import Kotlin, so `web/src/lib/ranking.ts` (and types in `web/src/lib/types.ts`) reimplement the same logic; `testdata/*.json` cases are run by the Kotlin tests *and* the web tests to keep them in step. When changing ranking or source-priority behavior, change both implementations and update the shared cases.
+**`shared/`** holds the API DTOs and playback rules (link ranking, source profiles, auto-play, subtitles, skip) used by both the server and the Android app. The web UI cannot import Kotlin, so `web/src/lib/ranking.ts` (and types in `web/src/lib/types.ts`) reimplement the same logic; `testdata/*.json` cases are run by the Kotlin tests *and* the web tests to keep them in step (`next-up-cases.json` does the same for `NextUp` and `web/src/lib/next-up.ts`). When changing ranking or source-priority behavior, change both implementations and update the shared cases.
 
 **Web** (`web/`). SvelteKit static SPA (`adapter-static`, fallback `index.html`) served by Ktor at `/`; also an installable PWA (`src/service-worker`). Client state lives in `*.svelte.ts` stores in `src/lib/` (player, cast, search, sources); data fetching uses TanStack Query against `/api`.
 
 **Android** (`android/`). Compose + Media3 ExoPlayer + libass; talks to the same `/api` and casting protocol as the web client (`data/Api.kt`, `data/Cast.kt`). Has TV mode (D-pad/focus handling in `ui/Tv.kt`, `player/TvRemote.kt`); instrumented TV tests run with `ANDROID_SERIAL=<disposable emulator> ./gradlew :android:connectedDebugAndroidTest`.
+
+**Browser extension** (`extension/`). WXT + Svelte 5 + Lucide, MV3 for Chrome and Firefox. It matches pages to providers by `mainUrl` host (the newest `installedAt` wins on a shared host), opens `/title?provider=…&url=…` on the server, or starts playback through `POST /api/play-title` (which picks the movie or next-up episode via `NextUp` in `shared/`). It signs in with the device-code flow (`?client=extension` returns a Bearer token) and makes every request from the background script. `Auth.isExtension` lets extension origins through the Origin check only with a Bearer token or on the device sign-in endpoints. It imports API types from `web/src/lib/types.ts` through the `$shared` alias. Design in [docs/EXTENSION.md](docs/EXTENSION.md).
 
 **mpv** (`mpv/cloudstream.lua`, `cloudstream.conf`) is bundled into the server jar and connects the player back to the server (OSD, pickers, skip prompts, episode switching).
 

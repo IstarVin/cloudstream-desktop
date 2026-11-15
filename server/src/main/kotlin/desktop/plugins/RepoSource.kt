@@ -101,7 +101,15 @@ class RepoSource(val urls: List<String>, private val dir: File, private val http
     )
 
     @Serializable
-    data class Installed(val current: Jar, val previous: List<Jar> = emptyList())
+    data class Installed(
+        val current: Jar,
+        val previous: List<Jar> = emptyList(),
+        /** When the plugin was first installed; updates and rollbacks keep it. Null in state saved before it was recorded. */
+        val firstInstalledAt: Long? = null,
+    ) {
+        /** When the plugin was first installed, or its oldest kept version for state saved before that was recorded. */
+        val since: Long get() = firstInstalledAt ?: (previous + current).minOf { it.installedAt }
+    }
 
     @Serializable
     private data class State(
@@ -276,7 +284,7 @@ class RepoSource(val urls: List<String>, private val dir: File, private val http
                 val keep = previous.filter { it.entry.version != entry.version && it.file != file.path }.take(KEEP_PREVIOUS)
                 (previous - keep.toSet()).forEach { if (it.file != file.path) File(it.file).delete() }
                 val jar = Jar(entry, file.path, System.currentTimeMillis(), converted, if (converted) Cs3Converter.VERSION else 0)
-                save(state.copy(installed = state.installed + (id to Installed(jar, keep))))
+                save(state.copy(installed = state.installed + (id to Installed(jar, keep, old?.since ?: jar.installedAt))))
             }
             installErrors.remove(id)
             log.info("Installed {} v{} from {}{}", name, entry.version, entry.repo, if (converted) " (converted from its .cs3)" else "")
@@ -292,7 +300,7 @@ class RepoSource(val urls: List<String>, private val dir: File, private val http
         val old = state.installed[id] ?: throw IllegalArgumentException("$ref isn't installed")
         val back = old.previous.firstOrNull { File(it.file).exists() } ?: throw IllegalArgumentException("$ref has no earlier version to roll back to")
         File(old.current.file).delete()
-        save(state.copy(installed = state.installed + (id to Installed(back, old.previous.drop(old.previous.indexOf(back) + 1)))))
+        save(state.copy(installed = state.installed + (id to Installed(back, old.previous.drop(old.previous.indexOf(back) + 1), old.since))))
         log.info("Rolled {} back to v{}", id, back.entry.version)
     }
 
@@ -365,7 +373,7 @@ class RepoSource(val urls: List<String>, private val dir: File, private val http
         fun Jar.owned() = copy(entry = entry.owned())
         val installed = s.installed.values.associate { i ->
             val current = i.current.owned()
-            current.entry.id to Installed(current, i.previous.map { it.owned() })
+            current.entry.id to Installed(current, i.previous.map { it.owned() }, i.firstInstalledAt)
         }
         return s.copy(index = s.index.map { it.owned() }, installed = installed)
     }

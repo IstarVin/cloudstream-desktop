@@ -9,6 +9,15 @@ export interface Provider {
   nsfw: boolean;
   hasMainPage: boolean;
   iconUrl: string | null;
+  /** When its plugin was first installed, kept across updates (repo mode); null in dev mode. */
+  installedAt?: number | null;
+}
+
+/** POST /api/play-title: play a title's movie or next-up episode on a device (the server's mpv when device is null). */
+export interface PlayTitleRequest {
+  provider: string;
+  url: string;
+  device?: string | null;
 }
 
 export interface PluginInfo {

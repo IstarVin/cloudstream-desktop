@@ -1,0 +1,44 @@
+{
+  "cases": [
+    { "name": "nothing watched starts at the first episode", "episodes": [{ "data": "e1" }, { "data": "e2" }], "expected": "e1" },
+    {
+      "name": "resumes the last episode in progress",
+      "episodes": [
+        { "data": "e1", "progress": { "position": 600, "watched": false } },
+        { "data": "e2", "progress": { "position": 100, "watched": false } },
+        { "data": "e3" }
+      ],
+      "expected": "e2"
+    },
+    {
+      "name": "barely started counts as not in progress",
+      "episodes": [{ "data": "e1", "progress": { "position": 1200, "watched": true } }, { "data": "e2", "progress": { "position": 10, "watched": false } }, { "data": "e3" }],
+      "expected": "e2"
+    },
+    {
+      "name": "next after the last watched, skipping earlier gaps",
+      "episodes": [{ "data": "e1" }, { "data": "e2", "progress": { "position": 1200, "watched": true } }, { "data": "e3" }],
+      "expected": "e3"
+    },
+    {
+      "name": "all watched wraps to the first",
+      "episodes": [{ "data": "e1", "progress": { "position": 1200, "watched": true } }, { "data": "e2", "progress": { "position": 1200, "watched": true } }],
+      "expected": "e1"
+    },
+    {
+      "name": "prefers the subbed episodes",
+      "episodes": [
+        { "data": "d1", "dub": "Dubbed", "progress": { "position": 1200, "watched": true } },
+        { "data": "s1", "dub": "Subbed" },
+        { "data": "d2", "dub": "Dubbed" }
+      ],
+      "expected": "s1"
+    },
+    {
+      "name": "falls back to the first audio version",
+      "episodes": [{ "data": "a1", "dub": "Dubbed", "progress": { "position": 1200, "watched": true } }, { "data": "a2", "dub": "Dubbed" }],
+      "expected": "a2"
+    },
+    { "name": "no episodes", "episodes": [], "expected": null }
+  ]
+}

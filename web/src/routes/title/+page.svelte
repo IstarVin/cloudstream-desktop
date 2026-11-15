@@ -3,6 +3,7 @@
   import EpisodeBrowser from "#lib/components/EpisodeBrowser.svelte";
   import LoadingSkeleton from "#lib/components/LoadingSkeleton.svelte";
   import Poster from "#lib/components/Poster.svelte";
+  import { defaultDub, nextUp } from "#lib/next-up";
   import { player } from "#lib/player.svelte";
   import { sources } from "#lib/sources.svelte";
   import { toasts } from "#lib/toast.svelte";
@@ -13,6 +14,7 @@
     Bookmark,
     Captions,
     ChevronDown,
+    ExternalLink,
     Film,
     Play,
     RefreshCw,
@@ -45,22 +47,9 @@
   const dubs = $derived([
     ...new Set((d?.episodes ?? []).map((e) => e.dub).filter((x): x is string => !!x)),
   ]);
-  const activeDub = $derived(
-    dub && dubs.includes(dub) ? dub : (dubs.find((x) => x === "Subbed") ?? dubs[0] ?? null),
-  );
+  const activeDub = $derived(dub && dubs.includes(dub) ? dub : defaultDub(d?.episodes ?? []));
   const byDub = $derived((d?.episodes ?? []).filter((e) => !activeDub || e.dub === activeDub));
   const resumeEp = $derived(nextUp(byDub));
-  /** The episode to resume: the last one in progress, else the first unwatched after the last watched one. */
-  function nextUp(eps: Episode[]): Episode | undefined {
-    const inProgress = eps.filter(
-      (e) => e.progress && !e.progress.watched && e.progress.position > 30,
-    );
-    if (inProgress.length) return inProgress[inProgress.length - 1];
-    let lastWatched = -1;
-    eps.forEach((e, i) => e.progress?.watched && (lastWatched = i));
-    return eps[lastWatched + 1] ?? eps[0];
-  }
-
   function play(det: Details, data: string, label: string | null) {
     sources.play({
       provider: det.provider,
@@ -123,9 +112,19 @@
     <div class="empty">
       <p>Couldn't load this title.</p>
       <p class="muted">{details.error.message}</p>
-      <button class="btn" onclick={() => details.refetch()}
-        ><RefreshCw size={18} strokeWidth={1.8} aria-hidden="true" /> Retry</button
-      >
+      {#if /^https?:\/\//.test(url)}
+        <p class="muted failed-url">{provider} · {url}</p>
+      {/if}
+      <div class="empty-actions">
+        <button class="btn" onclick={() => details.refetch()}
+          ><RefreshCw size={18} strokeWidth={1.8} aria-hidden="true" /> Retry</button
+        >
+        {#if /^https?:\/\//.test(url)}
+          <a class="btn" href={url} target="_blank" rel="noreferrer"
+            ><ExternalLink size={18} strokeWidth={1.8} aria-hidden="true" /> Open original page</a
+          >
+        {/if}
+      </div>
     </div>
   </div>
 {:else if d}
@@ -736,5 +735,15 @@
       left: var(--rail-w);
       height: 520px;
     }
+  }
+  .failed-url {
+    overflow-wrap: anywhere;
+    font-size: 0.85em;
+  }
+  .empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
   }
 </style>

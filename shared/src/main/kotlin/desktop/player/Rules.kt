@@ -77,3 +77,26 @@ object Watched {
 
     fun watched(position: Double, duration: Double) = duration > 0 && position >= duration * FRACTION
 }
+
+/** Which episode "Play" starts from a title, as the web title page does (`nextUp` in web/src/routes/title/+page.svelte). */
+object NextUp {
+    /** The audio version shown by default: "Subbed" when there is one, else the first; null when episodes have none. */
+    fun defaultDub(episodes: List<desktop.api.Episode>): String? {
+        val dubs = episodes.mapNotNull { it.dub }.distinct()
+        return dubs.firstOrNull { it == "Subbed" } ?: dubs.firstOrNull()
+    }
+
+    /** The last episode in progress, else the first unwatched one after the last watched one, else the first. */
+    fun pick(episodes: List<desktop.api.Episode>): desktop.api.Episode? {
+        episodes.lastOrNull { e -> e.progress.let { it != null && !it.watched && it.position > 30 } }?.let { return it }
+        val lastWatched = episodes.indexOfLast { it.progress?.watched == true }
+        return episodes.getOrNull(lastWatched + 1) ?: episodes.firstOrNull()
+    }
+
+    /** The `data` to play for a title: the movie's, else the next-up episode's in the default audio version. */
+    fun data(details: desktop.api.Details): String? {
+        if (details.episodes.isEmpty()) return details.movieData
+        val dub = defaultDub(details.episodes)
+        return pick(details.episodes.filter { dub == null || it.dub == dub })?.data
+    }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "cloudstream-extension",
+  "description": "Open and play titles from provider sites in Cloudstream Desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
+    "check": "wxt prepare && svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "postinstall": "wxt prepare",
+    "format": "vp fmt src wxt.config.ts vitest.config.ts",
+    "format:check": "vp fmt src wxt.config.ts vitest.config.ts --check",
+    "lint": "vp lint src"
+  },
+  "dependencies": {
+    "@lucide/svelte": "^1.73.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@wxt-dev/module-svelte": "^2.0.5",
+    "svelte": "^5.57.3",
+    "svelte-check": "^4.7.8",
+    "typescript": "^6.0.3",
+    "vite-plus": "1.4.0",
+    "vitest": "^4.1.0",
+    "web-ext": "^9.4.0",
+    "wxt": "^0.21.5"
+  }
+}

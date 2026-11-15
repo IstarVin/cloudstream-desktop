@@ -45,6 +45,7 @@ class Catalog(private val host: PluginHost, private val settings: Settings, priv
             nsfw = p.nsfw,
             hasMainPage = p.api.hasMainPage,
             iconUrl = p.plugin.info.iconUrl,
+            installedAt = (host.source as? desktop.plugins.RepoSource)?.installed(p.plugin.id)?.since,
         )
     }.sortedBy { it.name.lowercase() }
 

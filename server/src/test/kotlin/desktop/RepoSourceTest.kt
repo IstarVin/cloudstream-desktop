@@ -191,6 +191,8 @@ class RepoSourceTest {
         repo.install("Dulo")
         assertEquals("jar v1", repo.jar("Dulo")!!.readText())
         assertEquals(emptyList(), repo.updates())
+        val since = repo.installed("Dulo")!!.since
+        assertEquals(repo.installed("Dulo")!!.current.installedAt, since)
 
         published = 2
         repo.refresh()
@@ -199,9 +201,11 @@ class RepoSourceTest {
         repo.install("Dulo")
         assertEquals("jar v2", repo.jar("Dulo")!!.readText())
         assertEquals(listOf(1), repo.installed("Dulo")!!.previous.map { it.entry.version })
+        assertEquals(since, repo.installed("Dulo")!!.since, "an update keeps the first install time")
 
         repo.rollback("Dulo")
         assertEquals("jar v1", repo.jar("Dulo")!!.readText())
+        assertEquals(since, repo.installed("Dulo")!!.since, "so does a rollback")
         assertEquals(listOf(id("Dulo")), repo.updates(), "the rolled-back version is on offer again")
         assertFailsWith<IllegalArgumentException> { repo.rollback("Dulo") }
         Unit
@@ -210,12 +214,15 @@ class RepoSourceTest {
     @Test
     fun keepsOnlyTwoPreviousVersions() = runBlocking {
         val repo = source()
+        var first = 0L
         for (v in 1..4) {
             published = v
             repo.refresh()
             repo.install("Dulo")
+            if (v == 1) first = repo.installed("Dulo")!!.current.installedAt
         }
         assertEquals(listOf(3, 2), repo.installed("Dulo")!!.previous.map { it.entry.version })
+        assertEquals(first, repo.installed("Dulo")!!.since, "the first install time outlives the v1 jar")
         val files = jarFiles()
         assertEquals(3, files.size, "older jars are deleted: $files")
     }

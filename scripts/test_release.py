@@ -167,6 +167,20 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in (self.repo / "release-notes").glob("*0.1.1.md")),
                          ["android-v0.1.1.md", "server-v0.1.1.md"])
 
+    def test_extension_is_released_on_its_own(self):
+        self.commit_file("server/s.kt")
+        self.git("tag", "server-v0.1.0")
+        self.commit_file("extension/src/popup.svelte")
+        items = self.run_script("plan", "auto")
+        self.assertEqual([i["target"] for i in items], ["extension"])
+        self.assertEqual(items[0]["tag"], "extension-v0.0.1")
+        self.git("tag", "extension-v0.0.1")
+        self.commit_file("web/src/lib/types.ts")  # the API types are shared by the web UI and the extension
+        self.assertEqual([i["target"] for i in self.run_script("plan", "auto")], ["server", "extension"])
+        items = self.run_script("plan", "extension", "--extension", "minor")
+        self.assertEqual(items[0]["version"], "0.1.0")
+        self.assertEqual([i["target"] for i in self.run_script("plan", "both")], ["android", "server"])
+
     def test_auto_with_nothing_to_release_fails_prepare_and_publish(self):
         self.commit_file("docs/guide.md")
         self.assertEqual(self.run_script("plan", "auto"), [])

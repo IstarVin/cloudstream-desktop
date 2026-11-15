@@ -19,7 +19,10 @@ COMPONENT_PATHS = {
     "android": ["android/", "shared/", "testdata/", ".github/workflows/android-release.yml", *BUILD_FILES],
     "server": ["server/", "web/", "compat/", "mpv/", "docker/", "shared/", "testdata/", "packaging/", "Dockerfile",
                "docker-compose.yml", ".github/workflows/docker.yml", *BUILD_FILES],
+    # The extension shares the web UI's API types (web/src/lib/types.ts) but nothing else outside its folder.
+    "extension": ["extension/", "web/src/lib/types.ts", ".github/workflows/extension-release.yml"],
 }
+TARGETS = list(COMPONENT_PATHS)
 IGNORED = [":(exclude,glob)**/*.md"]
 
 
@@ -132,7 +135,7 @@ def select_targets(target):
         return ["android", "server"]
     if target != "auto":
         return [target]
-    return [t for t in ("android", "server") if source_commits(t, previous_version(t))]
+    return [t for t in TARGETS if source_commits(t, previous_version(t))]
 
 
 def prepare(items):
@@ -191,11 +194,13 @@ def publish(items):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("plan", "prepare", "publish"))
-    parser.add_argument("target", choices=("auto", "android", "server", "both"),
-                        help="auto (default choice): release only components changed since their last tag")
+    parser.add_argument("target", choices=("auto", *TARGETS, "both"),
+                        help="auto (default choice): release only components changed since their last tag; "
+                             "both: android and server")
     parser.add_argument("bump", nargs="?", default="patch", help="patch (default), minor, major, or exact version")
     parser.add_argument("--android", help="Override Android bump or exact version")
     parser.add_argument("--server", help="Override server bump or exact version")
+    parser.add_argument("--extension", help="Override browser extension bump or exact version")
     args = parser.parse_args()
     root = Path(git("rev-parse", "--show-toplevel"))
     os.chdir(root)
@@ -203,7 +208,8 @@ def main():
     targets = select_targets(args.target)
     requests = {target: getattr(args, target) or args.bump for target in targets}
     if args.command == "publish" and any(value in ("patch", "minor", "major") for value in requests.values()):
-        parser.error("publish requires exact prepared versions, e.g. publish auto --android 0.1.0 --server 0.2.0")
+        parser.error("publish requires exact prepared versions, e.g. "
+                     "publish auto --android 0.1.0 --server 0.2.0 --extension 0.1.0")
     items = [plan(target, requests[target]) for target in targets]
     if args.command != "plan" and not items:
         raise ValueError("Nothing to release: no component has changes since its last tag.")
