@@ -104,4 +104,16 @@ tasks.named<JavaExec>("run") {
     // mpv script path resolves without an install.
     workingDir = rootDir
     standardInput = System.`in`
+    // Load KEY=VALUE pairs from the repo-root .env (ignored if absent; real env vars are overridden by it).
+    val envFile = rootDir.resolve(".env")
+    if (envFile.isFile) {
+        envFile.readLines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") && "=" in it }
+            .forEach { line ->
+                val key = line.substringBefore("=").trim().removePrefix("export ").trim()
+                val value = line.substringAfter("=").trim().removeSurrounding("\"").removeSurrounding("'")
+                environment(key, value)
+            }
+    }
 }

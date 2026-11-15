@@ -66,7 +66,7 @@ class DeviceHub(private val scope: CoroutineScope, private val mpv: LocalPlayer?
         require(hello.id.isNotBlank() && hello.id != MPV_ID) { "Invalid device id" }
         val session = Session(hello.info())
         sessions.put(hello.id, session)?.close()
-        log.info("Cast device connected: {} ({})", hello.name, hello.kind)
+        log.debug("Cast device connected: {} ({})", hello.name, hello.kind)
         session.send(CastFrame.Devices(listed()))
         states.forEach { (id, st) -> if (id != hello.id) session.send(CastFrame.State(st, id)) }
         refresh()
@@ -102,7 +102,7 @@ class DeviceHub(private val scope: CoroutineScope, private val mpv: LocalPlayer?
         states.remove(id)
         // Its own pick ends with it, and so does anyone's pick of it.
         synchronized(claims) { claims.entries.removeIf { it.key == id || it.value == id } }
-        log.info("Cast device disconnected: {}", session.info.name)
+        log.debug("Cast device disconnected: {}", session.info.name)
         refresh()
     }
 

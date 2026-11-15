@@ -158,7 +158,18 @@
           {#if d.contentRating}<span class="badge">{d.contentRating}</span>{/if}
           {#if d.duration}<span>{d.duration} min</span>{/if}
           {#if d.showStatus}<span>{d.showStatus}</span>{/if}
-          <span class="muted">{d.provider}</span>
+          {#if /^https?:\/\//.test(d.url)}
+            <a
+              class="muted source-link"
+              href={d.url}
+              target="_blank"
+              rel="noreferrer"
+              title={d.url}
+              ><ExternalLink size={13} strokeWidth={1.8} aria-hidden="true" /> {d.provider}</a
+            >
+          {:else}
+            <span class="muted">{d.provider}</span>
+          {/if}
         </div>
         {#if d.tags.length}<div class="tags">
             {d.tags.slice(0, 6).join(" · ")}
@@ -297,7 +308,7 @@
     {#if d.actors.length}
       <h2 class="section-title">Cast</h2>
       <div class="scroll-x cast">
-        {#each d.actors.slice(0, 20) as a (a.name + a.role)}
+        {#each d.actors.slice(0, 20) as a, i (`${i}:${a.name}${a.role ?? ""}`)}
           <div class="actor">
             <div class="face">
               {#if a.image}<img
@@ -317,7 +328,7 @@
     {#if d.recommendations.length}
       <h2 class="section-title">More like this</h2>
       <div class="scroll-x">
-        {#each d.recommendations as r (r.url)}
+        {#each d.recommendations as r, i (`${i}:${r.url}`)}
           <Poster
             provider={r.provider}
             url={r.url}
@@ -735,6 +746,15 @@
       left: var(--rail-w);
       height: 520px;
     }
+  }
+  .source-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration: none;
+  }
+  .source-link:hover {
+    text-decoration: underline;
   }
   .failed-url {
     overflow-wrap: anywhere;
