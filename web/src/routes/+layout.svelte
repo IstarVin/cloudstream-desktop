@@ -38,8 +38,25 @@
   bindCastDevices();
 
   let authed = $state<boolean | null>(null);
-  api
-    .authStatus()
+  let claimError = $state("");
+
+  /**
+   * The one-time link the server logs when nobody is signed in carries its code in the fragment (`#claim=…`), which the
+   * browser never sends. Strip it from the address bar first so it doesn't linger in history, then trade it for a session.
+   */
+  async function claimFromLink() {
+    const code = new URLSearchParams(location.hash.slice(1)).get("claim");
+    if (!code) return;
+    history.replaceState(history.state, "", location.pathname + location.search);
+    try {
+      await api.claim(code, "Web browser");
+    } catch (e) {
+      claimError = e instanceof Error ? e.message : "This sign-in link didn't work.";
+    }
+  }
+
+  claimFromLink()
+    .then(() => api.authStatus())
     .then((s) => {
       authed = s.authed;
       if (s.authed) {
@@ -80,7 +97,7 @@
 </script>
 
 {#if authed === false}
-  <Pairing />
+  <Pairing notice={claimError} />
 {:else if authed}
   <QueryClientProvider {client}>
     <a class="skip-link" href="#main-content">Skip to content</a>

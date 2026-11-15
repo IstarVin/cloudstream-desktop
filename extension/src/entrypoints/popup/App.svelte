@@ -280,7 +280,10 @@
         <button class="btn quiet" onclick={cancelSignIn}>Cancel</button>
       {:else}
         <h1>Sign in</h1>
-        <p class="muted">Approve this browser from your Cloudstream account, as you would a TV.</p>
+        <p class="muted">
+          Approve this browser from a device that's already signed in to your server, as you would a
+          TV.
+        </p>
         {#if st?.pending?.error}
           <p class="error"><CircleAlert size={14} aria-hidden="true" /> {st.pending.error}</p>
         {/if}

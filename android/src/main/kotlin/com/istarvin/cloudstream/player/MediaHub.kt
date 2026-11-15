@@ -237,6 +237,8 @@ class RemotePlayer(private val app: App, val deviceId: String) : SimpleBasePlaye
 
     private fun volume(): Int = (pendingVolume ?: state.volume.roundToInt()).coerceIn(0, maxVolume)
 
+    // The non-WITH_FLAGS volume commands are deprecated but still advertised for older controllers.
+    @Suppress("DEPRECATION")
     override fun getState(): State {
         val s = state
         val busy = s.status == "resolving"

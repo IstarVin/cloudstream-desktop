@@ -2,6 +2,8 @@ package desktop
 
 import desktop.auth.Auth
 import desktop.auth.AuthFailure
+import desktop.auth.LocalBackend
+import desktop.auth.WorkerBackend
 import desktop.auth.WorkerClient
 import desktop.auth.authRoutes
 import io.ktor.client.request.*
@@ -49,7 +51,8 @@ class AuthTest {
     private val file = File(createTempDirectory().toFile(), "sessions.json")
     private val worker = Worker()
     private var now = 1_000_000L
-    private fun auth() = Auth(file, worker, publicOrigin = null, clock = { now })
+    private fun auth() = Auth(file, WorkerBackend(worker), publicOrigin = null, clock = { now })
+    private fun localAuth() = Auth(file, LocalBackend(File(file.parentFile, "owner.json"), clock = { now }, cost = 4), publicOrigin = null, clock = { now })
 
     @Test fun sessionsPersistAsHashesAndRevokeIndependently() = runBlocking<Unit> {
         val auth = auth()
@@ -216,5 +219,137 @@ class AuthTest {
         for (username in listOf("unavailable", "html-error")) assertEquals(503, assertFailsWith<AuthFailure> { gateway.request("login", mapOf("username" to username)) }.status)
         val offline = WorkerClient("http://127.0.0.1:1", "a".repeat(32), "a", "a", allowLocalHttp = true)
         assertEquals(503, assertFailsWith<AuthFailure> { offline.request("epoch") }.status)
+    }
+
+    // ---- local mode: no Worker -------------------------------------------------------------------------------------
+
+    private fun io.ktor.server.testing.ApplicationTestBuilder.serve(auth: Auth) = application {
+        install(ContentNegotiation) { json() }; install(Auth.plugin(auth))
+        install(StatusPages) { exception<AuthFailure> { call, e -> call.respond(HttpStatusCode.fromValue(e.status), mapOf("error" to e.message)) } }
+        routing { authRoutes(auth); get("/api/providers") { call.respondText("[]") } }
+    }
+    private fun json(body: String) = Json.parseToJsonElement(body).jsonObject
+
+    @Test fun claimLinkWorksOnceAndOnlyWhileNobodyIsSignedIn() = runBlocking<Unit> {
+        val auth = localAuth()
+        assertTrue(auth.claimable())
+        val code = auth.announceClaim()!!
+        assertTrue(auth.isAuthorized(auth.claim(code, "Desktop").token))
+        assertEquals(410, assertFailsWith<AuthFailure> { auth.claim(code, "Again") }.status)
+        assertNull(auth.announceClaim(), "no link while someone is signed in")
+        auth.revokeAll()
+        val next = auth.announceClaim()!!
+        assertEquals(410, assertFailsWith<AuthFailure> { auth.claim(code, "Old link") }.status)
+        now += Auth.CLAIM_SECONDS * 1000L
+        assertEquals(410, assertFailsWith<AuthFailure> { auth.claim(next, "Too late") }.status)
+        auth.local!!.setPassword("a-long-password")
+        assertFalse(auth.claimable(), "with a password set, the owner signs in with it instead")
+        assertNull(auth.announceClaim())
+        assertEquals(0, worker.requests)
+    }
+
+    @Test fun claimEndpointIssuesASession() = testApplication {
+        val auth = localAuth()
+        serve(auth)
+        val status = json(client.get("/api/auth/status").bodyAsText())
+        assertEquals("local", status["mode"]!!.jsonPrimitive.content)
+        assertTrue(status["claimable"]!!.jsonPrimitive.boolean)
+        val code = auth.announceClaim()!!
+        assertEquals(HttpStatusCode.Gone, client.post("/api/auth/claim") { contentType(ContentType.Application.Json); setBody("""{"code":"${"b".repeat(64)}","deviceName":"Browser"}""") }.status)
+        val claimed = client.post("/api/auth/claim") { contentType(ContentType.Application.Json); setBody("""{"code":"$code","deviceName":"Browser"}""") }
+        assertEquals(HttpStatusCode.OK, claimed.status)
+        assertContains(claimed.headers[HttpHeaders.SetCookie].orEmpty(), "HttpOnly")
+        assertFalse(json(client.get("/api/auth/status").bodyAsText())["claimable"]!!.jsonPrimitive.boolean)
+    }
+
+    @Test fun localDeviceCodesAreApprovedFromASignedInDevice() = testApplication {
+        val auth = localAuth()
+        serve(auth)
+        suspend fun start() = json(client.post("/api/auth/device") { contentType(ContentType.Application.Json); setBody("""{"deviceName":"Living room TV"}""") }.bodyAsText())
+        suspend fun poll(code: String) = client.post("/api/auth/device/poll?client=android") { contentType(ContentType.Application.Json); setBody("""{"deviceCode":"$code"}""") }
+        suspend fun approve(userCode: String, yes: Boolean, token: String?) = client.post("/api/auth/device/approve") {
+            token?.let { bearerAuth(it) }; contentType(ContentType.Application.Json); setBody("""{"userCode":"$userCode","approve":$yes}""")
+        }
+        val grant = start()
+        val userCode = grant["userCode"]!!.jsonPrimitive.content
+        val deviceCode = grant["deviceCode"]!!.jsonPrimitive.content
+        assertTrue(grant["verificationUri"]!!.jsonPrimitive.content.endsWith("/activate"))
+        assertEquals("pending", json(poll(deviceCode).bodyAsText())["status"]!!.jsonPrimitive.content)
+        assertEquals(HttpStatusCode.TooManyRequests, poll(deviceCode).status, "polling faster than the interval is refused")
+
+        assertEquals(HttpStatusCode.Unauthorized, approve(userCode, true, null).status, "approving needs a signed-in device")
+        val approver = auth.issue("Phone", 0).token
+        val lookup = client.post("/api/auth/device/lookup") { bearerAuth(approver); contentType(ContentType.Application.Json); setBody("""{"userCode":"${userCode.lowercase().chunked(3).joinToString("-")}"}""") }
+        val request = json(lookup.bodyAsText())
+        assertEquals("Living room TV", request["deviceName"]!!.jsonPrimitive.content)
+        assertTrue(request["address"]!!.jsonPrimitive.content.isNotEmpty(), "the approver sees where the request came from")
+        assertEquals(HttpStatusCode.OK, approve(userCode, true, approver).status)
+        assertEquals(HttpStatusCode.Gone, approve(userCode, true, approver).status, "a code is decided once")
+
+        now += 5_000
+        val approved = poll(deviceCode)
+        assertEquals(HttpStatusCode.OK, approved.status)
+        assertTrue(auth.isAuthorized(json(approved.bodyAsText())["token"]!!.jsonPrimitive.content))
+        now += 5_000
+        assertEquals(HttpStatusCode.Gone, poll(deviceCode).status, "an approval is consumed once")
+
+        val declined = start()
+        assertEquals(HttpStatusCode.OK, approve(declined["userCode"]!!.jsonPrimitive.content, false, approver).status)
+        now += 5_000
+        assertEquals(HttpStatusCode.Gone, poll(declined["deviceCode"]!!.jsonPrimitive.content).status)
+
+        val expired = start()
+        now += LocalBackend.TTL_MS
+        assertEquals(HttpStatusCode.Gone, poll(expired["deviceCode"]!!.jsonPrimitive.content).status)
+    }
+
+    @Test fun passwordIsOptionalAndChangingItSignsOtherDevicesOut() = testApplication {
+        val auth = localAuth()
+        serve(auth)
+        suspend fun login(password: String) = client.post("/api/auth/login?client=android") { contentType(ContentType.Application.Json); setBody("""{"password":"$password","deviceName":"Laptop"}""") }
+        suspend fun change(token: String, body: String) = client.put("/api/auth/password") { bearerAuth(token); contentType(ContentType.Application.Json); setBody(body) }
+        assertEquals(HttpStatusCode.Unauthorized, login("a-long-password").status, "no password set yet")
+
+        val desktop = auth.issue("Desktop", 0).token
+        val tv = auth.issue("TV", 0).token
+        assertEquals(HttpStatusCode.BadRequest, change(desktop, """{"password":"short"}""").status)
+        assertEquals(HttpStatusCode.OK, change(desktop, """{"password":"a-long-password"}""").status)
+        assertTrue(auth.isAuthorized(desktop))
+        assertFalse(auth.isAuthorized(tv), "other devices sign in again after a password change")
+        assertTrue(json(client.get("/api/auth/status").bodyAsText())["passwordSet"]!!.jsonPrimitive.boolean)
+
+        assertEquals(HttpStatusCode.Unauthorized, login("wrong-password!").status)
+        val ok = login("a-long-password")
+        assertEquals(HttpStatusCode.OK, ok.status)
+        assertTrue(auth.isAuthorized(json(ok.bodyAsText())["token"]!!.jsonPrimitive.content))
+
+        assertEquals(HttpStatusCode.BadRequest, change(desktop, """{"password":"another-long-one"}""").status, "changing needs the current password")
+        assertEquals(HttpStatusCode.Unauthorized, change(desktop, """{"currentPassword":"nope-nope-nope","password":"another-long-one"}""").status)
+        assertEquals(HttpStatusCode.OK, change(desktop, """{"currentPassword":"a-long-password","password":"another-long-one"}""").status)
+        assertTrue(File(file.parentFile, "owner.json").readText().let { !it.contains("another-long-one") })
+    }
+
+    @Test fun localOnlyEndpointsAreUnavailableInWorkerMode() = testApplication {
+        val auth = auth()
+        serve(auth)
+        assertEquals(HttpStatusCode.NotFound, client.post("/api/auth/claim") { contentType(ContentType.Application.Json); setBody("""{"code":"${"a".repeat(64)}","deviceName":"x"}""") }.status)
+        assertEquals("worker", json(client.get("/api/auth/status").bodyAsText())["mode"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun switchingModesSignsEveryoneOut() = runBlocking<Unit> {
+        val token = auth().issue("TV", 1).token
+        assertTrue(auth().isAuthorized(token))
+        val local = localAuth()
+        assertFalse(local.isAuthorized(token), "a Worker session must not survive into local mode")
+        val localToken = local.issue("Desktop", 0).token
+        assertFalse(auth().isAuthorized(localToken))
+    }
+
+    @Test fun sessionFilesFromBeforeLocalModeLoadAsWorkerSessions() = runBlocking<Unit> {
+        val token = auth().issue("TV", 1).token
+        val sessions = json(file.readText())["sessions"]!!
+        file.writeText(sessions.toString())
+        assertTrue(auth().isAuthorized(token))
+        assertFalse(localAuth().isAuthorized(token))
     }
 }

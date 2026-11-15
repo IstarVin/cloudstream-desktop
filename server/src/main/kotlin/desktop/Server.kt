@@ -70,6 +70,9 @@ fun serve(config: Config, db: Database, settings: Settings, host: PluginHost, sc
     Runtime.getRuntime().addShutdownHook(Thread { mpv.stop() })
 
     log.info("Listening on http://{}:{}", config.bindHost, config.bindPort)
+    log.info("Sign-in: {}", if (auth.backend.mode == "local") "on this server" else "through the Worker at ${auth.backend.workerUrl}")
+    auth.claimBase = "http://127.0.0.1:${config.bindPort}"
+    auth.announceClaim()
     embeddedServer(CIO, port = config.bindPort, host = config.bindHost) {
         install(ContentNegotiation) {
             json(Json { encodeDefaults = true; ignoreUnknownKeys = true; explicitNulls = false })

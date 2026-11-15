@@ -7,6 +7,8 @@ services:
       TZ: ${TZ:-UTC}
       # The browser's language and Accept-Language; match your region if sites expect it (e.g. en_PH:en).
       LANGUAGE: ${LANGUAGE:-en_US:en}
+      # Optional: sign in through the authentication Worker instead of this server (see auth-worker/README.md).
+      # Unset, the first sign-in link is printed in `docker logs`.
       CLOUDSTREAM_AUTH_URL: ${CLOUDSTREAM_AUTH_URL:-}
       CLOUDSTREAM_AUTH_SECRET: ${CLOUDSTREAM_AUTH_SECRET:-}
       CLOUDSTREAM_SERVER_NAME: ${CLOUDSTREAM_SERVER_NAME:-Cloudstream server}

@@ -1,5 +1,7 @@
 # Cloudstream authentication Worker
 
+**Optional.** Cloudstream servers sign devices in by themselves by default. Deploy this Worker only if you want one account, one set of credentials and one global sign-out shared by several servers. Pointing a server at it (or away from it) signs every device on that server out.
+
 One central Worker handles the owner account, device approvals, and account-wide sign-out. A SQLite-backed Durable Object stores the salted password hash, hashed portal sessions, rate limits, and temporary device grants. There is no registration.
 
 ## Layout
@@ -36,7 +38,7 @@ export CLOUDSTREAM_SERVER_NAME='Home server'
 export CLOUDSTREAM_PUBLIC_ORIGIN=https://cloudstream.example.com
 ```
 
-`CLOUDSTREAM_PUBLIC_ORIGIN` is optional for a trusted HTTP LAN or direct HTTPS. Set it for TLS termination so browser cookies are Secure and Origin checks use the public address. Forward WebSocket upgrades and preserve the original Host; arbitrary forwarded headers are not trusted. All clients, including the local desktop browser, require sign-in. A missing Worker configuration leaves the server locked and shows setup instructions.
+`CLOUDSTREAM_PUBLIC_ORIGIN` is optional for a trusted HTTP LAN or direct HTTPS. Set it for TLS termination so browser cookies are Secure and Origin checks use the public address. Forward WebSocket upgrades and preserve the original Host; arbitrary forwarded headers are not trusted. All clients, including the local desktop browser, require sign-in. With `CLOUDSTREAM_AUTH_URL` set but no valid secret, the server stays locked and shows setup instructions; unset both to go back to local sign-in.
 
 For Docker Compose, put the values in the repository's `.env` using `.env.example` as a template. Restart the server after setting them. For `docker run`, pass them using `--env-file .env`.
 
@@ -60,6 +62,6 @@ Back up the server data volume: it contains the server identity and hashed sessi
 
 Once initialized, bootstrap username/password secrets can be removed with `wrangler secret delete OWNER_USERNAME` and `wrangler secret delete OWNER_PASSWORD`. This reduces retained copies of the initial password. Keep the account password in your password manager. If every portal session and the password are lost, recovery requires an operator migration of the owner record with an incremented epoch, or a fresh Durable Object namespace **and deletion of `sessions.json` on every server before restarting**. Resetting the owner epoch to an old value while keeping server sessions can revive revoked credentials.
 
-The Worker is required for sign-in and periodic account-epoch checks. Servers cache successful checks for at most 60 seconds, then return 503 during a Worker outage. Individual revocation takes effect on subsequent server requests; already-open streams and WebSocket connections are not forcibly closed.
+A server in Worker mode needs the Worker for sign-in and periodic account-epoch checks. Servers recheck at most every 60 seconds; during a Worker outage they keep trusting the last verified epoch for up to 24 hours, then return 503. A server restarted during an outage returns 503 until it reaches the Worker again. Individual revocation takes effect on subsequent server requests; already-open streams and WebSocket connections are not forcibly closed.
 
 The complete request and error contract is in [docs/authentication.md](../docs/authentication.md).

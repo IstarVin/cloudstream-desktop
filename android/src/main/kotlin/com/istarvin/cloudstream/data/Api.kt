@@ -2,6 +2,7 @@ package com.istarvin.cloudstream.data
 
 import desktop.api.AuthResult
 import desktop.api.DeviceAuthorization
+import desktop.api.DeviceRequest
 import desktop.api.AuthStatus
 import desktop.api.Bookmark
 import desktop.api.BrowserStatusDto
@@ -40,6 +41,8 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
@@ -210,8 +213,18 @@ class Api(initial: ServerConfig?) {
         authRequest(baseUrl, "device", mapOf("deviceName" to deviceName))
     suspend fun pollSignIn(baseUrl: String, deviceCode: String): AuthResult =
         authRequest(baseUrl, "device/poll?client=android", mapOf("deviceCode" to deviceCode))
+    /** A server in local mode has no username; pass an empty one. */
     suspend fun login(baseUrl: String, username: String, password: String, deviceName: String): AuthResult =
-        authRequest(baseUrl, "login?client=android", mapOf("username" to username, "password" to password, "deviceName" to deviceName))
+        authRequest(baseUrl, "login?client=android", buildMap {
+            if (username.isNotEmpty()) put("username", username)
+            put("password", password); put("deviceName", deviceName)
+        })
+    /** Approving another device's sign-in code from this signed-in one (servers in local mode). */
+    suspend fun lookupDevice(userCode: String): DeviceRequest =
+        json.decodeFromString(send("POST", "/api/auth/device/lookup", mapOf("userCode" to userCode)))
+    suspend fun approveDevice(userCode: String, approve: Boolean) {
+        send("POST", "/api/auth/device/approve", buildJsonObject { put("userCode", userCode); put("approve", approve) })
+    }
     suspend fun logout() { send("POST", "/api/auth/logout", emptyMap<String, String>()) }
 
     suspend fun status(): StatusDto = get("/api/status")

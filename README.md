@@ -138,30 +138,41 @@ The named volumes preserve configuration and data across container replacement.
 
 ### Authentication and connecting clients
 
-Deploy the [central authentication Worker](auth-worker/README.md), then copy
-[.env.example](.env.example) to `.env` and configure `CLOUDSTREAM_AUTH_URL`,
-`CLOUDSTREAM_AUTH_SECRET` (the Worker's `SERVER_SECRET`), and a server name.
-Compose passes these to the container. Native server processes use the same environment
-variables. Set `CLOUDSTREAM_PUBLIC_ORIGIN` when an HTTPS reverse proxy terminates TLS.
+Every client signs in, including a browser on the server's own computer. Nothing needs to be
+set up first: the server handles sign-in itself.
 
-There is one owner account, seeded from Worker secrets `OWNER_USERNAME` and
-`OWNER_PASSWORD`. Change either later on the Worker site's **Account settings** page.
-The desktop browser, web clients, Android phones, and TVs all require sign-in.
+**First sign-in.** While nobody is signed in and no password is set, the server prints a
+one-time link in its log (the terminal running it, or `docker logs` for Docker):
 
-On Android, enter your server address. On web, open the server's normal URL.
-Request a sign-in code, open the displayed Worker address on another device,
-sign in, and enter the six-character code. Confirm the displayed server and device.
-The waiting device signs in automatically. Android TV defaults to this method.
-Username/password entry is also available over HTTPS or localhost connections.
+```
+Open this link within an hour to sign in … http://127.0.0.1:6969/#claim=…
+```
 
-Each device has a separate 30-day session. Web **Settings → Account & devices**
-can sign out individual devices. Changing credentials or signing out all devices
-on the Worker invalidates sessions on every server within one minute. Existing
-pairing tokens and `/pair?token=…` links no longer work after this upgrade.
+Open it in a browser (from another machine, replace `127.0.0.1` with the server's address).
+The link works once; restart the server for a new one.
 
-Use HTTPS for a publicly reachable server; HTTP is suitable only on a trusted LAN.
-Read the [authentication contract](docs/authentication.md) for session storage,
-Worker outage behavior, and API details.
+**More devices.** On Android, enter your server address; on the web, open the server's URL.
+The new device shows a six-character code and an address. On any device that's already signed
+in, open that address (or web **Settings → Account & devices → Approve a device**, or Android
+**Settings → Connection → Approve a device**), check the device name and where the request came
+from, and approve. The waiting device signs in automatically. Android TV defaults to this.
+
+**Password (optional).** Set one in web **Settings → Account & devices** to sign in directly,
+without another device. Password entry is offered only over HTTPS or on the server's own
+computer; on a plain-HTTP LAN, approve with a code instead so the password never crosses the
+network. Saving a password signs out every other device.
+
+Each device has a separate 30-day session, and **Settings → Account & devices** can sign out one
+device or all of them. Set `CLOUDSTREAM_PUBLIC_ORIGIN` when an HTTPS reverse proxy terminates
+TLS. Use HTTPS for a publicly reachable server; HTTP is suitable only on a trusted LAN.
+
+**Several servers, one account (optional).** To share one login and one global sign-out across
+servers, deploy the [authentication Worker](auth-worker/README.md) and set
+`CLOUDSTREAM_AUTH_URL` and `CLOUDSTREAM_AUTH_SECRET` (see [.env.example](.env.example)).
+Switching between local and Worker sign-in signs every device out.
+
+Read the [authentication contract](docs/authentication.md) for session storage, the API, and
+Worker outage behavior.
 
 ### Build the Android client
 
@@ -306,7 +317,7 @@ For architecture and design context, see the [project plan](docs/PLAN.md) and
 | Gradle cannot find `vp` | Install web dependencies and add `web/node_modules/.bin` to PATH as shown in Quick start; keep that environment for the installer too |
 | Gradle cannot find the `android` project | Configure a valid SDK with `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or `sdk.dir` in root `local.properties`, then run Gradle again |
 | A phone or TV cannot connect | Use the server's LAN address, check the bind address and firewall for TCP 6969, and sign in on the device |
-| Docker asks the host browser to sign in | Configure the authentication Worker environment variables, then sign in using a device code |
+| A browser asks to sign in and no device is signed in yet | Open the one-time link from the server log (`docker logs` for Docker); restart the server if it expired |
 | A config edit has no effect | Restart for startup settings; for UI settings, change the saved value in Settings because it overrides the file |
 | A provider fails to load or resolve links | Check plugin status and load errors in Settings; confirm Chromium is installed if that provider needs a browser, and use the Solve banner when offered |
 | Cloudflare sites fail in Docker (Solve banner, "Timed out") | Set `TZ` to your timezone on the container; the default UTC is flagged as a bot when it doesn't match your IP |

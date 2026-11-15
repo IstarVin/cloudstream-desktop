@@ -3,6 +3,9 @@
   import { onMount, onDestroy } from "svelte";
   import QRCode from "qrcode";
 
+  /** Shown above everything else, e.g. why a sign-in link from the server log didn't work. */
+  let { notice = "" }: { notice?: string } = $props();
+
   let info = $state<Awaited<ReturnType<typeof api.authStatus>> | null>(null);
   let grant = $state<DeviceAuthorization | null>(null);
   let qr = $state("");
@@ -22,6 +25,9 @@
     (location.protocol === "https:" ||
       ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname));
   const deviceName = "Web browser";
+  const local = $derived(info?.mode === "local");
+  // Local mode has no username, and password sign-in exists only once the owner has set one.
+  const passwordAvailable = $derived(canPassword && (!local || !!info?.passwordSet));
 
   function stop() {
     generation++;
@@ -50,7 +56,9 @@
       grant = next;
       deadline = Date.now() + next.expiresIn * 1000;
       remaining = next.expiresIn;
-      qr = await QRCode.toDataURL(next.verificationUri, { width: 176, margin: 2 });
+      // This server's own /activate page fills the code in from the link; the Worker's portal asks for it.
+      const target = local ? `${next.verificationUri}?code=${next.userCode}` : next.verificationUri;
+      qr = await QRCode.toDataURL(target, { width: 176, margin: 2 });
       ticker = setInterval(() => {
         remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
         if (!remaining) {
@@ -94,7 +102,7 @@
     const secret = password;
     password = "";
     try {
-      await api.login(username, secret, deviceName);
+      await api.login(local ? "" : username, secret, deviceName);
       location.reload();
     } catch (e) {
       error = e instanceof Error ? e.message : "Sign-in failed. Try again.";
@@ -119,7 +127,15 @@
     <img class="brand" src="/favicon.svg" alt="Cloudstream" width="48" height="48" />
     <h1>Sign in to Cloudstream</h1>
     <p class="intro">{info?.serverName ?? "Your sources and library, on this device."}</p>
-    {#if info && !info.configured}
+    {#if notice}<p class="error" role="alert">{notice}</p>{/if}
+    {#if info?.claimable}
+      <p role="status">
+        Nobody is signed in to this server yet. Open the one-time sign-in link printed in the
+        server's log: the terminal running it, or <code>docker logs</code> for Docker. Restart the server
+        if the link has expired.
+      </p>
+      <button class="btn" onclick={load}>Check again</button>
+    {:else if info && !info.configured}
       <p role="status">
         Authentication needs to be set up on this server. Configure the Worker address and service
         secret, then restart the server.
@@ -128,7 +144,11 @@
     {:else if info}
       {#if method === "code"}
         {#if grant}
-          <p>Open this address on another device, sign in, and enter the code below.</p>
+          <p>
+            {local
+              ? "On a device that's already signed in to this server, open this address and approve the code below."
+              : "Open this address on another device, sign in, and enter the code below."}
+          </p>
           <a
             class="activation"
             href={grant.verificationUri}
@@ -154,22 +174,26 @@
             />{/if}
           <button class="btn" onclick={start} disabled={busy}>Get a new code</button>
         {:else}
-          <p>Sign in on another device to connect this browser.</p>
+          <p>
+            {local
+              ? "Get a code, then approve this browser from a device that's already signed in."
+              : "Sign in on another device to connect this browser."}
+          </p>
           <button class="btn primary" onclick={start} disabled={busy}
             >{busy ? "Getting a code…" : "Get a sign-in code"}</button
           >
         {/if}
       {:else}
         <form onsubmit={login}>
-          <label
-            >Username<input
-              bind:value={username}
-              autocomplete="username"
-              required
-              maxlength="64"
-              disabled={busy}
-            /></label
-          >
+          {#if !local}<label
+              >Username<input
+                bind:value={username}
+                autocomplete="username"
+                required
+                maxlength="64"
+                disabled={busy}
+              /></label
+            >{/if}
           <label
             >Password<input
               bind:value={password}
@@ -183,8 +207,12 @@
           <button class="btn primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
         </form>
       {/if}
-      {#if canPassword}<button class="method" onclick={switchMethod} disabled={busy}
-          >{method === "code" ? "Use username and password" : "Sign in on another device"}</button
+      {#if passwordAvailable}<button class="method" onclick={switchMethod} disabled={busy}
+          >{method === "code"
+            ? local
+              ? "Use your password"
+              : "Use username and password"
+            : "Sign in on another device"}</button
         >{/if}
     {:else if !error}
       <p role="status">Connecting to the server…</p>
@@ -282,6 +310,10 @@
     color: var(--accent);
     text-decoration: underline;
     text-underline-offset: 4px;
+  }
+  code {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.95em;
   }
   .error {
     color: var(--danger);

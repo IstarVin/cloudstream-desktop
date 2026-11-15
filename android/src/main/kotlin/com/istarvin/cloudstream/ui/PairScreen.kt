@@ -44,6 +44,9 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
     var address by rememberSaveable { mutableStateOf(api.server?.baseUrl.orEmpty()) }
     var base by remember { mutableStateOf<String?>(null) }
     var serverName by remember { mutableStateOf("") }
+    // Local mode: this server approves codes itself, has no username, and offers a password only once one is set.
+    var local by remember { mutableStateOf(false) }
+    var passwordSet by remember { mutableStateOf(false) }
     var username by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordMode by remember { mutableStateOf(false) }
@@ -52,7 +55,7 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
     var error by remember { mutableStateOf(message) }
     var remaining by remember { mutableIntStateOf(0) }
     val deviceName = remember(tv) { if (tv) "Android TV (${android.os.Build.MODEL})".take(100) else "Android (${android.os.Build.MODEL})".take(100) }
-    val passwordAllowed = base?.let { url -> ServerConfig.parse(url)?.url?.let { it.isHttps || it.host in setOf("localhost", "127.0.0.1", "::1") } } ?: false
+    val passwordAllowed = (!local || passwordSet) && base?.let { url -> ServerConfig.parse(url)?.url?.let { it.isHttps || it.host in setOf("localhost", "127.0.0.1", "::1") } } ?: false
 
     LaunchedEffect(base, passwordMode) {
         if (tv && base != null) { withFrameNanos { }; actionFocus.requestFocus() }
@@ -76,6 +79,8 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
             try {
                 val status = api.authStatus(config)
                 if (!status.configured) { error = "Authentication needs to be configured on this server."; return@launch }
+                if (status.claimable) { error = "Nobody is signed in to this server yet. Open the one-time sign-in link from the server's log in a browser first."; return@launch }
+                local = status.mode == "local"; passwordSet = status.passwordSet
                 serverName = status.serverName; base = config.baseUrl
                 grant = api.startSignIn(config.baseUrl, deviceName)
             } catch (e: CancellationException) { throw e }
@@ -88,7 +93,7 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
         val secret = password; password = ""; error = null; busy = true
         scope.launch {
             try {
-                val result = api.login(url, username, secret, deviceName)
+                val result = api.login(url, if (local) "" else username, secret, deviceName)
                 onPaired(ServerConfig(url, result.token ?: error("Missing session")))
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { error = e.userMessage() }
@@ -139,15 +144,17 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
                     Button(shape = MaterialTheme.shapes.small, onClick = ::connect, enabled = !busy && address.isNotBlank(), modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator()) { Text(if (busy) "Connecting…" else "Continue") }
                 } else if (passwordMode) {
                     Text("Sign in", style = MaterialTheme.typography.headlineSmall)
-                    RemoteTextField(username, { username = it }, label = { Text("Username") }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth().focusRequester(actionFocus))
+                    val ready = (local || username.isNotBlank()) && password.isNotEmpty()
+                    if (!local) RemoteTextField(username, { username = it }, label = { Text("Username") }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth().focusRequester(actionFocus))
                     RemoteTextField(password, { password = it }, label = { Text("Password") }, enabled = !busy, singleLine = true, visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { if (!busy && username.isNotBlank() && password.isNotEmpty()) login() }), modifier = Modifier.fillMaxWidth())
-                    Button(shape = MaterialTheme.shapes.small, onClick = ::login, enabled = !busy && username.isNotBlank() && password.isNotEmpty(), modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator()) { Text(if (busy) "Signing in…" else "Sign in") }
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { if (!busy && ready) login() }),
+                        modifier = if (local) Modifier.fillMaxWidth().focusRequester(actionFocus) else Modifier.fillMaxWidth())
+                    Button(shape = MaterialTheme.shapes.small, onClick = ::login, enabled = !busy && ready, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).tvFocusIndicator()) { Text(if (busy) "Signing in…" else "Sign in") }
                 } else {
                     val active = grant
                     if (active != null) {
                         Text("Sign in on another device", style = MaterialTheme.typography.headlineSmall)
-                        Text("Open this address, sign in, and enter the code:", color = Palette.muted)
+                        Text(if (local) "On a phone or computer already signed in to this server, open this address (or Settings → Approve a device) and enter the code:" else "Open this address, sign in, and enter the code:", color = Palette.muted)
                         Text(active.verificationUri, style = MaterialTheme.typography.bodyLarge, color = Palette.accent)
                         Text(active.userCode.chunked(3).joinToString(" "), style = MaterialTheme.typography.displayMedium, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                         Text("Waiting for approval · ${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}", color = Palette.muted)
@@ -156,7 +163,7 @@ fun PairScreen(message: String?, onPaired: (ServerConfig) -> Unit) {
                     OutlinedButton(shape = MaterialTheme.shapes.small, onClick = ::start, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).focusRequester(actionFocus).tvFocusIndicator()) { Text(if (busy) "Getting a code…" else "Get a new code") }
                 }
                 if (base != null) {
-                    if (passwordAllowed) TextButton(shape = MaterialTheme.shapes.small, onClick = { grant = null; error = null; passwordMode = !passwordMode; password = ""; if (!passwordMode) start() }, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).tvFocusIndicator()) { Text(if (passwordMode) "Sign in on another device" else "Use username and password") }
+                    if (passwordAllowed) TextButton(shape = MaterialTheme.shapes.small, onClick = { grant = null; error = null; passwordMode = !passwordMode; password = ""; if (!passwordMode) start() }, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).tvFocusIndicator()) { Text(if (passwordMode) "Sign in on another device" else if (local) "Use your password" else "Use username and password") }
                     TextButton(shape = MaterialTheme.shapes.small, onClick = { grant = null; base = null; error = null; password = ""; passwordMode = false }, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).tvFocusIndicator()) { Text("Change server") }
                 }
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())

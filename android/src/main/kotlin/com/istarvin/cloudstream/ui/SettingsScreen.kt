@@ -273,6 +273,7 @@ fun SettingsScreen(onUnpair: () -> Unit) {
                             SettingsTab.Desktop -> {
                                 item { SettingsSectionTitle("Connection", "Manage your paired desktop and shared settings.") }
                                 item { DesktopStatus(api.server?.baseUrl.orEmpty(), status, onRetry = { reload() }) }
+                                item { ApproveDevice() }
                                 item {
                                     Column(Modifier.padding(top = 28.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -311,7 +312,7 @@ fun SettingsScreen(onUnpair: () -> Unit) {
         AlertDialog(
             onDismissRequest = { confirmUnpair = false },
             title = { Text("Sign out this device?") },
-            text = { Text("You can sign in again with a device code or your username and password. Your history and library stay on the server.") },
+            text = { Text("You can sign in again with a device code or your password. Your history and library stay on the server.") },
             confirmButton = { TextButton(onClick = { confirmUnpair = false; onUnpair() }, modifier = Modifier.tvFocusIndicator()) { Text("Sign out") } },
             dismissButton = { TextButton(onClick = { confirmUnpair = false }, modifier = Modifier.tvFocusIndicator()) { Text("Cancel") } },
         )

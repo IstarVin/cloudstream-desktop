@@ -297,6 +297,28 @@
       toasts.error(e);
     }
   }
+  let currentPassword = $state("");
+  let newPassword = $state("");
+  let confirmPassword = $state("");
+  let savingPassword = $state(false);
+  async function savePassword(event: SubmitEvent) {
+    event.preventDefault();
+    if (newPassword !== confirmPassword) {
+      toasts.show("The new passwords don't match.", true);
+      return;
+    }
+    savingPassword = true;
+    try {
+      await api.setPassword(newPassword, authInfo.data?.passwordSet ? currentPassword : undefined);
+      currentPassword = newPassword = confirmPassword = "";
+      toasts.show("Password saved. Other devices were signed out.");
+      await Promise.all([authInfo.refetch(), sessions.refetch()]);
+    } catch (e) {
+      toasts.error(e);
+    } finally {
+      savingPassword = false;
+    }
+  }
   async function revokeAll() {
     if (!confirm("Sign out all devices connected to this server, including this browser?")) return;
     try {
@@ -414,6 +436,58 @@
         <p class="muted">
           Sign in on a new device using its own sign-in code. Sessions last 30 days.
         </p>
+        {#if authInfo.data?.mode === "local"}
+          <div class="setting-row">
+            <span class="setting-copy"
+              ><b>Approve a device</b><small class="muted"
+                >Enter the code a TV, phone, or browser shows on its sign-in screen.</small
+              ></span
+            >
+            <a class="btn" href="/activate">Enter a code</a>
+          </div>
+          <h3>{authInfo.data.passwordSet ? "Change password" : "Set a password"}</h3>
+          <p class="muted">
+            Optional. With a password you can sign in directly over HTTPS or on this computer,
+            without approving from another device. Saving it signs out every other device.
+          </p>
+          <form class="password-form" onsubmit={savePassword}>
+            <input type="text" autocomplete="username" value="cloudstream" hidden readonly />
+            {#if authInfo.data.passwordSet}
+              <label
+                >Current password<input
+                  type="password"
+                  autocomplete="current-password"
+                  bind:value={currentPassword}
+                  required
+                  maxlength="256"
+                /></label
+              >
+            {/if}
+            <label
+              >New password<input
+                type="password"
+                autocomplete="new-password"
+                bind:value={newPassword}
+                required
+                minlength="12"
+                maxlength="256"
+              /><small class="muted">At least 12 characters.</small></label
+            >
+            <label
+              >Confirm new password<input
+                type="password"
+                autocomplete="new-password"
+                bind:value={confirmPassword}
+                required
+                minlength="12"
+                maxlength="256"
+              /></label
+            >
+            <button class="btn" disabled={savingPassword}
+              >{savingPassword ? "Saving…" : "Save password"}</button
+            >
+          </form>
+        {/if}
         {#if authInfo.data?.workerUrl}
           <p>
             <a class="btn" href={authInfo.data.workerUrl} target="_blank" rel="noopener noreferrer"
@@ -1449,6 +1523,24 @@
   small {
     color: var(--muted);
     font-size: 13px;
+  }
+  .password-form {
+    display: grid;
+    gap: 16px;
+    max-width: 420px;
+    margin-bottom: 24px;
+  }
+  .password-form label {
+    display: grid;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .password-form small {
+    font-weight: 400;
+  }
+  .password-form .btn {
+    justify-self: start;
   }
   input[type="checkbox"] {
     appearance: none;

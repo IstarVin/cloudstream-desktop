@@ -343,7 +343,17 @@ data class AuthStatus(
     val configured: Boolean = true,
     val workerUrl: String = "",
     val serverName: String = "Cloudstream server",
+    /** `local`: this server approves devices itself; `worker`: the central Worker does. Older servers omit it. */
+    val mode: String = "worker",
+    /** Local mode: whether direct password sign-in is available. */
+    val passwordSet: Boolean = false,
+    /** Local mode: nobody is signed in and no password is set, so the server log shows a one-time sign-in link. */
+    val claimable: Boolean = false,
 )
+
+/** A pending device sign-in, as shown to the person approving it (local mode). */
+@Serializable
+data class DeviceRequest(val deviceName: String, val address: String, val requestedAt: Long)
 
 /**
  * Marks an episode watched or not, or (with [position]) saves how far a client's own player got. Saving a position

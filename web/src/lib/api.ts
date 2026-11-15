@@ -76,21 +76,44 @@ export interface AuthSession {
   current: boolean;
 }
 
+export interface AuthStatus {
+  authed: boolean;
+  loopback: boolean;
+  configured: boolean;
+  workerUrl: string;
+  serverName: string;
+  /** `local`: this server approves devices itself; `worker`: the central Worker does. */
+  mode?: "local" | "worker";
+  /** Local mode: direct password sign-in is available. */
+  passwordSet?: boolean;
+  /** Local mode: nobody is signed in, so the server log shows a one-time sign-in link. */
+  claimable?: boolean;
+}
+/** A pending device sign-in, as shown to the person approving it. */
+export interface DeviceRequest {
+  deviceName: string;
+  address: string;
+  requestedAt: number;
+}
+
 export const api = {
-  authStatus: () =>
-    get<{
-      authed: boolean;
-      loopback: boolean;
-      configured: boolean;
-      workerUrl: string;
-      serverName: string;
-    }>("/api/auth/status"),
+  authStatus: () => get<AuthStatus>("/api/auth/status"),
   startSignIn: (deviceName: string) =>
     post<DeviceAuthorization>("/api/auth/device", { deviceName }),
   pollSignIn: (deviceCode: string) =>
     post<{ status: string }>("/api/auth/device/poll", { deviceCode }),
+  /** Local mode has no username; pass an empty one. */
   login: (username: string, password: string, deviceName: string) =>
-    post("/api/auth/login", { username, password, deviceName }),
+    post(
+      "/api/auth/login",
+      username ? { username, password, deviceName } : { password, deviceName },
+    ),
+  claim: (code: string, deviceName: string) => post("/api/auth/claim", { code, deviceName }),
+  lookupDevice: (userCode: string) => post<DeviceRequest>("/api/auth/device/lookup", { userCode }),
+  approveDevice: (userCode: string, approve: boolean) =>
+    post("/api/auth/device/approve", { userCode, approve }),
+  setPassword: (password: string, currentPassword?: string) =>
+    put("/api/auth/password", currentPassword ? { password, currentPassword } : { password }),
   logout: () => post("/api/auth/logout"),
   sessions: () => get<AuthSession[]>("/api/auth/sessions"),
   revokeSession: (id: string) => request("DELETE", `/api/auth/sessions/${encodeURIComponent(id)}`),
